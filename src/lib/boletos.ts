@@ -91,9 +91,9 @@ export type Region = "MX" | "US" | "LATAM";
 // Clasifica la región de un cliente por el evento al que asistió (columna
 // País de "Asignacion de boletos.csv": EPMX-*→MX, EPUS-*→US, webinars
 // LATAM→LATAM, etc.) — más confiable que el país capturado a mano. CAN se
-// agrupa con LATAM porque no hay un filtro dedicado para Canadá. Si el
-// evento no está en la tabla (o el cliente no tiene evento), cae al país
-// capturado a mano como respaldo.
+// agrupa con US (mismo criterio que el país capturado a mano, ver
+// paisInfo/esUsCanada). Si el evento no está en la tabla (o el cliente no
+// tiene evento), cae al país capturado a mano como respaldo.
 export function regionDeCliente(
   evento: string | null,
   pais: string | null,
@@ -102,8 +102,8 @@ export function regionDeCliente(
   const eventoKey = normalizar(evento);
   const paisEvento = eventoKey ? paisPorEvento.get(eventoKey) : undefined;
   if (paisEvento === "MX") return "MX";
-  if (paisEvento === "US") return "US";
-  if (paisEvento === "LATAM" || paisEvento === "CAN") return "LATAM";
+  if (paisEvento === "US" || paisEvento === "CAN") return "US";
+  if (paisEvento === "LATAM") return "LATAM";
 
   const { esMx, esUsCanada } = paisInfo(pais);
   if (esMx) return "MX";
