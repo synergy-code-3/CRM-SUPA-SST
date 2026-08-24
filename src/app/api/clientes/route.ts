@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { listarClientes, type EstadoFiltro, type RegionFiltro, type VigenciaFiltro } from "@/lib/db";
+import { listarClientes, type EstadoFiltro, type RegionFiltro, type TipoEventoFiltro, type VigenciaFiltro } from "@/lib/db";
 import { altaCompletaCliente } from "@/lib/alta-cliente";
 
 export async function GET(req: NextRequest) {
@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const estado = (searchParams.get("estado") as EstadoFiltro | null) ?? undefined;
   const region = (searchParams.get("region") as RegionFiltro | null) ?? undefined;
   const eventos = searchParams.get("eventos")?.split(",").filter(Boolean) ?? undefined;
+  const tipoEvento = (searchParams.get("tipoEvento") as TipoEventoFiltro | null) ?? undefined;
   const membresias = searchParams.get("membresias")?.split(",").filter(Boolean) ?? undefined;
   const desde = searchParams.get("desde") ?? undefined;
   const hasta = searchParams.get("hasta") ?? undefined;
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     estado,
     region,
     eventos,
+    tipoEvento,
     membresias,
     desde,
     hasta,

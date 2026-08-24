@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { exportarClientes, type EstadoFiltro, type RegionFiltro, type VigenciaFiltro } from "@/lib/db";
+import { exportarClientes, type EstadoFiltro, type RegionFiltro, type TipoEventoFiltro, type VigenciaFiltro } from "@/lib/db";
 
 // Trae todos los clientes que matcheen los filtros (no solo la página
 // visible) para el botón "Descargar CSV". Acepta los mismos query params que
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const estado = (searchParams.get("estado") as EstadoFiltro | null) ?? undefined;
   const region = (searchParams.get("region") as RegionFiltro | null) ?? undefined;
   const eventos = searchParams.get("eventos")?.split(",").filter(Boolean) ?? undefined;
+  const tipoEvento = (searchParams.get("tipoEvento") as TipoEventoFiltro | null) ?? undefined;
   const membresias = searchParams.get("membresias")?.split(",").filter(Boolean) ?? undefined;
   const desde = searchParams.get("desde") ?? undefined;
   const hasta = searchParams.get("hasta") ?? undefined;
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
       estado,
       region,
       eventos,
+      tipoEvento,
       membresias,
       desde,
       hasta,

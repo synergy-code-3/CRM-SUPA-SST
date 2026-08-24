@@ -27,11 +27,13 @@ const LIMITE = 100;
 
 type Estado = "todos" | "activos" | "revocados";
 type Region = "todos" | "MX" | "US" | "LATAM";
+type TipoEvento = "todos" | "webinar" | "presencial";
 type Vigencia = "actuales" | "futuros" | "todos";
 
 const FILTROS_VACIOS = {
   estado: "todos" as Estado,
   region: "todos" as Region,
+  tipoEvento: "todos" as TipoEvento,
   vigencia: "actuales" as Vigencia,
   eventos: [] as string[],
   membresias: [] as string[],
@@ -87,6 +89,7 @@ export default function ClientesPage() {
     if (busqueda.trim()) params.set("q", busqueda.trim());
     if (filtros.estado !== "todos") params.set("estado", filtros.estado);
     if (filtros.region !== "todos") params.set("region", filtros.region);
+    if (filtros.tipoEvento !== "todos") params.set("tipoEvento", filtros.tipoEvento);
     if (filtros.vigencia !== "actuales") params.set("vigencia", filtros.vigencia);
     if (filtros.eventos.length) params.set("eventos", filtros.eventos.join(","));
     if (filtros.membresias.length) params.set("membresias", filtros.membresias.join(","));
@@ -191,6 +194,7 @@ export default function ClientesPage() {
   const hayFiltrosActivos =
     filtros.estado !== "todos" ||
     filtros.region !== "todos" ||
+    filtros.tipoEvento !== "todos" ||
     filtros.vigencia !== "actuales" ||
     filtros.eventos.length > 0 ||
     filtros.membresias.length > 0 ||
@@ -201,6 +205,7 @@ export default function ClientesPage() {
   const contadorFiltros = [
     filtros.estado !== "todos",
     filtros.region !== "todos",
+    filtros.tipoEvento !== "todos",
     filtros.vigencia !== "actuales",
     filtros.eventos.length > 0,
     filtros.membresias.length > 0,
@@ -319,6 +324,16 @@ export default function ClientesPage() {
               ]}
               valor={filtros.region}
               onChange={(v) => setFiltros((f) => ({ ...f, region: v as Region }))}
+            />
+            <span className="mx-0.5 h-5 w-px bg-silver" />
+            <Pildora
+              opciones={[
+                { valor: "todos", label: "Todos" },
+                { valor: "webinar", label: "Webinar" },
+                { valor: "presencial", label: "Presencial" },
+              ]}
+              valor={filtros.tipoEvento}
+              onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
             />
             <span className="mx-0.5 h-5 w-px bg-silver" />
             <MultiSelect

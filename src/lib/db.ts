@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, formatearFechaSkool, parsearFechaSkool } from "./fechas";
-import { cargarInventarioBoletos, cargarPaisPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
+import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, type ClienteRow } from "./supabase-map";
 import type {
@@ -96,12 +96,14 @@ export async function listarTodosClientes(): Promise<ClienteResumen[]> {
 export type EstadoFiltro = "todos" | "activos" | "revocados";
 export type RegionFiltro = "todos" | "MX" | "US" | "LATAM";
 export type VigenciaFiltro = "actuales" | "futuros" | "todos";
+export type TipoEventoFiltro = "todos" | "webinar" | "presencial";
 
 export type FiltrosClientes = {
   busqueda?: string;
   estado?: EstadoFiltro;
   region?: RegionFiltro;
   eventos?: string[];
+  tipoEvento?: TipoEventoFiltro;
   membresias?: string[];
   desde?: string;
   hasta?: string;
@@ -110,6 +112,30 @@ export type FiltrosClientes = {
   limite?: number;
   pagina?: number;
 };
+
+// Resuelve el filtro Webinar/Presencial a una lista concreta de nombres de
+// evento (columna "Tipo de Evento" del inventario de boletos) y la combina
+// con el filtro de eventos ya elegido a mano, si lo hay (intersección — solo
+// los eventos que cumplen ambos). Si la combinación no deja ningún evento,
+// se fuerza una lista con un nombre que no existe para que el `.in()` de
+// abajo no matchee nada, en vez de ignorarse (el guard `.length` de
+// aplicarFiltrosClientes solo aplica el filtro si el arreglo no está vacío).
+async function resolverFiltroTipoEvento(opciones?: FiltrosClientes): Promise<FiltrosClientes | undefined> {
+  if (!opciones?.tipoEvento || opciones.tipoEvento === "todos") return opciones;
+
+  const [tipoPorEvento, { eventos: todosLosEventos }] = await Promise.all([
+    cargarTipoPorEvento(),
+    listarOpcionesFiltro(),
+  ]);
+  const buscado = opciones.tipoEvento === "webinar" ? "WEBINAR" : "PRES";
+  const eventosDelTipo = todosLosEventos.filter((e) => tipoPorEvento.get(e.trim().toLowerCase()) === buscado);
+
+  const eventosFinales = opciones.eventos?.length
+    ? opciones.eventos.filter((e) => eventosDelTipo.includes(e))
+    : eventosDelTipo;
+
+  return { ...opciones, eventos: eventosFinales.length ? eventosFinales : ["__ningún evento coincide__"] };
+}
 
 // Quita comas (separador de condiciones en `.or()`), paréntesis (agrupan
 // lógica anidada en ese mismo DSL) y comodines de ILIKE del texto libre de
@@ -161,10 +187,11 @@ function aplicarFiltrosClientes<
   return query;
 }
 
-export async function listarClientes(opciones?: FiltrosClientes): Promise<{
+export async function listarClientes(opcionesCrudas?: FiltrosClientes): Promise<{
   clientes: Cliente[];
   total: number;
 }> {
+  const opciones = await resolverFiltroTipoEvento(opcionesCrudas);
   const limite = opciones?.limite ?? 100;
   const pagina = Math.max(1, opciones?.pagina ?? 1);
   const inicio = (pagina - 1) * limite;
@@ -185,7 +212,8 @@ const CAP_EXPORTACION = 50_000;
 // botón "Descargar CSV" — a diferencia de listarClientes, que solo trae la
 // página actual. Usa el mismo traerTodo() que ya pagina de a 1000 filas
 // (límite de PostgREST) para las agregaciones del dashboard.
-export async function exportarClientes(opciones?: FiltrosClientes): Promise<Cliente[]> {
+export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promise<Cliente[]> {
+  const opciones = await resolverFiltroTipoEvento(opcionesCrudas);
   const filas = await traerTodo<ClienteRow>((from, to) => {
     let query = supabase.from("clientes").select("*").is("eliminado_en", null);
     query = aplicarFiltrosClientes(query, opciones);

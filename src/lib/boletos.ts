@@ -78,6 +78,28 @@ export async function cargarPaisPorEvento(): Promise<Map<string, string>> {
   return mapa;
 }
 
+// Mapa evento → tipo de evento (columna B de "Asignacion de boletos.csv":
+// "WEBINAR" o "PRES"), para el filtro Webinar/Presencial de la lista de
+// Clientes. Mismo criterio de caché en memoria que cargarPaisPorEvento —
+// el archivo no cambia en tiempo de ejecución.
+let cacheTipoPorEvento: Map<string, string> | null = null;
+
+export async function cargarTipoPorEvento(): Promise<Map<string, string>> {
+  if (cacheTipoPorEvento) return cacheTipoPorEvento;
+  const raw = await fs.readFile(INVENTARIO_PATH, "utf-8");
+  const filas: string[][] = parse(raw, { skip_empty_lines: true, relax_column_count: true });
+
+  const mapa = new Map<string, string>();
+  for (const r of filas.slice(3)) {
+    const evento = (r[0] ?? "").trim();
+    const tipo = (r[1] ?? "").trim().toUpperCase();
+    if (!evento || (tipo !== "WEBINAR" && tipo !== "PRES")) continue;
+    mapa.set(normalizar(evento), tipo);
+  }
+  cacheTipoPorEvento = mapa;
+  return mapa;
+}
+
 function paisInfo(pais: string | null): { esMx: boolean; esUsCanada: boolean } {
   const p = normalizar(pais);
   return {
