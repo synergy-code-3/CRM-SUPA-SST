@@ -145,6 +145,23 @@ function sanearBusqueda(q: string): string {
   return q.replace(/[,%*()]/g, "");
 }
 
+// Busca cada palabra por separado en vez de la frase completa como un solo
+// substring contiguo — "Juan Pérez" antes no encontraba a "Juan Carlos
+// Pérez" porque esas dos palabras no quedan juntas y seguidas en el campo.
+// Devuelve una cláusula .or() por palabra; aplicarlas todas con
+// query.or(clausula) en un for encadena varios .or() seguidos, que en
+// supabase-js/PostgREST se combinan con AND entre sí — así que exige que
+// TODAS las palabras aparezcan, en cualquier orden, en cualquiera de las
+// columnas dadas. (No se hace genérica sobre el tipo del query builder de
+// Supabase a propósito: eso dispara "Type instantiation is excessively
+// deep" — cada call site aplica las cláusulas en su propio for.)
+function clausulasBusquedaMultiPalabra(busqueda: string | undefined, columnas: string[]): string[] {
+  const q = sanearBusqueda(busqueda?.trim() ?? "");
+  if (!q) return [];
+  const palabras = q.split(/\s+/).filter(Boolean);
+  return palabras.map((palabra) => columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","));
+}
+
 // Aplica los filtros de la lista de clientes (búsqueda, estado, región,
 // eventos, membresías, rango de fechas, vigencia) a una query ya iniciada
 // con .from("clientes").select(...). Compartida entre listarClientes
@@ -165,8 +182,7 @@ function aplicarFiltrosClientes<
   const ahora = new Date().toISOString();
   const vigencia = opciones?.vigencia ?? "actuales";
 
-  const q = sanearBusqueda(opciones?.busqueda?.trim() ?? "");
-  if (q) query = query.or(`nombre.ilike.%${q}%,email.ilike.%${q}%`);
+  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
 
   if (opciones?.estado === "activos") query = query.ilike("acceso_plataforma", "si");
   if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
@@ -288,13 +304,10 @@ export type FiltrosEventos = {
 // esos ids se agregan como una condición más (cliente_id.in.(...)) al or()
 // de eventos_timeline, que sí es una tabla propia.
 async function idsClientesPorBusqueda(busqueda: string): Promise<string[]> {
-  const q = sanearBusqueda(busqueda.trim());
-  if (!q) return [];
-  const { data, error } = await supabase
-    .from("clientes")
-    .select("id")
-    .or(`nombre.ilike.%${q}%,email.ilike.%${q}%`)
-    .limit(500);
+  if (!sanearBusqueda(busqueda.trim())) return [];
+  let query = supabase.from("clientes").select("id");
+  for (const clausula of clausulasBusquedaMultiPalabra(busqueda, ["nombre", "email"])) query = query.or(clausula);
+  const { data, error } = await query.limit(500);
   if (error) throw error;
   return (data ?? []).map((c) => c.id as string);
 }
@@ -1104,8 +1117,7 @@ export async function eliminarCliente(id: string, autor: string): Promise<Client
 
 export async function listarEliminados(busqueda?: string): Promise<Cliente[]> {
   let query = supabase.from("clientes").select("*").not("eliminado_en", "is", null);
-  const q = sanearBusqueda(busqueda?.trim() ?? "");
-  if (q) query = query.or(`nombre.ilike.%${q}%,email.ilike.%${q}%`);
+  for (const clausula of clausulasBusquedaMultiPalabra(busqueda, ["nombre", "email"])) query = query.or(clausula);
   query = query.order("eliminado_en", { ascending: false }).limit(500);
 
   const { data, error } = await query;
@@ -1189,8 +1201,7 @@ export async function listarOtrasOfertasClientes(opciones?: FiltrosOtrasOfertas)
   const inicio = (pagina - 1) * limite;
 
   let query = supabase.from("otras_ofertas_clientes").select("*", { count: "exact" });
-  const q = sanearBusqueda(opciones?.busqueda?.trim() ?? "");
-  if (q) query = query.or(`nombre.ilike.%${q}%,email.ilike.%${q}%`);
+  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
   if (opciones?.etiqueta) query = query.eq("etiqueta", opciones.etiqueta);
   if (opciones?.tag) query = query.contains("tags", [opciones.tag]);
   query = query.order("orden_csv", { ascending: false }).range(inicio, inicio + limite - 1);
@@ -1226,8 +1237,7 @@ const CAP_EXPORTACION_OTRAS_OFERTAS = 50_000;
 export async function exportarOtrasOfertasClientes(opciones?: FiltrosOtrasOfertas): Promise<OtraOfertaCliente[]> {
   const filas = await traerTodo<OtraOfertaClienteRow>((from, to) => {
     let query = supabase.from("otras_ofertas_clientes").select("*");
-    const q = sanearBusqueda(opciones?.busqueda?.trim() ?? "");
-    if (q) query = query.or(`nombre.ilike.%${q}%,email.ilike.%${q}%`);
+    for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
     if (opciones?.etiqueta) query = query.eq("etiqueta", opciones.etiqueta);
     if (opciones?.tag) query = query.contains("tags", [opciones.tag]);
     return query.order("orden_csv", { ascending: false }).range(from, to);
