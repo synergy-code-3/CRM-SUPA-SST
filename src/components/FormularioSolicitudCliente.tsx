@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, Plus, X } from "lucide-react";
 import { PAISES_AMERICA } from "@/lib/paises-america";
+import { useSesion } from "@/lib/session-context";
 import { ComboboxBuscador } from "./ComboboxBuscador";
 
 const OPCIONES_PAIS = PAISES_AMERICA.map((p) => ({ valor: p.nombre, etiqueta: p.nombre, nota: p.lada }));
@@ -10,8 +11,19 @@ const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valo
 const MAX_COMPROBANTES = 5;
 
 type Slot = { key: number; archivo: File | null };
+type CategoriaEvento = "presencial" | "webinar" | "otro";
+type EventosPorTipo = { webinar: string[]; presencial: string[]; otro: string[] };
+
+const CATEGORIAS: { valor: CategoriaEvento; label: string }[] = [
+  { valor: "presencial", label: "Presencial" },
+  { valor: "webinar", label: "Webinar" },
+  { valor: "otro", label: "Otro" },
+];
 
 export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => void }) {
+  const { usuario } = useSesion();
+  const esAdmin = usuario?.rol === "admin";
+
   const [form, setForm] = useState({
     nombre: "",
     correoPago: "",
@@ -21,7 +33,11 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
     evento: "",
     tipoMembresia: "",
   });
-  const [eventos, setEventos] = useState<{ valor: string; etiqueta: string }[]>([]);
+  const [eventosPorTipo, setEventosPorTipo] = useState<EventosPorTipo>({ webinar: [], presencial: [], otro: [] });
+  const [categoriaEvento, setCategoriaEvento] = useState<CategoriaEvento | null>(null);
+  // Solo admin puede saltarse el selector por categoría y buscar el evento
+  // directamente en la lista completa, como funcionaba antes.
+  const [modoDirecto, setModoDirecto] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([
     { key: 0, archivo: null },
     { key: 1, archivo: null },
@@ -32,11 +48,19 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
   const [exito, setExito] = useState(false);
 
   useEffect(() => {
-    fetch("/api/biblioteca?tipo=evento")
+    fetch("/api/eventos-synergy")
       .then((r) => r.json())
-      .then((data) => setEventos((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
-      .catch(() => setEventos([]));
+      .then((data) =>
+        setEventosPorTipo({
+          webinar: data.webinar ?? [],
+          presencial: data.presencial ?? [],
+          otro: data.otro ?? [],
+        })
+      )
+      .catch(() => setEventosPorTipo({ webinar: [], presencial: [], otro: [] }));
   }, []);
+
+  const todosLosEventos = [...eventosPorTipo.presencial, ...eventosPorTipo.webinar, ...eventosPorTipo.otro];
 
   function onCambiarPais(pais: string) {
     const lada = PAISES_AMERICA.find((p) => p.nombre === pais)?.lada ?? "";
@@ -93,6 +117,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
       }
 
       setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "" });
+      setCategoriaEvento(null);
       setSlots([
         { key: 0, archivo: null },
         { key: 1, archivo: null },
@@ -165,14 +190,62 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
             </Campo>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Campo label="Evento *">
-              <ComboboxBuscador
-                opciones={eventos}
-                valor={form.evento}
-                onChange={(evento) => setForm((f) => ({ ...f, evento }))}
-                placeholder="Seleccionar evento…"
-              />
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {!modoDirecto &&
+                    CATEGORIAS.map((c) => (
+                      <button
+                        key={c.valor}
+                        type="button"
+                        onClick={() => {
+                          setCategoriaEvento(c.valor);
+                          setForm((f) => ({ ...f, evento: "" }));
+                        }}
+                        className={`ease-spring rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                          categoriaEvento === c.valor
+                            ? "border-primary bg-primary-dim text-primary-deep"
+                            : "border-silver bg-surface text-muted hover:bg-surface-2"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                </div>
+                {esAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoDirecto((m) => !m);
+                      setCategoriaEvento(null);
+                      setForm((f) => ({ ...f, evento: "" }));
+                    }}
+                    className="ease-spring flex-none text-xs font-medium text-primary transition hover:text-primary-deep"
+                  >
+                    {modoDirecto ? "Usar selector por categoría" : "Buscar directamente"}
+                  </button>
+                )}
+              </div>
+              {modoDirecto ? (
+                <ComboboxBuscador
+                  opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
+                  valor={form.evento}
+                  onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                  placeholder="Seleccionar evento…"
+                />
+              ) : categoriaEvento ? (
+                <ComboboxBuscador
+                  opciones={eventosPorTipo[categoriaEvento].map((e) => ({ valor: e, etiqueta: e }))}
+                  valor={form.evento}
+                  onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                  placeholder="Seleccionar evento…"
+                />
+              ) : (
+                <p className="rounded-lg border border-dashed border-silver bg-surface-2 px-3 py-1.5 text-xs text-muted">
+                  Elige Presencial, Webinar u Otro primero
+                </p>
+              )}
             </Campo>
             <Campo label="Tipo de membresía *">
               <ComboboxBuscador

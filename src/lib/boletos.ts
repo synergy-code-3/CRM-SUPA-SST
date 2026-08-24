@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parse } from "csv-parse/sync";
+import { listarCatalogo } from "./catalogo";
 import type { Accesos, Variante } from "./types";
 
 // Implementa REGLAS-BOLETOS-SYNERGY.md — motor de asignación de accesos a
@@ -98,6 +99,42 @@ export async function cargarTipoPorEvento(): Promise<Map<string, string>> {
   }
   cacheTipoPorEvento = mapa;
   return mapa;
+}
+
+// Eventos del catálogo de Biblioteca (los seleccionables en el formulario
+// de Solicitudes), agrupados por Webinar/Presencial/Otro según la columna
+// "Tipo de Evento" del inventario de boletos. "Otro" son los que no tienen
+// tipo definido ahí (VIP-SU, GRAL-SU, Renovación, categorías
+// administrativas, o eventos nuevos que Biblioteca ya conoce pero el
+// inventario todavía no) — VIP-SU y GRAL-SU van primero por ser los más
+// usados dentro de "Otro".
+const PRIORIDAD_OTRO = ["VIP-SU", "GRAL-SU"];
+
+export async function agruparEventosPorTipo(): Promise<{
+  webinar: string[];
+  presencial: string[];
+  otro: string[];
+}> {
+  const [eventosCatalogo, tipoPorEvento] = await Promise.all([listarCatalogo("evento"), cargarTipoPorEvento()]);
+
+  const webinar: string[] = [];
+  const presencial: string[] = [];
+  const otro: string[] = [];
+  for (const evento of eventosCatalogo) {
+    const tipo = tipoPorEvento.get(normalizar(evento));
+    if (tipo === "WEBINAR") webinar.push(evento);
+    else if (tipo === "PRES") presencial.push(evento);
+    else otro.push(evento);
+  }
+
+  otro.sort((a, b) => {
+    const ia = PRIORIDAD_OTRO.indexOf(a.toUpperCase());
+    const ib = PRIORIDAD_OTRO.indexOf(b.toUpperCase());
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    return (ia === -1 ? PRIORIDAD_OTRO.length : ia) - (ib === -1 ? PRIORIDAD_OTRO.length : ib);
+  });
+
+  return { webinar, presencial, otro };
 }
 
 function paisInfo(pais: string | null): { esMx: boolean; esUsCanada: boolean } {
