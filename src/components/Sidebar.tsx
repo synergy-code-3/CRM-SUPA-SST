@@ -4,9 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, LogOut, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
+import type { UsuarioSesion } from "@/lib/auth";
+import { MiPerfilModal } from "./MiPerfilModal";
 
 // Item "Dashboard"/"Biblioteca"/"Eliminados" quedan solo para admin — el
 // pedido original solo especificó "ver clientes y sus perfiles" para
@@ -41,29 +43,53 @@ function Marca() {
   );
 }
 
-function CuentaFooter({ onCerrarSesion }: { onCerrarSesion: () => void }) {
+// Falta teléfono o foto — mismo criterio que usa Sidebar() para decidir si
+// se abre el perfil solo al iniciar sesión.
+function perfilIncompleto(usuario: UsuarioSesion): boolean {
+  return usuario.telefonos.length === 0 || !usuario.fotoUrl;
+}
+
+// Ya no cierra sesión directo — abre "Mi perfil" (editable: teléfono, foto),
+// que es donde ahora vive el botón de cerrar sesión.
+function CuentaFooter({ onAbrirPerfil }: { onAbrirPerfil: () => void }) {
   const { usuario } = useSesion();
   if (!usuario) return null;
+  const incompleto = perfilIncompleto(usuario);
   return (
-    <div className="mt-auto rounded-xl bg-surface-2 px-3 py-3">
-      <p className="text-xs text-muted">Conectado como</p>
-      <p className="truncate text-sm font-medium text-foreground">{usuario.nombre}</p>
-      <p className="text-xs text-muted">{ROL_LABEL[usuario.rol]}</p>
-      <button
-        onClick={onCerrarSesion}
-        className="ease-spring mt-2 flex items-center gap-1.5 text-xs font-medium text-muted transition hover:text-danger"
-      >
-        <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
-        Cerrar sesión
-      </button>
-    </div>
+    <button
+      onClick={onAbrirPerfil}
+      className="ease-spring mt-auto flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-3 text-left transition hover:bg-silver/60"
+    >
+      <span className="relative h-10 w-10 flex-none overflow-hidden rounded-full border border-silver bg-surface">
+        {usuario.fotoUrl ? (
+          <Image src={usuario.fotoUrl} alt="" width={40} height={40} unoptimized className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-muted">
+            <UserRound className="h-5 w-5" strokeWidth={1.5} />
+          </span>
+        )}
+        {incompleto && (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-surface-2 bg-warning"
+            title="Completa tu perfil"
+          />
+        )}
+      </span>
+      <span className="min-w-0">
+        <p className="truncate text-sm font-medium text-foreground">{usuario.nombre}</p>
+        <p className="text-xs text-muted">{ROL_LABEL[usuario.rol]}</p>
+      </span>
+    </button>
   );
 }
 
+const PERFIL_MOSTRADO_KEY = "perfilIncompletoMostrado";
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { usuario, cerrarSesion } = useSesion();
+  const { usuario } = useSesion();
   const [abierto, setAbierto] = useState(false);
+  const [mostrarPerfil, setMostrarPerfil] = useState(false);
 
   // Cierra el drawer solo con la navegación (no al abrirlo), para que un
   // clic en un link de menú no deje el drawer abierto detrás de la página
@@ -71,6 +97,17 @@ export function Sidebar() {
   useEffect(() => {
     setAbierto(false);
   }, [pathname]);
+
+  // Al iniciar sesión, si falta teléfono o foto, se abre "Mi perfil" una
+  // sola vez por sesión de navegador (se puede cerrar sin llenarlo y seguir
+  // usando el CRM normal — el punto en el avatar se queda hasta
+  // completarlo). Aplica igual a usuarios nuevos que a los que ya existían.
+  useEffect(() => {
+    if (!usuario || !perfilIncompleto(usuario)) return;
+    if (sessionStorage.getItem(PERFIL_MOSTRADO_KEY)) return;
+    sessionStorage.setItem(PERFIL_MOSTRADO_KEY, "1");
+    setMostrarPerfil(true);
+  }, [usuario]);
 
   if (!usuario) return null;
   const items = NAV.filter((item) => tienePermiso(usuario.rol, item.permiso));
@@ -99,7 +136,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <CuentaFooter onCerrarSesion={cerrarSesion} />
+        <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
       </aside>
 
       {/* Barra superior + drawer — solo debajo de md (celular/tablet chica).
@@ -149,10 +186,12 @@ export function Sidebar() {
                 );
               })}
             </nav>
-            <CuentaFooter onCerrarSesion={cerrarSesion} />
+            <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>
       )}
+
+      {mostrarPerfil && <MiPerfilModal onClose={() => setMostrarPerfil(false)} />}
     </>
   );
 }

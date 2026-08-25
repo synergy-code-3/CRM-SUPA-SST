@@ -8,7 +8,14 @@ import { tienePermiso, type Accion, type Rol } from "./permisos";
 export { COOKIE_SESION, SESION_DURACION_SEG, crearTokenSesion };
 export type { Rol };
 
-export type UsuarioSesion = { id: string; email: string; nombre: string; rol: Rol };
+export type UsuarioSesion = {
+  id: string;
+  email: string;
+  nombre: string;
+  rol: Rol;
+  telefonos: string[];
+  fotoUrl: string | null;
+};
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -32,12 +39,19 @@ export async function obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
 
   const { data, error } = await supabase
     .from("usuarios")
-    .select("id,email,nombre,rol,activo,token_version")
+    .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url")
     .eq("id", claims.sub)
     .maybeSingle();
   if (error || !data || !data.activo || data.token_version !== claims.tokenVersion) return null;
 
-  return { id: data.id, email: data.email, nombre: data.nombre, rol: data.rol as Rol };
+  return {
+    id: data.id,
+    email: data.email,
+    nombre: data.nombre,
+    rol: data.rol as Rol,
+    telefonos: data.telefonos ?? [],
+    fotoUrl: data.foto_url,
+  };
 }
 
 type ResultadoPermiso =

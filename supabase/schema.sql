@@ -337,3 +337,10 @@ create table if not exists clientes_ofertas (
 );
 create index if not exists idx_clientes_ofertas_cliente_id on clientes_ofertas (cliente_id, fecha_otorgada desc);
 alter table clientes_ofertas enable row level security;
+
+-- Perfil de usuario autogestionado: teléfono(s) y foto se piden al iniciar
+-- sesión si faltan (ver Sidebar.tsx / MiPerfilModal.tsx), tanto para
+-- usuarios nuevos (autoregistro) como para los ya existentes. Array, no un
+-- solo texto: cada quien puede agregar más de un teléfono a su perfil.
+alter table usuarios add column if not exists telefonos text[] not null default '{}';
+alter table usuarios add column if not exists foto_url text;

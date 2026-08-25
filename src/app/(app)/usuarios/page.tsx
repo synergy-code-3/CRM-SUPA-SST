@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Plus, Trash2, UserRound } from "lucide-react";
+import Image from "next/image";
+import { KeyRound, Plus, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import type { Rol } from "@/lib/permisos";
 
@@ -14,6 +15,8 @@ type Usuario = {
   activo: boolean;
   creado_en: string;
   ultimo_login: string | null;
+  telefonos: string[];
+  foto_url: string | null;
 };
 
 // Se autoregistró desde /login y nadie lo ha activado todavía — nunca
@@ -22,6 +25,26 @@ type Usuario = {
 // de haber usado el CRM, sin necesidad de una columna aparte.
 function esPendienteDeAprobar(u: Usuario): boolean {
   return !u.activo && !u.ultimo_login;
+}
+
+function perfilIncompleto(u: Usuario): boolean {
+  return u.telefonos.length === 0 || !u.foto_url;
+}
+
+function Avatar({ usuario, tamano = 8 }: { usuario: Usuario; tamano?: number }) {
+  const px = tamano * 4;
+  return (
+    <span
+      className="flex flex-none items-center justify-center overflow-hidden rounded-full border border-silver bg-surface-2 text-muted"
+      style={{ width: px, height: px }}
+    >
+      {usuario.foto_url ? (
+        <Image src={usuario.foto_url} alt="" width={px} height={px} unoptimized className="h-full w-full object-cover" />
+      ) : (
+        <UserRound className="h-[55%] w-[55%]" strokeWidth={1.5} />
+      )}
+    </span>
+  );
 }
 
 const ROL_LABEL: Record<Rol, string> = {
@@ -37,6 +60,7 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
+  const [verPerfil, setVerPerfil] = useState<Usuario | null>(null);
 
   useEffect(() => {
     if (!cargandoSesion && yo && yo.rol !== "admin") router.replace("/clientes");
@@ -134,11 +158,23 @@ export default function UsuariosPage() {
             {(usuarios ?? []).map((u) => (
               <tr key={u.id} className="border-t border-silver/60">
                 <td className="px-4 py-3 font-medium text-foreground">
-                  <span className="flex items-center gap-2">
-                    <UserRound className="h-4 w-4 text-muted" strokeWidth={1.75} />
+                  <button
+                    onClick={() => setVerPerfil(u)}
+                    title="Ver perfil completo"
+                    className="ease-spring flex items-center gap-2 rounded-lg py-0.5 pr-2 transition hover:bg-surface-2"
+                  >
+                    <span className="relative">
+                      <Avatar usuario={u} tamano={7} />
+                      {perfilIncompleto(u) && (
+                        <span
+                          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-warning"
+                          title="Perfil incompleto"
+                        />
+                      )}
+                    </span>
                     {u.nombre}
                     {u.id === yo.id && <span className="text-xs text-muted">(tú)</span>}
-                  </span>
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-muted">{u.email}</td>
                 <td className="px-4 py-3">
@@ -205,6 +241,79 @@ export default function UsuariosPage() {
           }}
         />
       )}
+
+      {verPerfil && <PerfilUsuarioDetalle usuario={verPerfil} onClose={() => setVerPerfil(null)} />}
+    </div>
+  );
+}
+
+// Vista de solo lectura para que admin vea el perfil completo (foto,
+// teléfonos) que cada quien llena desde su propio "Mi perfil" — no se edita
+// desde aquí, eso sigue siendo cosa de cada usuario.
+function PerfilUsuarioDetalle({ usuario, onClose }: { usuario: Usuario; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
+        <div className="core rounded-[calc(2rem-0.5rem)] p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-foreground">Perfil de {usuario.nombre}</h2>
+            <button
+              onClick={onClose}
+              className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"
+            >
+              <X className="h-4.5 w-4.5" strokeWidth={1.75} />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-2">
+            <Avatar usuario={usuario} tamano={20} />
+            {perfilIncompleto(usuario) && (
+              <p className="text-xs text-warning">Perfil incompleto — falta teléfono y/o foto.</p>
+            )}
+          </div>
+
+          <dl className="mt-5 space-y-2.5 text-sm">
+            <div className="flex items-start gap-2 text-foreground">
+              <Mail className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted">Correo: </span>
+                {usuario.email}
+              </span>
+            </div>
+            <div className="flex items-start gap-2 text-foreground">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted">Rol: </span>
+                {ROL_LABEL[usuario.rol]}
+              </span>
+            </div>
+            <div className="flex items-start gap-2 text-foreground">
+              <Phone className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted">Teléfono(s): </span>
+                {usuario.telefonos.length ? usuario.telefonos.join(" · ") : "Sin registrar"}
+              </span>
+            </div>
+            <div className="flex items-start gap-2 text-foreground">
+              <LogIn className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted">Último acceso: </span>
+                {usuario.ultimo_login ? new Date(usuario.ultimo_login).toLocaleString("es-MX") : "Nunca"}
+              </span>
+            </div>
+            <div className="flex items-start gap-2 text-foreground">
+              <CalendarPlus className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span>
+                <span className="text-muted">Creado el: </span>
+                {new Date(usuario.creado_en).toLocaleDateString("es-MX")}
+              </span>
+            </div>
+          </dl>
+        </div>
+      </div>
     </div>
   );
 }
