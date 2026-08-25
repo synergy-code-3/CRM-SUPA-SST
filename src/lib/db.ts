@@ -677,6 +677,30 @@ export async function pausarMembresia(id: string, autor: string): Promise<Client
   return filaACliente(data as ClienteRow);
 }
 
+// Revoca el acceso de forma permanente (ej. reembolso) — a diferencia de
+// "Pausar", no guarda días pendientes para reanudar después: solo marca
+// "Acceso a plataforma" en "No". Si el cliente estaba pausado, se limpia
+// esa pausa para no dejar el botón "Reanudar" sobre un acceso que ya se
+// revocó por completo.
+export async function revocarAccesoCliente(id: string, autor: string): Promise<Cliente> {
+  const ahora = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      acceso_plataforma: "No",
+      pausado_en: null,
+      fin_acceso_al_pausar: null,
+      actualizado_en: ahora,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(id, "REVOCACION_ACCESO", `Acceso revocado por ${autor}`, autor);
+  return filaACliente(data as ClienteRow);
+}
+
 export type ResultadoReanudar = { cliente: Cliente; fechaCalculada: string; diasRestantes: number };
 
 // Reanuda una membresía pausada: calcula cuántos días le quedaban cuando se

@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Gift,
   XCircle,
+  Ban,
 } from "lucide-react";
 import { TIPO_EVENTO_LABEL, type EventoTimeline, type TipoEvento } from "@/lib/types";
 
@@ -31,6 +32,7 @@ const ICONS: Record<TipoEvento, typeof UserPlus> = {
   PAUSA: PauseCircle,
   REANUDACION: PlayCircle,
   RENOVACION: RefreshCw,
+  REVOCACION_ACCESO: Ban,
   WA_BIENVENIDA: MessageCircle,
   IMPORTACION: UploadCloud,
   KAJABI: Tag,

@@ -39,6 +39,7 @@ import {
   PauseCircle,
   PlayCircle,
   Gift,
+  Ban,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -144,6 +145,7 @@ export function ClientePanel({
   const puedeEliminar = !!usuario && tienePermiso(usuario.rol, "eliminarCliente");
   const puedeRenovar = !!usuario && tienePermiso(usuario.rol, "renovarMembresia");
   const puedePausar = !!usuario && tienePermiso(usuario.rol, "pausarMembresia");
+  const puedeRevocarAcceso = !!usuario && tienePermiso(usuario.rol, "revocarAccesoCliente");
   const puedeVerActividad = !!usuario && tienePermiso(usuario.rol, "verActividad");
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [eventos, setEventos] = useState<EventoTimeline[]>([]);
@@ -175,6 +177,8 @@ export function ClientePanel({
   const [pausando, setPausando] = useState(false);
   const [pasoReanudar, setPasoReanudar] = useState<0 | 1>(0);
   const [reanudando, setReanudando] = useState(false);
+  const [pasoRevocarAcceso, setPasoRevocarAcceso] = useState<0 | 1>(0);
+  const [revocandoAcceso, setRevocandoAcceso] = useState(false);
   const [perfilKajabi, setPerfilKajabi] = useState<PerfilKajabi | null>(null);
   const [cargandoPerfilKajabi, setCargandoPerfilKajabi] = useState(false);
   const [errorPerfilKajabi, setErrorPerfilKajabi] = useState<string | null>(null);
@@ -229,6 +233,7 @@ export function ClientePanel({
     setPasoEliminar(0);
     setPasoPausar(0);
     setPasoReanudar(0);
+    setPasoRevocarAcceso(0);
     setPasoEnviarWa(0);
     setEsperandoConfirmacionWa(false);
     setPerfilKajabi(null);
@@ -473,6 +478,37 @@ export function ClientePanel({
         `Recuerda cambiar la fecha de vencimiento en Kajabi a: ${new Date(data.fechaCalculada).toLocaleDateString("es-MX")} (le quedaban ${data.diasRestantes} días cuando se pausó).`
       );
     }
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
+      r.json()
+    );
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  async function confirmarRevocarAcceso() {
+    if (!cliente || !puedeRevocarAcceso) return;
+    if (pasoRevocarAcceso < 1) {
+      setPasoRevocarAcceso(1);
+      return;
+    }
+    setRevocandoAcceso(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/revocar-acceso`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setRevocandoAcceso(false);
+    setPasoRevocarAcceso(0);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo revocar el acceso");
+      return;
+    }
+    if (data.avisoKajabi) {
+      window.alert(`El acceso se revocó en el CRM, pero hubo un problema en Kajabi: ${data.avisoKajabi}`);
+    }
+    setCliente(data.cliente);
+    setForm(formDeCliente(data.cliente));
+    onClienteActualizado(data.cliente);
+    setEstadoKajabi("revocada");
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
     );
@@ -1294,6 +1330,45 @@ export function ClientePanel({
                       </div>
                     )}
                       </>
+                    )}
+
+                    {puedeRevocarAcceso && cliente.accesoPlataforma?.trim().toLowerCase() !== "no" && (
+                      <div className="mt-3 border-t border-silver/60 pt-3">
+                        {pasoRevocarAcceso === 0 && (
+                          <button
+                            onClick={confirmarRevocarAcceso}
+                            className="ease-spring flex items-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+                          >
+                            <Ban className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            Revocar acceso
+                          </button>
+                        )}
+                        {pasoRevocarAcceso === 1 && (
+                          <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
+                            <p className="mb-2.5 text-xs text-foreground">
+                              Esto va a revocar la oferta del Club Sinergético en Kajabi ahora mismo y a poner
+                              &quot;Acceso a la plataforma&quot; en &quot;No&quot; — a diferencia de Pausar, no
+                              guarda días pendientes para reanudar después. Úsalo para reembolsos u otros casos
+                              donde el acceso debe quitarse ya. ¿Confirmas?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setPasoRevocarAcceso(0)}
+                                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={confirmarRevocarAcceso}
+                                disabled={revocandoAcceso}
+                                className="ease-spring rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                              >
+                                {revocandoAcceso ? "Revocando…" : "Sí, revocar acceso"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </Tarjeta>
 

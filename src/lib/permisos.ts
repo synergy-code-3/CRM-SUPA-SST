@@ -20,6 +20,7 @@ export const PERMISOS = {
   eliminarCliente: ["admin"],
   renovarMembresia: ["admin"],
   pausarMembresia: ["admin"],
+  revocarAccesoCliente: ["admin"], // "Revocar acceso" — reembolsos u otros casos que deben quitar el acceso ya
   solicitarCliente: ["admin", "coordinador", "abeja"],
   revisarSolicitudes: ["admin"],
   agregarNota: ["admin", "coordinador"],

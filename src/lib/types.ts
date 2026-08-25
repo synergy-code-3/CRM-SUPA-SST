@@ -83,6 +83,7 @@ export type TipoEvento =
   | "PAUSA"
   | "REANUDACION"
   | "RENOVACION"
+  | "REVOCACION_ACCESO"
   | "WA_BIENVENIDA"
   | "IMPORTACION"
   | "KAJABI"
@@ -103,6 +104,7 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "PAUSA",
   "REANUDACION",
   "RENOVACION",
+  "REVOCACION_ACCESO",
   "WA_BIENVENIDA",
   "IMPORTACION",
   "KAJABI",
@@ -135,6 +137,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   PAUSA: "Membresía pausada",
   REANUDACION: "Membresía reanudada",
   RENOVACION: "Membresía renovada",
+  REVOCACION_ACCESO: "Acceso revocado",
   WA_BIENVENIDA: "Mensaje de Bienvenida WA",
   IMPORTACION: "Importado",
   KAJABI: "Kajabi",
