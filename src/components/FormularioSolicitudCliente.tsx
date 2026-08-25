@@ -172,7 +172,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
             </Campo>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Campo label="País *">
               <ComboboxBuscador
                 opciones={OPCIONES_PAIS}
@@ -188,65 +188,6 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                 className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Campo label="Evento *">
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {!modoDirecto &&
-                    CATEGORIAS.map((c) => (
-                      <button
-                        key={c.valor}
-                        type="button"
-                        onClick={() => {
-                          setCategoriaEvento(c.valor);
-                          setForm((f) => ({ ...f, evento: "" }));
-                        }}
-                        className={`ease-spring rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                          categoriaEvento === c.valor
-                            ? "border-primary bg-primary-dim text-primary-deep"
-                            : "border-silver bg-surface text-muted hover:bg-surface-2"
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                </div>
-                {esAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModoDirecto((m) => !m);
-                      setCategoriaEvento(null);
-                      setForm((f) => ({ ...f, evento: "" }));
-                    }}
-                    className="ease-spring flex-none text-xs font-medium text-primary transition hover:text-primary-deep"
-                  >
-                    {modoDirecto ? "Usar selector por categoría" : "Buscar directamente"}
-                  </button>
-                )}
-              </div>
-              {modoDirecto ? (
-                <ComboboxBuscador
-                  opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
-                  valor={form.evento}
-                  onChange={(evento) => setForm((f) => ({ ...f, evento }))}
-                  placeholder="Seleccionar evento…"
-                />
-              ) : categoriaEvento ? (
-                <ComboboxBuscador
-                  opciones={eventosPorTipo[categoriaEvento].map((e) => ({ valor: e, etiqueta: e }))}
-                  valor={form.evento}
-                  onChange={(evento) => setForm((f) => ({ ...f, evento }))}
-                  placeholder="Seleccionar evento…"
-                />
-              ) : (
-                <p className="rounded-lg border border-dashed border-silver bg-surface-2 px-3 py-1.5 text-xs text-muted">
-                  Elige Presencial, Webinar u Otro primero
-                </p>
-              )}
-            </Campo>
             <Campo label="Tipo de membresía *">
               <ComboboxBuscador
                 opciones={OPCIONES_MEMBRESIA}
@@ -256,6 +197,54 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
               />
             </Campo>
           </div>
+
+          <Campo label="Evento *">
+            {esAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setModoDirecto((m) => !m);
+                  setCategoriaEvento(null);
+                  setForm((f) => ({ ...f, evento: "" }));
+                }}
+                className="ease-spring mb-1.5 block text-xs font-medium text-primary transition hover:text-primary-deep"
+              >
+                {modoDirecto ? "Usar selector por categoría" : "Buscar directamente"}
+              </button>
+            )}
+            {modoDirecto ? (
+              <ComboboxBuscador
+                opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
+                valor={form.evento}
+                onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                placeholder="Seleccionar evento…"
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <ComboboxBuscador
+                  opciones={CATEGORIAS.map((c) => ({ valor: c.valor, etiqueta: c.label }))}
+                  valor={categoriaEvento ?? ""}
+                  onChange={(v) => {
+                    setCategoriaEvento((v as CategoriaEvento) || null);
+                    setForm((f) => ({ ...f, evento: "" }));
+                  }}
+                  placeholder="Categoría del evento…"
+                />
+                {categoriaEvento ? (
+                  <ComboboxBuscador
+                    opciones={eventosPorTipo[categoriaEvento].map((e) => ({ valor: e, etiqueta: e }))}
+                    valor={form.evento}
+                    onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                    placeholder="Seleccionar evento…"
+                  />
+                ) : (
+                  <p className="flex items-center rounded-lg border border-dashed border-silver bg-surface-2 px-3 py-1.5 text-xs text-muted">
+                    Elige una categoría primero
+                  </p>
+                )}
+              </div>
+            )}
+          </Campo>
 
           <div>
             <span className="mb-1.5 block text-xs font-medium text-muted">Comprobante de pago * (al menos 1)</span>
