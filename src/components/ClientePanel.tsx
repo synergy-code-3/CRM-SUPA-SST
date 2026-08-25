@@ -816,49 +816,49 @@ export function ClientePanel({
                 </button>
               </div>
 
-              <div className="mt-4 flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
-                  {cliente.nombre}
-                </h2>
-                <span
-                  className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm ${
-                    tieneAcceso
-                      ? "border-success/30 bg-success/25 text-white"
-                      : "border-white/15 bg-black/30 text-white"
-                  }`}
-                >
+              <div className="mt-4 rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 backdrop-blur-sm">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-white">{cliente.nombre}</h2>
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${tieneAcceso ? "bg-success" : "bg-white/50"}`}
-                  />
-                  {tieneAcceso ? "Activo" : "Sin acceso"}
-                </span>
-              </div>
-
-              <div className="mt-1.5 flex flex-col gap-1 text-sm text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
-                <button
-                  onClick={() => copiar(cliente.email, "email")}
-                  className="ease-spring flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-white/10"
-                >
-                  {cliente.email}
-                  {copiado === "email" ? (
-                    <Check className="h-3 w-3" strokeWidth={2} />
-                  ) : (
-                    <Copy className="h-3 w-3 opacity-70" strokeWidth={1.75} />
-                  )}
-                </button>
-                {cliente.telefono && (
-                  <button
-                    onClick={() => copiar(cliente.telefono ?? "", "telefono")}
-                    className="ease-spring flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-white/10"
+                    className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                      tieneAcceso
+                        ? "border-success/30 bg-success/25 text-white"
+                        : "border-white/15 bg-white/10 text-white"
+                    }`}
                   >
-                    {cliente.telefono}
-                    {copiado === "telefono" ? (
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${tieneAcceso ? "bg-success" : "bg-white/50"}`}
+                    />
+                    {tieneAcceso ? "Activo" : "Sin acceso"}
+                  </span>
+                </div>
+
+                <div className="mt-1 flex flex-col gap-0.5 text-sm text-white">
+                  <button
+                    onClick={() => copiar(cliente.email, "email")}
+                    className="ease-spring -ml-1 flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-white/10"
+                  >
+                    {cliente.email}
+                    {copiado === "email" ? (
                       <Check className="h-3 w-3" strokeWidth={2} />
                     ) : (
                       <Copy className="h-3 w-3 opacity-70" strokeWidth={1.75} />
                     )}
                   </button>
-                )}
+                  {cliente.telefono && (
+                    <button
+                      onClick={() => copiar(cliente.telefono ?? "", "telefono")}
+                      className="ease-spring -ml-1 flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-white/10"
+                    >
+                      {cliente.telefono}
+                      {copiado === "telefono" ? (
+                        <Check className="h-3 w-3" strokeWidth={2} />
+                      ) : (
+                        <Copy className="h-3 w-3 opacity-70" strokeWidth={1.75} />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
