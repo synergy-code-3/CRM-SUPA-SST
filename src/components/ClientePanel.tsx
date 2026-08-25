@@ -816,7 +816,7 @@ export function ClientePanel({
                 </button>
               </div>
 
-              <div className="mt-4 rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 backdrop-blur-sm">
+              <div className="mt-4 w-fit max-w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 backdrop-blur-sm">
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-semibold text-white">{cliente.nombre}</h2>
                   <span
