@@ -89,12 +89,13 @@ export default function SolicitudesPage() {
       <div>
         <h1 className="text-xl font-semibold text-foreground">Solicitudes</h1>
         <p className="text-sm text-muted">
-          Solicita el alta de un cliente nuevo con su comprobante de pago — un administrador la revisa y crea el
-          cliente en el CRM.
+          {puedeRevisar
+            ? "Revisa y aprueba las solicitudes de alta de cliente que envía el equipo."
+            : "Solicita el alta de un cliente nuevo con su comprobante de pago — un administrador la revisa y crea el cliente en el CRM."}
         </p>
       </div>
 
-      <FormularioSolicitudCliente onEnviada={cargar} />
+      {!puedeRevisar && <FormularioSolicitudCliente onEnviada={cargar} />}
 
       {puedeRevisar && (
         <div className="space-y-3">
