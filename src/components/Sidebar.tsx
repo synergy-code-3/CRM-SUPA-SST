@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
+import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 import { MiPerfilModal } from "./MiPerfilModal";
 
 // Item "Dashboard"/"Biblioteca"/"Eliminados" quedan solo para admin — el
@@ -88,6 +89,7 @@ const PERFIL_MOSTRADO_KEY = "perfilIncompletoMostrado";
 export function Sidebar() {
   const pathname = usePathname();
   const { usuario } = useSesion();
+  const { config: filtrosPagina } = useFiltrosMovil();
   const [abierto, setAbierto] = useState(false);
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
 
@@ -147,9 +149,15 @@ export function Sidebar() {
         <button
           onClick={() => setAbierto(true)}
           aria-label="Abrir menú"
-          className="ease-spring flex h-9 w-9 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
+          className="ease-spring relative flex h-9 w-9 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
         >
           <Menu className="h-5 w-5" strokeWidth={1.75} />
+          {filtrosPagina?.activo && (
+            <span
+              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary"
+              title="Hay filtros aplicados"
+            />
+          )}
         </button>
         <Marca />
         <span className="w-9" aria-hidden="true" />
@@ -186,6 +194,30 @@ export function Sidebar() {
                 );
               })}
             </nav>
+
+            {filtrosPagina && (
+              <div className="mb-1 border-t border-silver/70 pt-3">
+                <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Esta página
+                </p>
+                <button
+                  onClick={() => {
+                    setAbierto(false);
+                    filtrosPagina.onAbrir();
+                  }}
+                  className="ease-spring flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-foreground"
+                >
+                  <SlidersHorizontal className="h-5 w-5" strokeWidth={1.75} />
+                  Filtros
+                  {filtrosPagina.activo && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-white">
+                      {filtrosPagina.contador}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
             <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>

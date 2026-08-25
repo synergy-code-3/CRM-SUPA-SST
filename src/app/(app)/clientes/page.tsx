@@ -13,7 +13,6 @@ import {
   Check,
   Upload,
   Download,
-  SlidersHorizontal,
 } from "lucide-react";
 import type { Cliente } from "@/lib/types";
 import { ClientePanel } from "@/components/ClientePanel";
@@ -22,25 +21,41 @@ import { ImportarClientesModal } from "@/components/ImportarClientesModal";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
+import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 
 const LIMITE = 100;
 
 type Estado = "todos" | "activos" | "revocados";
 type Region = "todos" | "MX" | "US" | "LATAM";
 type TipoEvento = "todos" | "webinar" | "presencial";
-type Vigencia = "actuales" | "futuros" | "todos";
 
 const FILTROS_VACIOS = {
   estado: "todos" as Estado,
   region: "todos" as Region,
   tipoEvento: "todos" as TipoEvento,
-  vigencia: "actuales" as Vigencia,
   eventos: [] as string[],
   membresias: [] as string[],
   desde: "",
   hasta: "",
   vencidosAntesDe: "",
 };
+
+// Se guardan en sessionStorage (mismo criterio que el resto de la app, ej.
+// "perfil incompleto mostrado") para que sobrevivan a navegar a otra
+// sección y volver a Clientes — no solo a abrir/cerrar un perfil, que ya de
+// por sí no reinicia esta página porque el panel es un overlay, no una
+// ruta nueva.
+const CLAVE_FILTROS_STORAGE = "crm-filtros-clientes";
+
+function leerFiltrosGuardados(): typeof FILTROS_VACIOS {
+  try {
+    const guardado = sessionStorage.getItem(CLAVE_FILTROS_STORAGE);
+    if (!guardado) return FILTROS_VACIOS;
+    return { ...FILTROS_VACIOS, ...JSON.parse(guardado) };
+  } catch {
+    return FILTROS_VACIOS;
+  }
+}
 
 export default function ClientesPage() {
   const { usuario } = useSesion();
@@ -63,13 +78,28 @@ export default function ClientesPage() {
   // solo parpadea mientras de verdad se está preguntando, no para siempre.
   const [clientesEsperandoWa, setClientesEsperandoWa] = useState<Set<string>>(new Set());
   const [filtros, setFiltros] = useState(FILTROS_VACIOS);
-  // En celular los filtros arrancan ocultos dentro de una pestaña
-  // desplegable — en escritorio (md+) siempre se ven, sin importar esto.
-  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  // En celular los filtros viven en una hoja aparte, abierta desde el ítem
+  // "Filtros" del menú lateral (ver Sidebar.tsx) — en escritorio (md+)
+  // siempre se ven en línea, sin importar esto.
+  const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false);
+  const { registrar: registrarFiltrosMovil } = useFiltrosMovil();
   const [opciones, setOpciones] = useState<{ eventos: string[]; membresias: string[] }>({
     eventos: [],
     membresias: [],
   });
+
+  // Retoma los filtros guardados de la sesión del navegador después del
+  // primer render (no en el useState inicial, para no desalinear el HTML
+  // del servidor con el del cliente).
+  useEffect(() => {
+    setFiltros(leerFiltrosGuardados());
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CLAVE_FILTROS_STORAGE, JSON.stringify(filtros));
+    } catch {}
+  }, [filtros]);
 
   useEffect(() => {
     fetch("/api/filtros-opciones")
@@ -90,7 +120,6 @@ export default function ClientesPage() {
     if (filtros.estado !== "todos") params.set("estado", filtros.estado);
     if (filtros.region !== "todos") params.set("region", filtros.region);
     if (filtros.tipoEvento !== "todos") params.set("tipoEvento", filtros.tipoEvento);
-    if (filtros.vigencia !== "actuales") params.set("vigencia", filtros.vigencia);
     if (filtros.eventos.length) params.set("eventos", filtros.eventos.join(","));
     if (filtros.membresias.length) params.set("membresias", filtros.membresias.join(","));
     if (filtros.desde) params.set("desde", filtros.desde);
@@ -195,7 +224,6 @@ export default function ClientesPage() {
     filtros.estado !== "todos" ||
     filtros.region !== "todos" ||
     filtros.tipoEvento !== "todos" ||
-    filtros.vigencia !== "actuales" ||
     filtros.eventos.length > 0 ||
     filtros.membresias.length > 0 ||
     !!filtros.desde ||
@@ -206,13 +234,24 @@ export default function ClientesPage() {
     filtros.estado !== "todos",
     filtros.region !== "todos",
     filtros.tipoEvento !== "todos",
-    filtros.vigencia !== "actuales",
     filtros.eventos.length > 0,
     filtros.membresias.length > 0,
     !!filtros.desde,
     !!filtros.hasta,
     !!filtros.vencidosAntesDe,
   ].filter(Boolean).length;
+
+  // Le avisa al Sidebar que esta página tiene filtros — en celular eso
+  // dibuja el ítem "Filtros" en el menú (con la seña de cuántos hay
+  // activos) en vez de un botón propio en la página.
+  useEffect(() => {
+    registrarFiltrosMovil({
+      activo: hayFiltrosActivos,
+      contador: contadorFiltros,
+      onAbrir: () => setMostrarFiltrosMovil(true),
+    });
+    return () => registrarFiltrosMovil(null);
+  }, [hayFiltrosActivos, contadorFiltros, registrarFiltrosMovil]);
 
   const totalPaginas = Math.max(1, Math.ceil(total / LIMITE));
   const inicio = total === 0 ? 0 : (pagina - 1) * LIMITE + 1;
@@ -280,29 +319,10 @@ export default function ClientesPage() {
         />
       </div>
 
-      {/* Celular: los filtros quedan ocultos hasta que se abre esta pestaña
-          — en escritorio el botón no se muestra y el panel siempre está
-          visible (md:hidden / md:block más abajo). */}
-      <button
-        onClick={() => setFiltrosAbiertos((a) => !a)}
-        className="ease-spring mb-3 flex w-full items-center justify-between gap-2 rounded-xl border border-silver bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2 md:hidden"
-      >
-        <span className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-muted" strokeWidth={1.75} />
-          Filtros
-          {contadorFiltros > 0 && (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-white">
-              {contadorFiltros}
-            </span>
-          )}
-        </span>
-        <ChevronDown
-          className={`ease-spring h-4 w-4 text-muted transition-transform ${filtrosAbiertos ? "rotate-180" : ""}`}
-          strokeWidth={1.75}
-        />
-      </button>
-
-      <div className={`${filtrosAbiertos ? "animate-fade-in-fast block" : "hidden"} shell mb-5 rounded-[1.5rem] p-2 diffused md:block`}>
+      {/* Celular: los filtros ya no van aquí — se abren desde el ítem
+          "Filtros" del menú lateral (ver Sidebar.tsx + FiltrosMovilSheet
+          más abajo). En escritorio este panel siempre está visible. */}
+      <div className="shell mb-5 hidden rounded-[1.5rem] p-2 diffused md:block">
         <div className="core space-y-3 rounded-[calc(1.5rem-0.5rem)] p-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <Pildora
@@ -350,16 +370,6 @@ export default function ClientesPage() {
               seleccion={filtros.membresias}
               onChange={(v) => setFiltros((f) => ({ ...f, membresias: v }))}
             />
-            <span className="mx-0.5 h-5 w-px bg-silver" />
-            <Pildora
-              opciones={[
-                { valor: "actuales", label: "Hasta hoy" },
-                { valor: "futuros", label: "Futuros" },
-                { valor: "todos", label: "Todos" },
-              ]}
-              valor={filtros.vigencia}
-              onChange={(v) => setFiltros((f) => ({ ...f, vigencia: v as Vigencia }))}
-            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-silver/60 pt-3">
@@ -393,6 +403,121 @@ export default function ClientesPage() {
           </div>
         </div>
       </div>
+
+      {mostrarFiltrosMovil && (
+        <div className="fixed inset-0 z-[70] md:hidden">
+          <div
+            className="absolute inset-0 bg-foreground/30 backdrop-blur-[2px]"
+            onClick={() => setMostrarFiltrosMovil(false)}
+            aria-hidden="true"
+          />
+          <div className="animate-slide-in-right relative ml-auto flex h-full w-full max-w-sm flex-col bg-surface shadow-2xl">
+            <div className="flex flex-none items-center justify-between border-b border-silver/70 px-5 pb-4 pt-[calc(1.25rem+env(safe-area-inset-top))]">
+              <h2 className="text-base font-semibold text-foreground">Filtros</h2>
+              <button
+                onClick={() => setMostrarFiltrosMovil(false)}
+                aria-label="Cerrar filtros"
+                className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"
+              >
+                <X className="h-4.5 w-4.5" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Estado</p>
+                <Pildora
+                  opciones={[
+                    { valor: "todos", label: "Todos" },
+                    { valor: "activos", label: "Activos" },
+                    { valor: "revocados", label: "Revocados" },
+                  ]}
+                  valor={filtros.estado}
+                  onChange={(v) => setFiltros((f) => ({ ...f, estado: v as Estado }))}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Región</p>
+                <Pildora
+                  opciones={[
+                    { valor: "todos", label: "Todos" },
+                    { valor: "MX", label: "MX" },
+                    { valor: "US", label: "US" },
+                    { valor: "LATAM", label: "LATAM" },
+                  ]}
+                  valor={filtros.region}
+                  onChange={(v) => setFiltros((f) => ({ ...f, region: v as Region }))}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Tipo de evento</p>
+                <Pildora
+                  opciones={[
+                    { valor: "todos", label: "Todos" },
+                    { valor: "webinar", label: "Webinar" },
+                    { valor: "presencial", label: "Presencial" },
+                  ]}
+                  valor={filtros.tipoEvento}
+                  onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Evento</p>
+                <MultiSelect
+                  label="eventos"
+                  todasLabel="Todos los eventos"
+                  opciones={opciones.eventos}
+                  seleccion={filtros.eventos}
+                  onChange={(v) => setFiltros((f) => ({ ...f, eventos: v }))}
+                  anchoCompleto
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Membresía</p>
+                <MultiSelect
+                  label="membresías"
+                  todasLabel="Todas las membresías"
+                  opciones={opciones.membresias}
+                  seleccion={filtros.membresias}
+                  onChange={(v) => setFiltros((f) => ({ ...f, membresias: v }))}
+                  anchoCompleto
+                />
+              </div>
+
+              <div className="space-y-3 border-t border-silver/60 pt-4">
+                <CampoFecha
+                  icon={Calendar}
+                  label="Desde"
+                  value={filtros.desde}
+                  onChange={(v) => setFiltros((f) => ({ ...f, desde: v }))}
+                />
+                <CampoFecha
+                  icon={Calendar}
+                  label="Hasta"
+                  value={filtros.hasta}
+                  onChange={(v) => setFiltros((f) => ({ ...f, hasta: v }))}
+                />
+                <CampoFecha
+                  icon={CalendarX}
+                  label="Vencidos antes de"
+                  value={filtros.vencidosAntesDe}
+                  onChange={(v) => setFiltros((f) => ({ ...f, vencidosAntesDe: v }))}
+                />
+              </div>
+
+              {hayFiltrosActivos && (
+                <button
+                  onClick={() => setFiltros(FILTROS_VACIOS)}
+                  className="ease-spring flex w-full items-center justify-center gap-1.5 rounded-xl border border-silver px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-danger/10 hover:text-danger"
+                >
+                  <X className="h-4 w-4" strokeWidth={2} />
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:h-[calc(100vh-21rem)]">
         <div className="core flex flex-1 flex-col overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
@@ -573,12 +698,14 @@ function MultiSelect({
   opciones,
   seleccion,
   onChange,
+  anchoCompleto,
 }: {
   label: string;
   todasLabel: string;
   opciones: string[];
   seleccion: string[];
   onChange: (v: string[]) => void;
+  anchoCompleto?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -615,7 +742,9 @@ function MultiSelect({
     <div ref={ref} className="relative">
       <button
         onClick={() => setAbierto((a) => !a)}
-        className={`ease-spring flex max-w-[180px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+        className={`ease-spring flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+          anchoCompleto ? "w-full justify-between" : "max-w-[180px]"
+        } ${
           seleccion.length > 0
             ? "border-primary bg-primary-dim text-primary-deep"
             : "border-silver bg-surface-2 text-muted hover:border-silver-deep hover:text-foreground"
