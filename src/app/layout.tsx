@@ -2,7 +2,18 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/lib/session-context";
+import { TemaProvider } from "@/lib/theme-context";
 import { PwaRegister } from "@/components/PwaRegister";
+
+// Corre antes de la hidratación para que <html> ya tenga el data-theme
+// correcto en el primer pintado — si esto se hiciera en un useEffect de
+// TemaProvider, se vería un parpadeo claro→oscuro al cargar.
+const SCRIPT_TEMA_INICIAL = `
+try {
+  var t = localStorage.getItem("crm-tema");
+  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+} catch (e) {}
+`;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,9 +51,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_INICIAL }} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} noise antialiased`}>
         <PwaRegister />
-        <SessionProvider>{children}</SessionProvider>
+        <TemaProvider>
+          <SessionProvider>{children}</SessionProvider>
+        </TemaProvider>
       </body>
     </html>
   );

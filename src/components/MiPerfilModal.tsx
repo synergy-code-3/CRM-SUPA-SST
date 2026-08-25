@@ -2,9 +2,16 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { X, LogOut, Camera, UserRound, Plus } from "lucide-react";
+import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
+import { useTema, type Tema } from "@/lib/theme-context";
 import type { Rol } from "@/lib/permisos";
+
+const OPCIONES_TEMA: { valor: Tema; label: string; icon: typeof Sun }[] = [
+  { valor: "light", label: "Claro", icon: Sun },
+  { valor: "dark", label: "Oscuro", icon: Moon },
+  { valor: "system", label: "Automático", icon: MonitorSmartphone },
+];
 
 const ROL_LABEL: Record<Rol, string> = {
   admin: "Administrador",
@@ -18,6 +25,7 @@ const ROL_LABEL: Record<Rol, string> = {
 // una vez al iniciar sesión si falta algo (ver Sidebar.tsx).
 export function MiPerfilModal({ onClose }: { onClose: () => void }) {
   const { usuario, refrescar, cerrarSesion } = useSesion();
+  const { tema, setTema } = useTema();
   const inputRef = useRef<HTMLInputElement>(null);
   // Siempre al menos un input visible, aunque todavía no tenga ningún
   // teléfono guardado.
@@ -179,6 +187,25 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
                 <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Agregar otro número de teléfono
               </button>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-xs font-medium text-muted">Tema</span>
+              <div className="flex gap-1.5 rounded-lg border border-silver bg-surface-2 p-1">
+                {OPCIONES_TEMA.map(({ valor, label, icon: Icon }) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => setTema(valor)}
+                    className={`ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition ${
+                      tema === valor ? "bg-surface text-primary-deep shadow-sm" : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

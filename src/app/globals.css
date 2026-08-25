@@ -21,6 +21,63 @@
 
   --black-access: #171717;
   --black-access-glow: #7c3aed;
+
+  --shell-bg: rgba(196, 204, 217, 0.35);
+  --shell-border: rgba(11, 18, 32, 0.06);
+  --core-highlight: rgba(255, 255, 255, 0.6);
+}
+
+/* Tema oscuro: sigue el sistema operativo cuando no se forzó nada
+   explícito (data-theme ausente o "system" — ver theme-context.tsx), y
+   se puede forzar con data-theme="dark"/"light" desde Mi Perfil. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0b1220;
+    --surface: #141b2e;
+    --surface-2: #1b2438;
+    --foreground: #eef1f6;
+    --muted: #8b95a8;
+
+    --primary: #4c8dff;
+    --primary-dim: #16233d;
+    --primary-deep: #9dc2ff;
+    --primary-glow: #79b3ff;
+
+    --silver: #26304a;
+    --silver-deep: #34405c;
+
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #f87171;
+
+    --shell-bg: rgba(255, 255, 255, 0.04);
+    --shell-border: rgba(255, 255, 255, 0.08);
+    --core-highlight: rgba(255, 255, 255, 0.03);
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0b1220;
+  --surface: #141b2e;
+  --surface-2: #1b2438;
+  --foreground: #eef1f6;
+  --muted: #8b95a8;
+
+  --primary: #4c8dff;
+  --primary-dim: #16233d;
+  --primary-deep: #9dc2ff;
+  --primary-glow: #79b3ff;
+
+  --silver: #26304a;
+  --silver-deep: #34405c;
+
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f87171;
+
+  --shell-bg: rgba(255, 255, 255, 0.04);
+  --shell-border: rgba(255, 255, 255, 0.08);
+  --core-highlight: rgba(255, 255, 255, 0.03);
 }
 
 @theme inline {
@@ -72,13 +129,13 @@ body {
   }
 
   .shell {
-    background: rgba(196, 204, 217, 0.35);
-    border: 1px solid rgba(11, 18, 32, 0.06);
+    background: var(--shell-bg);
+    border: 1px solid var(--shell-border);
   }
 
   .core {
     background: var(--surface);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
+    box-shadow: inset 0 1px 1px var(--core-highlight);
   }
 
   .diffused {

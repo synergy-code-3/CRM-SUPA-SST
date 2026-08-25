@@ -780,20 +780,20 @@ export function ClientePanel({
               {/* Degradado oscuro encima de la imagen para que el texto
                   blanco se lea bien sin importar qué tan clara sea. */}
               <div
-                className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/65"
+                className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/75"
                 aria-hidden="true"
               />
               <div className="relative px-6 pb-5 pt-[calc(1.5rem+env(safe-area-inset-top))]">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-white/15 text-lg font-semibold">
+                  <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full border border-white/20 bg-black/30 text-lg font-semibold text-white shadow-sm backdrop-blur-sm">
                     {cliente.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
                     {cliente.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium text-white/90"
+                        className="rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm"
                       >
                         {tag}
                       </span>
@@ -817,10 +817,14 @@ export function ClientePanel({
               </div>
 
               <div className="mt-4 flex items-center gap-2">
-                <h2 className="text-lg font-semibold">{cliente.nombre}</h2>
+                <h2 className="text-lg font-semibold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
+                  {cliente.nombre}
+                </h2>
                 <span
-                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    tieneAcceso ? "bg-success/20 text-white" : "bg-white/15 text-white/80"
+                  className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm ${
+                    tieneAcceso
+                      ? "border-success/30 bg-success/25 text-white"
+                      : "border-white/15 bg-black/30 text-white"
                   }`}
                 >
                   <span
@@ -830,7 +834,7 @@ export function ClientePanel({
                 </span>
               </div>
 
-              <div className="mt-1.5 flex flex-col gap-1 text-sm text-white/85">
+              <div className="mt-1.5 flex flex-col gap-1 text-sm text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
                 <button
                   onClick={() => copiar(cliente.email, "email")}
                   className="ease-spring flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-white/10"
@@ -858,7 +862,7 @@ export function ClientePanel({
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <span className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium">
+                <span className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
                   <CalendarDays className="h-3.5 w-3.5" strokeWidth={1.75} />
                   Cliente desde{" "}
                   {new Date(cliente.fechaInscripcion ?? cliente.creadoEn).toLocaleDateString("es-MX")}
@@ -869,14 +873,14 @@ export function ClientePanel({
                       href={`https://wa.me/${cliente.telefono.replace(/[^0-9]/g, "")}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ease-spring flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium transition hover:bg-white/20"
+                      className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/50"
                     >
                       <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
                       WhatsApp
                     </a>
                     <a
                       href={`tel:${cliente.telefono}`}
-                      className="ease-spring flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium transition hover:bg-white/20"
+                      className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/50"
                     >
                       <Phone className="h-3.5 w-3.5" strokeWidth={1.75} />
                       Llamar
@@ -886,7 +890,7 @@ export function ClientePanel({
                 {!puedeEditar ? null : !editando ? (
                   <button
                     onClick={() => setEditando(true)}
-                    className="ease-spring ml-auto flex items-center gap-1.5 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-medium transition hover:bg-white/25"
+                    className="ease-spring ml-auto flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/35 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/55"
                   >
                     <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
                     Editar
@@ -895,7 +899,7 @@ export function ClientePanel({
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       onClick={cancelarEdicion}
-                      className="ease-spring flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium transition hover:bg-white/20"
+                      className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/50"
                     >
                       <XCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
                       Cancelar
@@ -903,7 +907,7 @@ export function ClientePanel({
                     <button
                       onClick={guardar}
                       disabled={guardando || !form.nombre.trim()}
-                      className="ease-spring flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-primary-deep transition disabled:opacity-50"
+                      className="ease-spring flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0037c7] transition disabled:opacity-50"
                     >
                       <Save className="h-3.5 w-3.5" strokeWidth={1.75} />
                       {guardando ? "Guardando…" : "Guardar"}
@@ -1993,7 +1997,7 @@ function TagsPopover({
         type="button"
         onClick={() => setAbierto((a) => !a)}
         aria-label="Agregar o quitar tags"
-        className="ease-spring flex h-5 w-5 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+        className="ease-spring flex h-5 w-5 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50"
       >
         <Plus className="h-3 w-3" strokeWidth={2.5} />
       </button>
