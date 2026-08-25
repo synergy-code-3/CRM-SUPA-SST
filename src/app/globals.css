@@ -216,6 +216,12 @@ body {
     background: linear-gradient(135deg, #0a2a6e 0%, #0a5cff 100%);
   }
 
+  /* Puntitos sutiles sobre .bg-brand — pantalla de login. */
+  .bg-dots {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
   /* Negro Synergy Black Access: negro profundo con brillo gris central,
      mismo tratamiento que el resto de boletos. */
   .black-plate {

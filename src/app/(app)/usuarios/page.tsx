@@ -16,6 +16,14 @@ type Usuario = {
   ultimo_login: string | null;
 };
 
+// Se autoregistró desde /login y nadie lo ha activado todavía — nunca
+// inició sesión (ultimo_login sigue null) y sigue desactivado. Se
+// distingue así de alguien a quien un admin desactivó a propósito después
+// de haber usado el CRM, sin necesidad de una columna aparte.
+function esPendienteDeAprobar(u: Usuario): boolean {
+  return !u.activo && !u.ultimo_login;
+}
+
 const ROL_LABEL: Record<Rol, string> = {
   admin: "Administrador",
   coordinador: "Coordinador",
@@ -80,6 +88,8 @@ export default function UsuariosPage() {
 
   if (cargandoSesion || !yo || yo.rol !== "admin") return null;
 
+  const pendientes = (usuarios ?? []).filter(esPendienteDeAprobar);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -95,6 +105,14 @@ export default function UsuariosPage() {
           Agregar usuario
         </button>
       </div>
+
+      {pendientes.length > 0 && (
+        <p className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+          {pendientes.length === 1
+            ? "1 cuenta creada desde el formulario de registro está esperando tu aprobación."
+            : `${pendientes.length} cuentas creadas desde el formulario de registro están esperando tu aprobación.`}
+        </p>
+      )}
 
       {error && (
         <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>
@@ -139,11 +157,16 @@ export default function UsuariosPage() {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => actualizar(u.id, { activo: !u.activo })}
+                    title={esPendienteDeAprobar(u) ? "Autoregistrado desde /login — actívalo para que pueda entrar" : undefined}
                     className={`ease-spring rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                      u.activo ? "bg-success/15 text-success" : "bg-surface-2 text-muted"
+                      u.activo
+                        ? "bg-success/15 text-success"
+                        : esPendienteDeAprobar(u)
+                          ? "bg-warning/15 text-warning"
+                          : "bg-surface-2 text-muted"
                     }`}
                   >
-                    {u.activo ? "Activo" : "Desactivado"}
+                    {u.activo ? "Activo" : esPendienteDeAprobar(u) ? "Pendiente de aprobar" : "Desactivado"}
                   </button>
                 </td>
                 <td className="px-4 py-3 text-muted">
