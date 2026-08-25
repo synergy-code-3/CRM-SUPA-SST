@@ -48,6 +48,7 @@ import { AccesosSynergy } from "./AccesosSynergy";
 import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
+import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
 
 type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kajabi";
 
@@ -762,7 +763,27 @@ export function ClientePanel({
           <div className="flex flex-1 items-center justify-center text-sm text-muted">Cargando…</div>
         ) : (
           <>
-            <div className="brand-plate flex-none px-6 pb-5 pt-[calc(1.5rem+env(safe-area-inset-top))] text-white">
+            <div className="relative flex-none overflow-hidden text-white">
+              {/* Fondo: logo del evento/etiqueta del cliente (Club Sinergético
+                  por default). Ese logo es un PNG blanco transparente, así
+                  que necesita su propio fondo sólido oscuro detrás — los
+                  demás ya son imágenes autocontenidas. */}
+              <div
+                className={`absolute inset-0 bg-cover bg-center ${
+                  logoParaCliente(cliente.evento, cliente.etiqueta) === LOGO_NECESITA_FONDO_SOLIDO
+                    ? "bg-[#050b1f]"
+                    : ""
+                }`}
+                style={{ backgroundImage: `url(${RUTA_LOGO_EVENTO[logoParaCliente(cliente.evento, cliente.etiqueta)]})` }}
+                aria-hidden="true"
+              />
+              {/* Degradado oscuro encima de la imagen para que el texto
+                  blanco se lea bien sin importar qué tan clara sea. */}
+              <div
+                className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/65"
+                aria-hidden="true"
+              />
+              <div className="relative px-6 pb-5 pt-[calc(1.5rem+env(safe-area-inset-top))]">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-white/15 text-lg font-semibold">
@@ -889,6 +910,7 @@ export function ClientePanel({
                     </button>
                   </div>
                 )}
+              </div>
               </div>
             </div>
 
