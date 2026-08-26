@@ -162,6 +162,16 @@ function clausulasBusquedaMultiPalabra(busqueda: string | undefined, columnas: s
   return palabras.map((palabra) => columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","));
 }
 
+// El CSV de origen mezcla "3 Meses"/"3 MESES"/etc. — mismo dato, distinta
+// mayúscula/minúscula. Se normaliza a un solo formato ("3 Meses") para que
+// el filtro solo ofrezca 3 opciones en vez de 6, y para el ".ilike" que las
+// aplica (ver aplicarFiltrosClientes) — ilike ya ignora mayúsculas, este
+// normalizador es solo para no duplicar la opción en la lista del filtro.
+function normalizarTipoMembresia(valor: string): string {
+  const m = valor.trim().match(/^(\d+)\s*meses?$/i);
+  return m ? `${m[1]} Meses` : valor.trim();
+}
+
 // Aplica los filtros de la lista de clientes (búsqueda, estado, región,
 // eventos, membresías, rango de fechas, vigencia) a una query ya iniciada
 // con .from("clientes").select(...). Compartida entre listarClientes
@@ -190,7 +200,12 @@ function aplicarFiltrosClientes<
   if (opciones?.region && opciones.region !== "todos") query = query.eq("region", opciones.region);
 
   if (opciones?.eventos?.length) query = query.in("evento", opciones.eventos);
-  if (opciones?.membresias?.length) query = query.in("tipo_membresia", opciones.membresias);
+  // .ilike (no .in) porque las opciones vienen normalizadas ("3 Meses") pero
+  // el dato guardado puede estar en cualquier mayúscula/minúscula ("3 MESES")
+  // — ilike sin comodines es una igualdad exacta que ignora mayúsculas.
+  if (opciones?.membresias?.length) {
+    query = query.or(opciones.membresias.map((m) => `tipo_membresia.ilike.${m}`).join(","));
+  }
 
   if (opciones?.desde) query = query.gte("fecha_inscripcion", opciones.desde);
   if (opciones?.hasta) query = query.lte("fecha_inscripcion", opciones.hasta);
@@ -249,7 +264,7 @@ export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membr
   const membresias = new Set<string>();
   for (const f of filas) {
     if (f.evento) eventos.add(f.evento);
-    if (f.tipo_membresia) membresias.add(f.tipo_membresia);
+    if (f.tipo_membresia) membresias.add(normalizarTipoMembresia(f.tipo_membresia));
   }
   return {
     eventos: Array.from(eventos).sort((a, b) => a.localeCompare(b)),
