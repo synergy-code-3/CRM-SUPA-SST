@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("usuarios")
-    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url")
+    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url,primera_aprobacion_en")
     .order("creado_en", { ascending: true });
   if (error) throw error;
   return NextResponse.json({ usuarios: data });
@@ -44,8 +44,16 @@ export async function POST(req: NextRequest) {
   const password_hash = await hashPassword(password);
   const { data, error } = await supabase
     .from("usuarios")
-    .insert({ nombre, email, password_hash, rol, activo: true, token_version: 1 })
-    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url")
+    .insert({
+      nombre,
+      email,
+      password_hash,
+      rol,
+      activo: true,
+      token_version: 1,
+      primera_aprobacion_en: new Date().toISOString(),
+    })
+    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url,primera_aprobacion_en")
     .single();
   if (error) throw error;
 

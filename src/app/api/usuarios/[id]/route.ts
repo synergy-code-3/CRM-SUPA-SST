@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { data: fila, error: errLectura } = await supabase
     .from("usuarios")
-    .select("id,rol,activo,token_version")
+    .select("id,rol,activo,token_version,primera_aprobacion_en")
     .eq("id", id)
     .maybeSingle();
   if (errLectura) throw errLectura;
@@ -50,6 +50,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "No puede quedar sin administradores activos" }, { status: 400 });
     }
     cambios.activo = activo;
+    // Se queda fija para siempre desde la primera vez que se activa —
+    // distingue un autoregistro que nunca fue aprobado (badge "Pendiente
+    // de aprobar" en la lista) de una cuenta que un admin desactivó
+    // después de haberla aprobado alguna vez.
+    if (activo && !fila.primera_aprobacion_en) cambios.primera_aprobacion_en = new Date().toISOString();
     requiereNuevaVersion = true;
   }
 
@@ -73,7 +78,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .from("usuarios")
     .update(cambios)
     .eq("id", id)
-    .select("id,email,nombre,rol,activo,creado_en,ultimo_login")
+    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,primera_aprobacion_en")
     .single();
   if (error) throw error;
 

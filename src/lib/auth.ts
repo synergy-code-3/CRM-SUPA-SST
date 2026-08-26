@@ -15,6 +15,12 @@ export type UsuarioSesion = {
   rol: Rol;
   telefonos: string[];
   fotoUrl: string | null;
+  // false = cuenta autoregistrada (o desactivada) esperando que un admin la
+  // active — obtenerUsuarioActual() nunca la deja pasar (sigue siendo null,
+  // igual que siempre); solo obtenerSesionCruda() la expone, para que
+  // /api/auth/me pueda mostrarle al front la pantalla de "acceso pendiente"
+  // en vez de simplemente tratarla como sesión inexistente.
+  activo: boolean;
 };
 
 export async function hashPassword(password: string): Promise<string> {
@@ -26,10 +32,12 @@ export async function verificarPassword(password: string, hash: string): Promise
 }
 
 // Verifica el JWT de la cookie Y relee el usuario en Supabase para confirmar
-// que sigue activo y que su rol/versión de sesión no cambiaron desde que se
-// emitió el token. Es la única fuente de verdad de autorización — se usa en
-// todo route handler, nunca se confía solo en middleware.ts.
-export async function obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
+// que su rol/versión de sesión no cambiaron desde que se emitió el token.
+// No filtra por `activo` — la cuenta puede estar pendiente de aprobación y
+// aun así tener una sesión válida (ve la pantalla de "acceso pendiente" en
+// vez de nada). El filtro de `activo` para autorizar de verdad vive en
+// obtenerUsuarioActual(), no aquí.
+export async function obtenerSesionCruda(): Promise<UsuarioSesion | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE_SESION)?.value;
   if (!token) return null;
@@ -42,7 +50,7 @@ export async function obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
     .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url")
     .eq("id", claims.sub)
     .maybeSingle();
-  if (error || !data || !data.activo || data.token_version !== claims.tokenVersion) return null;
+  if (error || !data || data.token_version !== claims.tokenVersion) return null;
 
   return {
     id: data.id,
@@ -51,7 +59,19 @@ export async function obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
     rol: data.rol as Rol,
     telefonos: data.telefonos ?? [],
     fotoUrl: data.foto_url,
+    activo: data.activo,
   };
+}
+
+// La única fuente de verdad de autorización real — se usa en todo route
+// handler, nunca se confía solo en middleware.ts. A diferencia de
+// obtenerSesionCruda(), una cuenta pendiente de aprobación (activo=false)
+// sigue devolviendo null aquí: ningún permiso se evalúa para alguien sin
+// aprobar todavía.
+export async function obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
+  const sesion = await obtenerSesionCruda();
+  if (!sesion || !sesion.activo) return null;
+  return sesion;
 }
 
 type ResultadoPermiso =

@@ -89,6 +89,17 @@ export async function listarSolicitudes(opciones: {
   return (data as SolicitudRow[]).map(filaASolicitud);
 }
 
+// Para la burbuja de "Solicitudes" en el menú lateral — head:true, sin
+// traer las filas (ni sus comprobantes), solo el conteo.
+export async function contarSolicitudesPendientes(): Promise<number> {
+  const { count, error } = await supabase
+    .from("solicitudes_cliente")
+    .select("id", { count: "exact", head: true })
+    .eq("estado", "pendiente");
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function obtenerSolicitud(id: string): Promise<SolicitudCliente | null> {
   const { data, error } = await supabase.from("solicitudes_cliente").select("*").eq("id", id).maybeSingle();
   if (error) throw error;

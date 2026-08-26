@@ -344,3 +344,12 @@ alter table clientes_ofertas enable row level security;
 -- solo texto: cada quien puede agregar más de un teléfono a su perfil.
 alter table usuarios add column if not exists telefonos text[] not null default '{}';
 alter table usuarios add column if not exists foto_url text;
+
+-- Se marca la primera vez que un admin activa la cuenta (activo pasa a
+-- true) y ya no se toca después. Con el autoregistro dejando entrar al
+-- usuario para ver la pantalla de "acceso pendiente" (ya no se le niega el
+-- login mientras espera aprobación), "nunca inició sesión" deja de servir
+-- para distinguir un autoregistro recién llegado de una cuenta que un
+-- admin desactivó después de haberla aprobado alguna vez — esta columna sí
+-- se queda fija para siempre y no depende de si ya inició sesión.
+alter table usuarios add column if not exists primera_aprobacion_en timestamptz;

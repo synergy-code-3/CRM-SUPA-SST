@@ -8,6 +8,7 @@ import { COOKIE_SESION, verificarTokenSesion } from "@/lib/jwt-edge";
 const RUTAS_PUBLICAS_EXACTAS = ["/login"];
 const PREFIJOS_PUBLICOS_API = [
   "/api/auth/login",
+  "/api/auth/registro",
   // Kajabi, Hotmart y GHL no firman sus webhooks con cookie de sesión; se
   // autentican con su propio ?token=, igual que el cron.
   "/api/webhooks/kajabi",

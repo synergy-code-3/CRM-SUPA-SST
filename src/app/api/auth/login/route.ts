@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (error) throw error;
 
-  if (!usuario || !usuario.activo || !(await verificarPassword(password, usuario.password_hash))) {
+  // No se filtra por `activo`: una cuenta pendiente de aprobación sí puede
+  // iniciar sesión (ve la pantalla de "acceso pendiente" en vez del CRM) —
+  // así el usuario nuevo se entera de que su cuenta ya existe, en vez de
+  // ver el mismo error que si hubiera escrito mal la contraseña.
+  if (!usuario || !(await verificarPassword(password, usuario.password_hash))) {
     return NextResponse.json({ error: "Correo o contraseña incorrectos" }, { status: 401 });
   }
 

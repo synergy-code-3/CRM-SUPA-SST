@@ -17,14 +17,18 @@ type Usuario = {
   ultimo_login: string | null;
   telefonos: string[];
   foto_url: string | null;
+  primera_aprobacion_en: string | null;
 };
 
-// Se autoregistró desde /login y nadie lo ha activado todavía — nunca
-// inició sesión (ultimo_login sigue null) y sigue desactivado. Se
-// distingue así de alguien a quien un admin desactivó a propósito después
-// de haber usado el CRM, sin necesidad de una columna aparte.
+// Se autoregistró desde /login y ningún admin lo ha activado todavía —
+// nunca se le puso primera_aprobacion_en. Se distingue así de alguien a
+// quien un admin desactivó a propósito después de haberlo aprobado alguna
+// vez (a esos sí les quedó la fecha, aunque estén inactivos ahora). Ya no
+// sirve mirar ultimo_login: desde que el autoregistro deja iniciar sesión
+// para ver la pantalla de "acceso pendiente", un pendiente también puede
+// tener ultimo_login lleno.
 function esPendienteDeAprobar(u: Usuario): boolean {
-  return !u.activo && !u.ultimo_login;
+  return !u.activo && !u.primera_aprobacion_en;
 }
 
 function perfilIncompleto(u: Usuario): boolean {

@@ -33,7 +33,6 @@ function LoginForm() {
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cuentaCreada, setCuentaCreada] = useState(false);
 
   const siguiente = searchParams.get("next") || "/";
 
@@ -44,7 +43,6 @@ function LoginForm() {
   function cambiarModo(nuevo: Modo) {
     setModo(nuevo);
     setError(null);
-    setCuentaCreada(false);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -76,10 +74,8 @@ function LoginForm() {
           setError(data.error ?? "No se pudo crear la cuenta");
           return;
         }
-        setCuentaCreada(true);
-        setNombre("");
-        setEmail("");
-        setPassword("");
+        await refrescar();
+        router.replace(siguiente);
       }
     } catch {
       setError("Error de red");
@@ -157,92 +153,75 @@ function LoginForm() {
                 : "Un administrador debe aprobarla antes de que puedas entrar"}
             </p>
 
-            {cuentaCreada ? (
-              <div className="mt-6 space-y-4">
-                <p className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
-                  Cuenta creada. Un administrador la revisará y la activará — mientras tanto no vas a poder entrar.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => cambiarModo("iniciar")}
-                  className="ease-spring w-full rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
-                >
-                  Volver a iniciar sesión
-                </button>
-              </div>
-            ) : (
-              <>
-                {modo === "crear" && (
-                  <input
-                    autoFocus
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    placeholder="Nombre completo"
-                    autoComplete="name"
-                    className="mt-6 w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
-                  />
-                )}
-                <input
-                  autoFocus={modo === "iniciar"}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Correo"
-                  autoComplete="username"
-                  className={`w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none ring-primary/30 focus:ring-2 ${
-                    modo === "crear" ? "mt-3" : "mt-6"
-                  }`}
-                />
-                <div className="relative mt-3">
-                  <input
-                    type={mostrarPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={modo === "iniciar" ? "Contraseña" : "Contraseña (mín. 8 caracteres)"}
-                    autoComplete={modo === "iniciar" ? "current-password" : "new-password"}
-                    className="w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 pr-10 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setMostrarPassword((v) => !v)}
-                    tabIndex={-1}
-                    aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    className="ease-spring absolute right-3 top-1/2 -translate-y-1/2 text-muted transition hover:text-foreground"
-                  >
-                    {mostrarPassword ? (
-                      <EyeOff className="h-4 w-4" strokeWidth={1.75} />
-                    ) : (
-                      <Eye className="h-4 w-4" strokeWidth={1.75} />
-                    )}
-                  </button>
-                </div>
-
-                {error && <p className="mt-3 text-xs text-danger">{error}</p>}
-
-                <button
-                  type="submit"
-                  disabled={!puedeEnviar}
-                  className="ease-spring mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {enviando
-                    ? modo === "iniciar"
-                      ? "Entrando…"
-                      : "Creando…"
-                    : modo === "iniciar"
-                      ? "Entrar"
-                      : "Crear cuenta"}
-                  {!enviando && <ArrowRight className="h-4 w-4" strokeWidth={2} />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => cambiarModo(modo === "iniciar" ? "crear" : "iniciar")}
-                  className="ease-spring mt-4 w-full text-center text-xs font-medium text-primary transition hover:text-primary-deep"
-                >
-                  {modo === "iniciar" ? "¿Nuevo aquí? Crear cuenta" : "¿Ya tienes cuenta? Iniciar sesión"}
-                </button>
-              </>
+            {modo === "crear" && (
+              <input
+                autoFocus
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Nombre completo"
+                autoComplete="name"
+                className="mt-6 w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
+              />
             )}
+            <input
+              autoFocus={modo === "iniciar"}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Correo"
+              autoComplete="username"
+              className={`w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none ring-primary/30 focus:ring-2 ${
+                modo === "crear" ? "mt-3" : "mt-6"
+              }`}
+            />
+            <div className="relative mt-3">
+              <input
+                type={mostrarPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={modo === "iniciar" ? "Contraseña" : "Contraseña (mín. 8 caracteres)"}
+                autoComplete={modo === "iniciar" ? "current-password" : "new-password"}
+                className="w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 pr-10 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarPassword((v) => !v)}
+                tabIndex={-1}
+                aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="ease-spring absolute right-3 top-1/2 -translate-y-1/2 text-muted transition hover:text-foreground"
+              >
+                {mostrarPassword ? (
+                  <EyeOff className="h-4 w-4" strokeWidth={1.75} />
+                ) : (
+                  <Eye className="h-4 w-4" strokeWidth={1.75} />
+                )}
+              </button>
+            </div>
+
+            {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={!puedeEnviar}
+              className="ease-spring mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {enviando
+                ? modo === "iniciar"
+                  ? "Entrando…"
+                  : "Creando…"
+                : modo === "iniciar"
+                  ? "Entrar"
+                  : "Crear cuenta"}
+              {!enviando && <ArrowRight className="h-4 w-4" strokeWidth={2} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => cambiarModo(modo === "iniciar" ? "crear" : "iniciar")}
+              className="ease-spring mt-4 w-full text-center text-xs font-medium text-primary transition hover:text-primary-deep"
+            >
+              {modo === "iniciar" ? "¿Nuevo aquí? Crear cuenta" : "¿Ya tienes cuenta? Iniciar sesión"}
+            </button>
 
             <p className="mt-6 text-center text-[11px] text-muted">
               CRM · Club Sinergético · {new Date().getFullYear()}

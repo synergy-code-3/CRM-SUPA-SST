@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   ShieldCheck,
@@ -10,6 +11,8 @@ import {
   AlertTriangle,
   TrendingUp,
 } from "lucide-react";
+import { useSesion } from "@/lib/session-context";
+import { tienePermiso } from "@/lib/permisos";
 type Resumen = {
   totalClientes: number;
   conAcceso: number;
@@ -45,13 +48,28 @@ function useTamanoContenedor<T extends HTMLElement>() {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { usuario } = useSesion();
   const [resumen, setResumen] = useState<Resumen | null>(null);
+  // "Dashboard" es solo para admin (verDashboard) — coordinador/abeja nunca
+  // ven el link en el menú, pero sí podían llegar aquí escribiendo "/" a
+  // mano y se quedaban con una página rota (fetch de /api/resumen 403,
+  // resumen.inscripcionesPorMes.map sobre eso reventaba). Ahora se manda a
+  // Clientes, que los tres roles sí pueden ver.
+  const puedeVer = !!usuario && tienePermiso(usuario.rol, "verDashboard");
 
   useEffect(() => {
+    if (usuario && !puedeVer) router.replace("/clientes");
+  }, [usuario, puedeVer, router]);
+
+  useEffect(() => {
+    if (!puedeVer) return;
     fetch("/api/resumen")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then(setResumen);
-  }, []);
+  }, [puedeVer]);
+
+  if (!puedeVer) return null;
 
   return (
     <div>

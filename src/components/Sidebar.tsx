@@ -15,16 +15,72 @@ import { MiPerfilModal } from "./MiPerfilModal";
 // pedido original solo especificó "ver clientes y sus perfiles" para
 // coordinador/abeja. Para abrirlos a otro rol, agrega el rol a su permiso
 // en src/lib/permisos.ts (verDashboard/verBiblioteca/verEliminados).
-const NAV: { href: string; label: string; icon: typeof LayoutDashboard; permiso: Accion }[] = [
+// contador: qué clave de useConteosPendientes() mostrar como burbuja junto
+// al label — solo Solicitudes y Usuarios lo tienen.
+const NAV: {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permiso: Accion;
+  contador?: "solicitudes" | "usuarios";
+}[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, permiso: "verDashboard" },
   { href: "/clientes", label: "Clientes Club Sinergético", icon: Users, permiso: "verClientes" },
   { href: "/otras-ofertas", label: "Otras Ofertas", icon: Gift, permiso: "verOtrasOfertas" },
-  { href: "/solicitudes", label: "Solicitudes", icon: FileCheck2, permiso: "solicitarCliente" },
+  { href: "/solicitudes", label: "Solicitudes", icon: FileCheck2, permiso: "solicitarCliente", contador: "solicitudes" },
   { href: "/actividad", label: "Actividad", icon: History, permiso: "verActividad" },
   { href: "/biblioteca", label: "Biblioteca", icon: Library, permiso: "verBiblioteca" },
   { href: "/eliminados", label: "Eliminados", icon: Trash2, permiso: "verEliminados" },
-  { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios" },
+  { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
 ];
+
+type Conteos = { solicitudes: number; usuarios: number };
+
+const INTERVALO_CONTEOS_MS = 60 * 1000;
+
+// Burbuja de "cosas pendientes por revisar" (solicitudes de cliente nuevo,
+// usuarios recién autoregistrados) — solo se consulta si el rol puede
+// revisar al menos una de las dos, para no gastar la llamada de más en
+// coordinador/abeja (la ruta igual devolvería 0 en ambas).
+function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
+  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, usuarios: 0 });
+
+  useEffect(() => {
+    if (!usuario) return;
+    const puedeVerAlgo =
+      tienePermiso(usuario.rol, "revisarSolicitudes") || tienePermiso(usuario.rol, "gestionarUsuarios");
+    if (!puedeVerAlgo) return;
+
+    let cancelado = false;
+    async function cargar() {
+      try {
+        const res = await fetch("/api/notificaciones/pendientes");
+        if (!res.ok || cancelado) return;
+        const data = await res.json();
+        if (!cancelado) setConteos({ solicitudes: data.solicitudes ?? 0, usuarios: data.usuarios ?? 0 });
+      } catch {
+        // Sin conteo esta vez — se reintenta solo en el próximo intervalo.
+      }
+    }
+    cargar();
+    const intervalo = setInterval(cargar, INTERVALO_CONTEOS_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [usuario]);
+
+  return conteos;
+}
+
+function BurbujaConteo({ cantidad }: { cantidad: number }) {
+  if (cantidad <= 0) return null;
+  return (
+    <span className="ml-auto flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+      {cantidad > 99 ? "99+" : cantidad}
+    </span>
+  );
+}
 
 const ROL_LABEL: Record<Rol, string> = {
   admin: "Administrador",
@@ -92,6 +148,7 @@ export function Sidebar() {
   const { config: filtrosPagina } = useFiltrosMovil();
   const [abierto, setAbierto] = useState(false);
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
+  const conteos = useConteosPendientes(usuario);
 
   // Cierra el drawer solo con la navegación (no al abrirlo), para que un
   // clic en un link de menú no deje el drawer abierto detrás de la página
@@ -122,7 +179,7 @@ export function Sidebar() {
           <Marca />
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {items.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon, contador }) => {
             const activo = pathname === href;
             return (
               <Link
@@ -134,6 +191,7 @@ export function Sidebar() {
               >
                 <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
                 {label}
+                {contador && <BurbujaConteo cantidad={conteos[contador]} />}
               </Link>
             );
           })}
@@ -178,7 +236,7 @@ export function Sidebar() {
               </button>
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {items.map(({ href, label, icon: Icon }) => {
+              {items.map(({ href, label, icon: Icon, contador }) => {
                 const activo = pathname === href;
                 return (
                   <Link
@@ -190,6 +248,7 @@ export function Sidebar() {
                   >
                     <Icon className="h-5 w-5" strokeWidth={1.75} />
                     {label}
+                    {contador && <BurbujaConteo cantidad={conteos[contador]} />}
                   </Link>
                 );
               })}
