@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parse } from "csv-parse/sync";
 import { listarCatalogo } from "./catalogo";
+import { finAccesoCalculado } from "./fechas";
 import type { Accesos, Variante } from "./types";
 
 // Implementa REGLAS-BOLETOS-SYNERGY.md — motor de asignación de accesos a
@@ -185,23 +186,6 @@ export type ResultadoBoletos = {
   sinInformacion: boolean;
 };
 
-// fechaFinEfectiva: sección 2 — usa "Fin de acceso" si es válido, si no cae a
-// fechaInscripción + 1 año.
-function fechaFinEfectiva(fechaInscripcion: string | null, finAcceso: string | null): Date | null {
-  if (finAcceso) {
-    const d = new Date(finAcceso);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  if (fechaInscripcion) {
-    const d = new Date(fechaInscripcion);
-    if (!Number.isNaN(d.getTime())) {
-      d.setFullYear(d.getFullYear() + 1);
-      return d;
-    }
-  }
-  return null;
-}
-
 export function calcularAccesos(
   cliente: {
     evento: string | null;
@@ -209,11 +193,11 @@ export function calcularAccesos(
     accesoPlataforma: string | null;
     tipoMembresia: string | null;
     fechaInscripcion: string | null;
-    finAcceso: string | null;
+    fechaRenovacion: string | null;
   },
   inventario: Inventario
 ): ResultadoBoletos {
-  const fin = fechaFinEfectiva(cliente.fechaInscripcion, cliente.finAcceso);
+  const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
   if (!fin || fin < FECHA_CORTE) {
     return { accesos: ACCESO_VACIO, sinInformacion: false };
   }

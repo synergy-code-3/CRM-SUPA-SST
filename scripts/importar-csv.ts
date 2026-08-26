@@ -96,7 +96,10 @@ async function main() {
       ciudad: limpio(fila["CIUDAD"]),
       notas: notasPartes.length ? notasPartes.join(" · ") : null,
       fechaInscripcion: parsearFecha(limpio(fila["Fecha de inscripción"]), numeroFila),
-      finAcceso: parsearFecha(limpio(fila["FIN DEL ACCESO"]), numeroFila),
+      // "FIN DEL ACCESO" del CSV ya no se importa — no es confiable (ver
+      // REGLAS-BOLETOS-SYNERGY.md sección 7.1) y este CRM lo calcula siempre
+      // solo (fechaRenovacion ?? fechaInscripcion + 1 año).
+      fechaRenovacion: existente?.fechaRenovacion ?? null,
       boletosSinInformacion: false,
       // Fila del CSV donde cayó por última vez este correo: define el orden
       // en el CRM (fila más alta = más reciente = primero en la lista).

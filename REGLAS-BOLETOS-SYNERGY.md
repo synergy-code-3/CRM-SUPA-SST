@@ -4,7 +4,7 @@ Este documento describe la lógica completa que usa el CRM del Club Sinergético
 
 ## 1. Fuentes de datos necesarias
 
-1. **Hoja de clientes** (CRM principal) — por cada cliente necesitas: `correo`, `país`, `evento`, `tipo de membresía` (3/6/12 meses), `acceso a plataforma` (ej. "Renovación"), `fecha de inscripción`, `fecha fin de acceso`.
+1. **Hoja de clientes** (CRM principal) — por cada cliente necesitas: `correo`, `país`, `evento`, `tipo de membresía` (3/6/12 meses), `acceso a plataforma` (ej. "Renovación"), `fecha de inscripción`, `fecha de renovación` (si aplica). **No** se necesita ni se usa un campo de "fecha fin de acceso" guardado aparte — este CRM lo calcula siempre, nunca confía en un valor importado (ver sección 2).
 2. **Hoja de inventario de boletos por evento** — una tabla donde cada fila es un evento y las columnas indican cuántos boletos GENERAL/VIP de 3, 6 y 12 meses (separado MX/US) y cuántos BLACK le corresponden a ese evento. Estructura real usada:
    - Fila 1: agrupador ("Boletos")
    - Fila 2: duración (3 Meses / 6 Meses / 12 Meses / BLACK)
@@ -13,13 +13,11 @@ Este documento describe la lógica completa que usa el CRM del Club Sinergético
 
 ## 2. Regla de "activo para Synergy" (filtro previo)
 
-Antes de calcular boletos, el cliente debe estar **activo hasta una fecha de corte fija** (en este CRM: 19-sep-2026). Esto se calcula así:
+Antes de calcular boletos, el cliente debe estar **activo hasta una fecha de corte fija** (en este CRM: 19-sep-2026). "Fin de acceso" **no es un campo guardado** — este CRM nunca confía en un valor importado/editado a mano para esto, siempre lo calcula:
 
 ```
-fechaFin = campo "Fin de acceso" del cliente
-
-SI fechaFin está vacío o inválido:
-    fechaFin = fecha de inscripción + 1 año   ← ver "casos extraordinarios" #1
+ancla = fecha de renovación del cliente (si existe) ; si no, fecha de inscripción
+fechaFin = ancla + 1 año   ← siempre exacto, sin importar el tipo de membresía (3/6/12 meses)
 
 SI fechaFin < fecha de corte:
     cliente NO activo → no se le calculan boletos, se muestra "no activo"
@@ -27,7 +25,7 @@ SINO:
     continuar con el cálculo normal
 ```
 
-**Por qué:** el campo "Fin de acceso" no siempre está lleno (ej. ~328 registros con Acceso="Renovación" lo tenían vacío en este CRM). La membresía dura 1 año desde la inscripción salvo que haya sido renovada (y en ese caso el campo de inscripción se actualiza al renovar), así que ese fallback es seguro.
+**Por qué "fecha de renovación" y no "fecha de inscripción" siempre:** cuando un cliente renueva, la fecha de inscripción original **no se toca** — se guarda una fecha de renovación aparte, porque son dos datos distintos (cuándo entró vs. cuándo renovó por última vez). Para los clientes que ya existían antes de este mecanismo (fecha de renovación vacía), la fecha de inscripción hace las veces de ancla — en el flujo viejo (hoja de cálculo) esa fecha se sobrescribía en cada renovación en vez de llevarse aparte, así que sigue siendo la referencia correcta para ellos. Ver "casos extraordinarios" #1.
 
 ## 3. Regla base: evento + duración de membresía → boletos
 
@@ -101,8 +99,8 @@ Si el evento del cliente no existe como fila en la tabla de inventario (típicam
 
 Estos son ejemplos reales que obligaron a ajustar las reglas de arriba. Es importante que el otro CRM sepa que **estos patrones van a repetirse**:
 
-### 7.1 — Campo "Fin de acceso" vacío
-Cientos de registros con Acceso="Renovación" no tenían la fecha de fin de acceso capturada. Se resolvió con el fallback de la sección 2 (inscripción + 1 año). **No asumir que el campo siempre está lleno.**
+### 7.1 — Campo "Fin de acceso" no confiable / no existe
+Cientos de registros con Acceso="Renovación" tenían un campo de fin de acceso importado vacío o inconsistente. Se resolvió dejando de guardar/leer ese campo por completo: se calcula siempre (fecha de renovación, o si no hay, fecha de inscripción, + 1 año) — ver sección 2. **No confiar en ningún valor de "fin de acceso" importado.**
 
 ### 7.2 — Un correo usado por varias personas distintas
 Es común que una persona pague/registre el boleto de otra usando su propio correo (ej. una compra familiar). Al cruzar datos de compras contra el CRM por correo, **si el nombre no coincide, no es un error de dato — es otra persona**. No se debe sobrescribir el teléfono/boleto del titular del correo con el de un tercero solo porque comparten esa cuenta.
@@ -130,7 +128,7 @@ En este CRM, los eventos presenciales viven repartidos en distintas pestañas de
 ## 8. Resumen de la jerarquía de reglas (orden de evaluación)
 
 ```
-1. ¿Cliente activo hasta la fecha de corte? (con fallback de inscripción+1año)
+1. ¿Cliente activo hasta la fecha de corte? (fin calculado: renovación o inscripción, +1 año)
    NO → sin boletos
 2. ¿Acceso = "Renovación"?
    SÍ → chip fijo por país (2 boletos), fin del cálculo

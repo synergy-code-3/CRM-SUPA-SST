@@ -21,7 +21,11 @@ export type Cliente = {
   ciudad: string | null;
   notas: string | null;
   fechaInscripcion: string | null; // ISO
-  finAcceso: string | null; // ISO — FIN DEL ACCESO del CSV de origen
+  // ISO — se llena solo con el botón "Renovar" de este CRM (fechaInscripcion
+  // nunca se toca al renovar). "Fin de acceso" no es un campo guardado: se
+  // calcula siempre con finAccesoCalculado(fechaInscripcion, fechaRenovacion)
+  // — ver src/lib/fechas.ts.
+  fechaRenovacion: string | null;
   boletosSinInformacion: boolean; // true si el evento no existe en la tabla de inventario y no hay override
   accesos: Accesos;
 

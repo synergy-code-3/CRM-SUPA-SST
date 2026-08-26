@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           invitacionSkool: body.invitacionSkool,
           llamada: body.llamada,
           notasSoporte: body.notasSoporte,
-          finAcceso: body.finAcceso,
+          fechaRenovacion: body.fechaRenovacion,
         },
         autor
       );

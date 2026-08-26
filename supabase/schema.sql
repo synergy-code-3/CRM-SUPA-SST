@@ -353,3 +353,12 @@ alter table usuarios add column if not exists foto_url text;
 -- admin desactivó después de haberla aprobado alguna vez — esta columna sí
 -- se queda fija para siempre y no depende de si ya inició sesión.
 alter table usuarios add column if not exists primera_aprobacion_en timestamptz;
+
+-- "Fin de acceso" deja de ser un dato guardado aparte (clientes.fin_acceso
+-- queda como columna legado, ya no se lee ni se escribe): a partir de
+-- ahora se calcula siempre como (fecha_renovacion si existe, si no
+-- fecha_inscripcion) + 1 año — ver finAccesoCalculado() en
+-- src/lib/fechas.ts. fecha_renovacion la pone el botón "Renovar" de este
+-- CRM (o se corrige a mano en el perfil), sin tocar fecha_inscripcion —
+-- son dos fechas separadas a propósito.
+alter table clientes add column if not exists fecha_renovacion timestamptz;

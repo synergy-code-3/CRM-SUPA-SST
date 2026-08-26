@@ -13,7 +13,8 @@ export type ClienteRow = {
   ciudad: string | null;
   notas: string | null;
   fecha_inscripcion: string | null;
-  fin_acceso: string | null;
+  fin_acceso: string | null; // legado — ya no se lee ni se escribe, ver fechaRenovacion
+  fecha_renovacion: string | null;
   boletos_sin_informacion: boolean;
   orden_csv: number;
   fecha_evento: string | null;
@@ -48,7 +49,7 @@ export function filaACliente(r: ClienteRow): Cliente {
     ciudad: r.ciudad,
     notas: r.notas,
     fechaInscripcion: r.fecha_inscripcion,
-    finAcceso: r.fin_acceso,
+    fechaRenovacion: r.fecha_renovacion,
     boletosSinInformacion: r.boletos_sin_informacion,
     ordenCsv: r.orden_csv,
     fechaEvento: r.fecha_evento,

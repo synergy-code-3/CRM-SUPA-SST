@@ -16,7 +16,7 @@ async function main() {
   for (;;) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("id,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fin_acceso")
+      .select("id,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion")
       .range(from, from + PAGINA - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -29,7 +29,7 @@ async function main() {
           accesoPlataforma: c.acceso_plataforma,
           tipoMembresia: c.tipo_membresia,
           fechaInscripcion: c.fecha_inscripcion,
-          finAcceso: c.fin_acceso,
+          fechaRenovacion: c.fecha_renovacion,
         },
         inventario
       );

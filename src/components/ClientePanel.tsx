@@ -50,6 +50,7 @@ import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
+import { finAccesoCalculado } from "@/lib/fechas";
 
 type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kajabi";
 
@@ -76,7 +77,7 @@ type Form = {
   invitacionSkool: string;
   llamada: string;
   notasSoporte: string;
-  finAcceso: string;
+  fechaRenovacion: string;
 };
 
 function isoAFechaInput(iso: string | null): string {
@@ -98,7 +99,7 @@ function formDeCliente(c: Cliente | null): Form {
     invitacionSkool: c?.invitacionSkool ?? "",
     llamada: c?.llamada ?? "",
     notasSoporte: c?.notasSoporte ?? "",
-    finAcceso: isoAFechaInput(c?.finAcceso ?? null),
+    fechaRenovacion: isoAFechaInput(c?.fechaRenovacion ?? null),
   };
 }
 
@@ -1542,8 +1543,19 @@ export function ClientePanel({
                       <dl className="space-y-2.5 text-sm">
                         <CampoValor label="Registrado en el CSV de origen" valor={cliente.accesoPlataforma} />
                         <CampoValor
-                          label="Fin de acceso"
-                          valor={cliente.finAcceso ? new Date(cliente.finAcceso).toLocaleDateString("es-MX") : null}
+                          label="Fecha de renovación"
+                          valor={
+                            cliente.fechaRenovacion
+                              ? new Date(cliente.fechaRenovacion).toLocaleDateString("es-MX")
+                              : null
+                          }
+                        />
+                        <CampoValor
+                          label="Fin de acceso (calculado)"
+                          valor={(() => {
+                            const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
+                            return fin ? fin.toLocaleDateString("es-MX") : null;
+                          })()}
                         />
                       </dl>
                     ) : (
@@ -1554,14 +1566,18 @@ export function ClientePanel({
                             onChange={(v) => setForm((f) => ({ ...f, accesoPlataforma: v }))}
                           />
                         </Campo>
-                        <Campo label="Fin de acceso">
+                        <Campo label="Fecha de renovación">
                           <input
                             type="date"
-                            value={form.finAcceso}
-                            onChange={(e) => setForm((f) => ({ ...f, finAcceso: e.target.value }))}
+                            value={form.fechaRenovacion}
+                            onChange={(e) => setForm((f) => ({ ...f, fechaRenovacion: e.target.value }))}
                             className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
                           />
                         </Campo>
+                        <p className="text-xs text-muted">
+                          &quot;Fin de acceso&quot; ya no se edita a mano — se calcula solo (fecha de renovación, o
+                          si no hay, fecha de inscripción, + 1 año).
+                        </p>
                       </div>
                     )}
                   </Tarjeta>

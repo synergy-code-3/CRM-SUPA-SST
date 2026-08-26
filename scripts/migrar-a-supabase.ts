@@ -26,7 +26,7 @@ async function main() {
     ciudad: c.ciudad,
     notas: c.notas,
     fecha_inscripcion: c.fechaInscripcion,
-    fin_acceso: c.finAcceso,
+    fecha_renovacion: c.fechaRenovacion,
     boletos_sin_informacion: c.boletosSinInformacion,
     orden_csv: c.ordenCsv,
     fecha_evento: c.fechaEvento,

@@ -13,6 +13,26 @@ export function formatearFechaSkool(fecha: Date): string {
   return `${fecha.getDate()}/${fecha.getMonth() + 1}/${fecha.getFullYear()}`;
 }
 
+// "Fin de acceso" nunca se guarda como un dato independiente que se pueda
+// desincronizar del resto — siempre se calcula a partir de
+// fecha_renovación (si el cliente ya renovó con el botón "Renovar" de este
+// CRM) o, si no, de fecha_inscripción — que para los clientes cargados
+// antes de este CRM YA hace las veces de "última renovación": el flujo
+// viejo (hoja de cálculo) sobrescribía esa fecha en cada renovación en vez
+// de llevar un campo aparte, así que sigue siendo la referencia correcta
+// para ellos. Siempre +1 año exacto, sin importar el tipo de membresía
+// (3/6/12 meses) — esa duración solo aplica al acceso a Skool
+// (calcularVencimientoSkool), no a esto.
+export function finAccesoCalculado(fechaInscripcion: string | null, fechaRenovacion: string | null): Date | null {
+  const ancla = fechaRenovacion || fechaInscripcion;
+  if (!ancla) return null;
+  const inicio = new Date(ancla);
+  if (Number.isNaN(inicio.getTime())) return null;
+  const fin = new Date(inicio);
+  fin.setFullYear(fin.getFullYear() + 1);
+  return fin;
+}
+
 const MESES_POR_MEMBRESIA: Record<string, number> = {
   "3 meses": 3,
   "6 meses": 6,

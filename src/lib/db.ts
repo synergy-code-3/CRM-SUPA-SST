@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { calcularVencimientoSkool, formatearFechaSkool, parsearFechaSkool } from "./fechas";
+import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, type ClienteRow } from "./supabase-map";
@@ -435,12 +435,9 @@ export async function crearCliente(input: {
       notas: input.notas?.trim() || null,
       // Fecha de alta: siempre el momento real de creación, igual que el
       // resto del CRM (nunca se captura a mano en este formulario).
+      // "Fin de acceso" no se guarda — se calcula siempre desde esta fecha
+      // (+1 año, sin fecha_renovacion todavía) con finAccesoCalculado().
       fecha_inscripcion: new Date().toISOString(),
-      // El alta en Kajabi otorga la oferta ahora mismo (365 días desde hoy),
-      // así que el CRM tiene que reflejarlo desde el minuto uno — si se deja
-      // vacío, "Pausar/Reanudar" y el cálculo de accesos no tienen de dónde
-      // partir.
-      fin_acceso: finDeAccesoDentroDeUnAnio(),
       evento,
       tipo_membresia: input.tipoMembresia?.trim() || null,
       etiqueta: input.etiqueta?.trim() || null,
@@ -562,7 +559,7 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
       accesoPlataforma: cliente.accesoPlataforma,
       tipoMembresia: cliente.tipoMembresia,
       fechaInscripcion: cliente.fechaInscripcion,
-      finAcceso: cliente.finAcceso,
+      fechaRenovacion: cliente.fechaRenovacion,
     },
     inventario
   );
@@ -620,14 +617,17 @@ export function finDeAccesoDentroDeUnAnio(): string {
 // etiqueta— para aplicar la regla fija por país (2 Generales MX, etc.) en
 // vez de la tabla de inventario por evento.
 export async function renovarMembresia(id: string, autor: string): Promise<Cliente> {
-  const finAcceso = finDeAccesoDentroDeUnAnio();
+  // fecha_renovacion, no fin_acceso — fecha_inscripcion nunca se toca al
+  // renovar (quedan como dos fechas separadas, a propósito). "Fin de
+  // acceso" sale de finAccesoCalculado(fechaInscripcion, fechaRenovacion).
+  const fechaRenovacion = new Date().toISOString();
   const { data, error } = await supabase
     .from("clientes")
     .update({
       etiqueta: "Renovacion",
       tipo_membresia: "12 Meses",
       acceso_plataforma: "Renovación",
-      fin_acceso: finAcceso,
+      fecha_renovacion: fechaRenovacion,
       actualizado_en: new Date().toISOString(),
     })
     .eq("id", id)
@@ -635,7 +635,13 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
     .single();
   if (error) throw error;
 
-  await registrarEvento(id, "RENOVACION", `Membresía renovada — Fin de acceso: ${formatearFechaSkool(new Date(finAcceso))}`, autor);
+  const fin = finAccesoCalculado(null, fechaRenovacion);
+  await registrarEvento(
+    id,
+    "RENOVACION",
+    `Membresía renovada — Fin de acceso: ${fin ? formatearFechaSkool(fin) : "—"}`,
+    autor
+  );
   return filaACliente(data as ClienteRow);
 }
 
@@ -665,9 +671,14 @@ export async function pausarMembresia(id: string, autor: string): Promise<Client
   if (cliente.pausadoEn) throw new Error("Este cliente ya está pausado");
 
   const ahora = new Date().toISOString();
+  const finAccesoActual = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
   const { data, error } = await supabase
     .from("clientes")
-    .update({ pausado_en: ahora, fin_acceso_al_pausar: cliente.finAcceso, actualizado_en: ahora })
+    .update({
+      pausado_en: ahora,
+      fin_acceso_al_pausar: finAccesoActual?.toISOString() ?? null,
+      actualizado_en: ahora,
+    })
     .eq("id", id)
     .select("*")
     .single();
@@ -719,15 +730,14 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
   const cliente = filaACliente(fila as ClienteRow);
   if (!cliente.pausadoEn) throw new Error("Este cliente no está pausado");
 
-  // Respaldo por si finAccesoAlPausar quedó vacío (clientes creados antes de
-  // que el alta empezara a guardar fin_acceso): se recalcula desde fecha de
-  // inscripción + 365 días en vez de asumir 0 días restantes, que sería
-  // castigar al cliente por un hueco de datos que no es su culpa.
+  // Respaldo por si finAccesoAlPausar quedó vacío (clientes pausados antes
+  // de este cambio): se recalcula con la misma fórmula que usa pausar, en
+  // vez de asumir 0 días restantes, que sería castigar al cliente por un
+  // hueco de datos que no es su culpa.
   const finAlPausar =
     cliente.finAccesoAlPausar ??
-    (cliente.fechaInscripcion
-      ? new Date(new Date(cliente.fechaInscripcion).getTime() + 365 * 86400000).toISOString()
-      : cliente.pausadoEn);
+    finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion)?.toISOString() ??
+    cliente.pausadoEn;
   const diasRestantes = Math.max(0, diasEntreFechas(cliente.pausadoEn, finAlPausar));
 
   const ahora = new Date();
@@ -735,12 +745,20 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
     Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate() + diasRestantes)
   ).toISOString();
 
+  // "Fin de acceso" ya no es un campo aparte — el esquema solo entiende
+  // fecha_renovacion + 1 año. Para que el resto del CRM (incluida la regla
+  // de Synergy Unlimited 2026) siga leyendo ese único dato sin un caso
+  // especial para "reanudado con días de menos", se guarda la fecha que,
+  // sumándole 1 año, da exactamente fechaCalculada.
+  const fechaRenovacionSintetica = new Date(fechaCalculada);
+  fechaRenovacionSintetica.setFullYear(fechaRenovacionSintetica.getFullYear() - 1);
+
   const { data, error } = await supabase
     .from("clientes")
     .update({
       pausado_en: null,
       fin_acceso_al_pausar: null,
-      fin_acceso: fechaCalculada,
+      fecha_renovacion: fechaRenovacionSintetica.toISOString(),
       actualizado_en: ahora.toISOString(),
     })
     .eq("id", id)
@@ -786,8 +804,11 @@ type CambiosDatosCliente = {
   invitacionSkool?: string | null;
   llamada?: string | null;
   notasSoporte?: string | null;
-  // "YYYY-MM-DD" (input type=date) o null/vacío para limpiarla.
-  finAcceso?: string | null;
+  // "YYYY-MM-DD" (input type=date) o null/vacío para limpiarla. Solo se
+  // llena a mano para corregir un caso viejo — el botón "Renovar" la pone
+  // sola. "Fin de acceso" ya no se guarda ni se edita: sale siempre de
+  // finAccesoCalculado(fechaInscripcion, fechaRenovacion).
+  fechaRenovacion?: string | null;
 };
 
 export async function actualizarDatosCliente(
@@ -846,16 +867,18 @@ export async function actualizarDatosCliente(
     vencimientoSkoolFecha = fechaSkoolADateOnly(recalculado);
   }
 
-  const finAccesoNuevo = cambios.finAcceso?.trim() ? new Date(cambios.finAcceso.trim()).toISOString() : null;
-  const finAccesoCambio = finAccesoNuevo !== anterior.finAcceso;
+  const fechaRenovacionNueva = cambios.fechaRenovacion?.trim()
+    ? new Date(cambios.fechaRenovacion.trim()).toISOString()
+    : null;
+  const fechaRenovacionCambio = fechaRenovacionNueva !== anterior.fechaRenovacion;
 
   const detalle = [
     ...detalleTextos,
     membresiaCambio
       ? `Vencimiento Skool recalculado: "${anterior.vencimientoSkool ?? "—"}" → "${vencimientoSkoolTexto ?? "—"}"`
       : null,
-    finAccesoCambio
-      ? `Fin de acceso: "${anterior.finAcceso ? formatearFechaSkool(new Date(anterior.finAcceso)) : "—"}" → "${finAccesoNuevo ? formatearFechaSkool(new Date(finAccesoNuevo)) : "—"}"`
+    fechaRenovacionCambio
+      ? `Fecha de renovación: "${anterior.fechaRenovacion ? formatearFechaSkool(new Date(anterior.fechaRenovacion)) : "—"}" → "${fechaRenovacionNueva ? formatearFechaSkool(new Date(fechaRenovacionNueva)) : "—"}"`
       : null,
   ]
     .filter(Boolean)
@@ -877,7 +900,7 @@ export async function actualizarDatosCliente(
       invitacion_skool: cambios.invitacionSkool?.trim() || null,
       llamada: cambios.llamada?.trim() || null,
       notas_soporte: cambios.notasSoporte?.trim() || null,
-      fin_acceso: finAccesoNuevo,
+      fecha_renovacion: fechaRenovacionNueva,
       region,
       actualizado_en: new Date().toISOString(),
     })
@@ -891,7 +914,7 @@ export async function actualizarDatosCliente(
   }
 
   let clienteFinal = filaACliente(data as ClienteRow);
-  if (membresiaCambio) {
+  if (membresiaCambio || fechaRenovacionCambio) {
     clienteFinal = await recalcularAccesos(id);
   }
   return clienteFinal;
@@ -1043,7 +1066,6 @@ export async function registrarTagKajabi(
         email: id,
         telefono,
         fecha_inscripcion: new Date().toISOString(),
-        fin_acceso: finDeAccesoDentroDeUnAnio(),
         orden_csv: Date.now(),
         region,
         // Llegar aquí (alta automática vía tag de Kajabi) significa que
