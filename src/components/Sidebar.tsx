@@ -36,7 +36,10 @@ const NAV: {
 
 type Conteos = { solicitudes: number; usuarios: number };
 
-const INTERVALO_CONTEOS_MS = 60 * 1000;
+// Antes 60s — se sentía nada "en tiempo real" (un admin viendo la pantalla
+// no veía la burbuja aparecer hasta un minuto después de que alguien se
+// autoregistrara). Bajo tráfico interno, la llamada es barata.
+const INTERVALO_CONTEOS_MS = 10 * 1000;
 
 // Burbuja de "cosas pendientes por revisar" (solicitudes de cliente nuevo,
 // usuarios recién autoregistrados) — solo se consulta si el rol puede

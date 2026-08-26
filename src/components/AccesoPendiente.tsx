@@ -1,8 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect } from "react";
 import { Clock } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
+
+const INTERVALO_REVISION_MS = 5 * 1000;
 
 // Se muestra en vez del CRM completo (Sidebar + páginas) cuando hay sesión
 // pero la cuenta todavía no fue aprobada por un admin (usuario.activo ===
@@ -10,7 +13,18 @@ import { useSesion } from "@/lib/session-context";
 // simplemente no dejaba entrar: ahora sí entra, pero no ve nada del CRM
 // hasta que un admin lo active desde Usuarios.
 export function AccesoPendiente() {
-  const { usuario, cerrarSesion } = useSesion();
+  const { usuario, cerrarSesion, refrescar } = useSesion();
+
+  // El refresco normal de la sesión es cada 5 minutos — alguien esperando
+  // aquí a que lo activen no debería tener que recargar la página para
+  // enterarse. Se revisa cada pocos segundos mientras esta pantalla está
+  // montada; en cuanto un admin activa la cuenta, AppLayout deja de
+  // mostrarla solo (usuario.activo pasa a true en el próximo refrescar()).
+  useEffect(() => {
+    const intervalo = setInterval(refrescar, INTERVALO_REVISION_MS);
+    return () => clearInterval(intervalo);
+  }, [refrescar]);
+
   if (!usuario) return null;
 
   return (

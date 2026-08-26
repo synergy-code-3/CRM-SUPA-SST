@@ -55,7 +55,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // de aprobar" en la lista) de una cuenta que un admin desactivó
     // después de haberla aprobado alguna vez.
     if (activo && !fila.primera_aprobacion_en) cambios.primera_aprobacion_en = new Date().toISOString();
-    requiereNuevaVersion = true;
+    // Solo desactivar invalida sesiones ya abiertas (kick de seguridad
+    // inmediato). Activar NO debe hacerlo — si no, el JWT que ya tiene el
+    // usuario recién aprobado (de cuando entró a ver "acceso pendiente")
+    // queda con un token_version viejo, y en vez de desbloquearse solo se
+    // queda atorado (o tiene que volver a iniciar sesión) justo cuando
+    // debería poder entrar sin hacer nada más.
+    if (!activo) requiereNuevaVersion = true;
   }
 
   if (body?.nuevaPassword !== undefined) {
@@ -70,8 +76,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (Object.keys(cambios).length === 1) {
     return NextResponse.json({ error: "Nada que actualizar" }, { status: 400 });
   }
-  // Cualquiera de los tres cambios invalida las sesiones ya abiertas de este
-  // usuario (obtenerUsuarioActual compara token_version contra el JWT).
+  // Cambiar rol, poner contraseña nueva o desactivar invalida las sesiones
+  // ya abiertas de este usuario (obtenerUsuarioActual compara token_version
+  // contra el JWT) — activar es la única excepción, ver arriba.
   if (requiereNuevaVersion) cambios.token_version = fila.token_version + 1;
 
   const { data, error } = await supabase
