@@ -58,6 +58,10 @@ Algunos códigos de evento no representan un evento real con inventario propio, 
 
 Es la misma idea que el caso "Renovación" de la sección 4, pero disparado por el nombre del evento en vez de por el campo de acceso.
 
+Caso adicional, con cantidad y país fijos (no depende del cliente):
+
+- `Synergy` (exacto — la fila del inventario para este nombre existe pero está vacía) → **2 boletos GENERAL MX**, siempre — el boleto es para el evento Synergy Unlimited MX específicamente, así que la variante es MX sin importar dónde viva el cliente ni cuántos meses dure su membresía.
+
 ## 4. Caso especial: Acceso = "Renovación"
 
 Si el campo "Acceso a plataforma" contiene la palabra "renovación" (en cualquier variante/mayúscula), **se ignora la tabla de inventario por evento** y se usa una regla fija basada solo en el país:

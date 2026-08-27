@@ -241,6 +241,14 @@ export function calcularAccesos(
     return { accesos: { ...ACCESO_VACIO, general: [accesoDe(1, variante)] }, sinInformacion: false };
   }
 
+  // evento = "Synergy" (exacto) — fila del inventario sin datos reales, es
+  // una regla fija: 2 boletos General MX al evento Synergy Unlimited MX,
+  // sin importar duración de membresía ni país del cliente (el boleto es
+  // para ESE evento en México, no "el que le toque según dónde vive").
+  if (eventoKey === "synergy") {
+    return { accesos: { ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, sinInformacion: false };
+  }
+
   // Sección 4 — Acceso = "Renovación": regla fija por país, ignora inventario.
   if (accesoKey.includes("renov")) {
     if (esMx) {
