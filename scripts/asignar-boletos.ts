@@ -18,7 +18,7 @@ async function main() {
     const { data, error } = await supabase
       .from("clientes")
       .select(
-        "id,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion,accesos_editado_manual"
+        "id,nombre,email,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion,accesos_editado_manual"
       )
       .range(from, from + PAGINA - 1);
     if (error) throw error;
@@ -44,12 +44,24 @@ async function main() {
       );
       if (accesos.general.length || accesos.vip.length || accesos.black.length) conAlgunAcceso++;
       if (sinInformacion) sinInfo++;
-      return { id: c.id, accesos, boletos_sin_informacion: sinInformacion, actualizado_en: ahora };
+      // nombre/email van igual que ya estaban — solo van en el payload
+      // porque son NOT NULL sin default: Postgres exige que el candidato de
+      // INSERT del upsert (aunque termine resolviéndose como UPDATE por el
+      // ON CONFLICT) cumpla esa restricción, así que omitirlas revienta con
+      // "null value in column nombre" para cada fila, aunque ya exista.
+      return {
+        id: c.id,
+        nombre: c.nombre,
+        email: c.email,
+        accesos,
+        boletos_sin_informacion: sinInformacion,
+        actualizado_en: ahora,
+      };
     });
 
-    // upsert con solo estas columnas: como las filas ya existen (vienen de
-    // esta misma tabla), PostgREST solo actualiza id/accesos/boletos_sin_
-    // informacion/actualizado_en — el resto de columnas queda intacto.
+    // upsert: como las filas ya existen (vienen de esta misma tabla),
+    // ON CONFLICT las actualiza — nombre/email/accesos/boletos_sin_
+    // informacion/actualizado_en, el resto de columnas queda intacto.
     if (actualizaciones.length) {
       const { error: errUpdate } = await supabase
         .from("clientes")
