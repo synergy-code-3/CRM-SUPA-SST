@@ -15,11 +15,17 @@ async function main() {
   const ahora = new Date().toISOString();
 
   for (;;) {
+    // .order("id") a propósito: sin un orden explícito y estable, Postgres
+    // no garantiza que .range() devuelva las mismas filas en el mismo orden
+    // entre una página y la siguiente — con escrituras de por medio (este
+    // mismo script actualiza cada página apenas la lee) eso deja clientes
+    // sin procesar, saltados entre el corte de una página y la otra.
     const { data, error } = await supabase
       .from("clientes")
       .select(
         "id,nombre,email,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion,accesos_editado_manual"
       )
+      .order("id", { ascending: true })
       .range(from, from + PAGINA - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
