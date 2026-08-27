@@ -362,3 +362,19 @@ alter table usuarios add column if not exists primera_aprobacion_en timestamptz;
 -- CRM (o se corrige a mano en el perfil), sin tocar fecha_inscripcion —
 -- son dos fechas separadas a propósito.
 alter table clientes add column if not exists fecha_renovacion timestamptz;
+
+-- "accesos" pasa de un objeto único por categoría a una LISTA por categoría
+-- (general/vip/black), porque algunos eventos reales dan boletos en MX y en
+-- US a la vez al mismo cliente — con un solo detalle por categoría se
+-- perdía uno de los dos. Las filas ya guardadas con la forma vieja se leen
+-- bien igual (normalizarAccesos() en src/lib/supabase-map.ts las sube sola
+-- al leer), no hace falta migrarlas todas de golpe — pero si se quiere
+-- limpio desde ya, correr `npm run asignar-boletos` las reescribe.
+alter table clientes alter column accesos set default '{"general": [], "vip": [], "black": []}'::jsonb;
+
+-- Cuando un admin corrige los accesos a mano ("Editar accesos"), esta
+-- columna queda en true — mientras esté así, ningún recálculo automático
+-- (recalcularAccesos, ni el job masivo `npm run asignar-boletos`) vuelve a
+-- tocar los boletos de ese cliente. Se libera con el botón "Volver a
+-- calcular automático" del panel.
+alter table clientes add column if not exists accesos_editado_manual boolean not null default false;

@@ -113,9 +113,9 @@ export async function GET() {
     vencenPronto,
     vencidas,
     accesos: {
-      general: clientes.filter((c) => c.accesos.general.activo).length,
-      vip: clientes.filter((c) => c.accesos.vip.activo).length,
-      black: clientes.filter((c) => c.accesos.black.activo).length,
+      general: clientes.filter((c) => c.accesos.general.length > 0).length,
+      vip: clientes.filter((c) => c.accesos.vip.length > 0).length,
+      black: clientes.filter((c) => c.accesos.black.length > 0).length,
     },
     altasRecientes,
     distribucionAcceso: agruparTopMasOtros(distribucionAcceso, 5),

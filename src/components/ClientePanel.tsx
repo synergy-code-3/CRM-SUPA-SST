@@ -116,8 +116,9 @@ function formatearDireccion(d: PerfilKajabi["direccion"]): string[] {
   return [linea1, linea2, d.pais].filter((l): l is string => !!l);
 }
 
-function textoAcceso(d: Accesos[keyof Accesos]): string {
-  return d.activo && d.cantidad > 0 ? `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}` : "Sin acceso";
+function textoAcceso(lista: Accesos[keyof Accesos]): string {
+  if (lista.length === 0) return "Sin acceso";
+  return lista.map((d) => `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}`).join(" + ");
 }
 
 function diferenciasAccesos(anterior: Accesos, nuevo: Accesos): { nivel: keyof Accesos; de: string; a: string }[] {
@@ -159,6 +160,7 @@ export function ClientePanel({
   const [borradorAccesos, setBorradorAccesos] = useState<Accesos | null>(null);
   const [confirmandoAccesos, setConfirmandoAccesos] = useState(false);
   const [guardandoAccesos, setGuardandoAccesos] = useState(false);
+  const [liberandoAccesosManual, setLiberandoAccesosManual] = useState(false);
   const [nota, setNota] = useState("");
   const [enviandoNota, setEnviandoNota] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -244,24 +246,43 @@ export function ClientePanel({
     setMostrarAgregarOferta(false);
     setOfertaElegida("");
     setConfirmandoRevocarId(null);
+    setError(null);
     Promise.all([
-      fetch(`/api/clientes/${encodeURIComponent(clienteId)}`).then((r) => r.json()),
-      fetch(`/api/clientes/${encodeURIComponent(clienteId)}/eventos`).then((r) => r.json()),
-      fetch(`/api/clientes/${encodeURIComponent(clienteId)}/ofertas`).then((r) => r.json()),
-    ]).then(([clienteRes, eventosRes, ofertasRes]) => {
-      if (cancelado) return;
-      setCliente(clienteRes.cliente);
-      setEventos(eventosRes.eventos ?? []);
-      setOfertasClub(ofertasRes.ofertas ?? []);
-      setForm(formDeCliente(clienteRes.cliente));
-      setCargando(false);
-      // La fila de la lista se queda con la foto de cuando se cargó (o de
-      // cuando se creó el cliente) — si algo cambió desde entonces en
-      // segundo plano (ej. el webhook real de confirmación de WhatsApp),
-      // esta es la única forma de que la lista se entere sin recargar toda
-      // la página.
-      onClienteActualizadoRef.current(clienteRes.cliente);
-    });
+      fetch(`/api/clientes/${encodeURIComponent(clienteId)}`),
+      fetch(`/api/clientes/${encodeURIComponent(clienteId)}/eventos`),
+      fetch(`/api/clientes/${encodeURIComponent(clienteId)}/ofertas`),
+    ])
+      .then(async ([clienteResRaw, eventosResRaw, ofertasResRaw]) => {
+        if (cancelado) return;
+        if (!clienteResRaw.ok) {
+          const data = await clienteResRaw.json().catch(() => ({}));
+          throw new Error(data.error ?? "No se pudo cargar el cliente");
+        }
+        // eventos/ofertas son secundarios: si fallan, el panel igual se abre
+        // con el cliente (listas vacías) en vez de tumbarse por completo.
+        const [clienteRes, eventosRes, ofertasRes] = await Promise.all([
+          clienteResRaw.json(),
+          eventosResRaw.ok ? eventosResRaw.json() : Promise.resolve({ eventos: [] }),
+          ofertasResRaw.ok ? ofertasResRaw.json() : Promise.resolve({ ofertas: [] }),
+        ]);
+        if (cancelado) return;
+        setCliente(clienteRes.cliente);
+        setEventos(eventosRes.eventos ?? []);
+        setOfertasClub(ofertasRes.ofertas ?? []);
+        setForm(formDeCliente(clienteRes.cliente));
+        setCargando(false);
+        // La fila de la lista se queda con la foto de cuando se cargó (o de
+        // cuando se creó el cliente) — si algo cambió desde entonces en
+        // segundo plano (ej. el webhook real de confirmación de WhatsApp),
+        // esta es la única forma de que la lista se entere sin recargar toda
+        // la página.
+        onClienteActualizadoRef.current(clienteRes.cliente);
+      })
+      .catch((err) => {
+        if (cancelado) return;
+        setCargando(false);
+        setError(err instanceof Error ? err.message : "No se pudo cargar el cliente");
+      });
     fetch(`/api/clientes/${encodeURIComponent(clienteId)}/kajabi-estado`)
       .then((r) => r.json())
       .then((data) => {
@@ -380,6 +401,30 @@ export function ClientePanel({
     setCliente(data.cliente);
     onClienteActualizado(data.cliente);
     cancelarEdicionAccesos();
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
+      r.json()
+    );
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  async function confirmarLiberarAccesosManual() {
+    if (!cliente || !puedeEditarAccesos) return;
+    if (!window.confirm("Esto va a recalcular los accesos automáticamente, reemplazando la corrección manual. ¿Confirmas?")) {
+      return;
+    }
+    setLiberandoAccesosManual(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/liberar-accesos-manual`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setLiberandoAccesosManual(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo liberar los accesos");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
     );
@@ -781,7 +826,7 @@ export function ClientePanel({
   }
 
   const tieneAcceso = cliente
-    ? cliente.accesos.general.activo || cliente.accesos.vip.activo || cliente.accesos.black.activo
+    ? cliente.accesos.general.length > 0 || cliente.accesos.vip.length > 0 || cliente.accesos.black.length > 0
     : false;
 
   const notasRegistradas = eventos
@@ -796,8 +841,18 @@ export function ClientePanel({
         className="animate-fade-in-fast absolute inset-0 bg-foreground/30 backdrop-blur-[2px]"
       />
       <div className="animate-slide-in-right relative flex h-full w-full flex-col bg-surface shadow-2xl sm:w-[520px]">
-        {cargando || !cliente ? (
+        {cargando ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted">Cargando…</div>
+        ) : !cliente ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm text-danger">{error ?? "No se pudo cargar el cliente"}</p>
+            <button
+              onClick={onClose}
+              className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+            >
+              Cerrar
+            </button>
+          </div>
         ) : (
           <>
             <div className="relative flex-none overflow-hidden text-white">
@@ -1473,11 +1528,25 @@ export function ClientePanel({
                   </Tarjeta>
 
                   <Tarjeta titulo="Accesos a Synergy Unlimited">
+                    {!editandoAccesos && cliente.accesosEditadoManual && (
+                      <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
+                        <span>Editados a mano — no se recalculan solos.</span>
+                        {puedeEditarAccesos && (
+                          <button
+                            onClick={confirmarLiberarAccesosManual}
+                            disabled={liberandoAccesosManual}
+                            className="ease-spring flex-none font-medium underline decoration-dotted underline-offset-2 transition hover:text-primary disabled:opacity-50"
+                          >
+                            {liberandoAccesosManual ? "Recalculando…" : "Volver a calcular automático"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <AccesosSynergy
                       valor={editandoAccesos && borradorAccesos ? borradorAccesos : cliente.accesos}
                       onChange={setBorradorAccesos}
                       soloLectura={!editandoAccesos}
-                      paisCliente={cliente.pais}
+                      sinInformacion={!editandoAccesos && cliente.boletosSinInformacion}
                     />
 
                     {puedeEditarAccesos && !editandoAccesos && (
@@ -1913,18 +1982,18 @@ function AccesoBadge({
       : tono === "warning"
         ? "vip-plate text-white"
         : "black-plate text-white";
+  const activo = detalle.length > 0;
   return (
     <div
       className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3.5 text-center ${
-        detalle.activo ? `${activeClass} border-transparent` : "border-silver bg-surface-2 text-muted"
+        activo ? `${activeClass} border-transparent` : "border-silver bg-surface-2 text-muted"
       }`}
     >
       <Icon className="h-5 w-5" strokeWidth={1.75} />
       <span className="text-sm font-semibold">{label}</span>
-      {detalle.activo && (
+      {activo && (
         <span className="text-xs opacity-80">
-          {detalle.cantidad}
-          {detalle.variante ? ` · ${detalle.variante}` : ""}
+          {detalle.map((d) => `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}`).join(" + ")}
         </span>
       )}
     </div>

@@ -11,8 +11,12 @@ import type { Accesos, Variante } from "./types";
 const INVENTARIO_PATH = path.join(process.cwd(), "Asignacion de boletos.csv");
 
 // 19-sep-2026: fecha de corte fija para considerar a un cliente "activo"
-// (sección 2 del documento de reglas).
-export const FECHA_CORTE = new Date(2026, 8, 19);
+// (sección 2 del documento de reglas). Date.UTC (no el constructor local) a
+// propósito: este cálculo corre tanto en Vercel (UTC) como a mano desde la
+// PC del dev (America/Mexico_City) vía "npm run asignar-boletos" — con el
+// constructor local, un cliente justo en el borde pasaba o no el corte
+// según desde dónde se ejecutara el recálculo.
+export const FECHA_CORTE = new Date(Date.UTC(2026, 8, 19));
 
 type FilaInventario = {
   evento: string;
@@ -21,6 +25,10 @@ type FilaInventario = {
   gral_us: [number, number, number];
   vip_us: [number, number, number];
   black: number;
+  // true si alguna celda de boletos de este evento dice "Editable" en vez de
+  // un número — significa "se asigna a mano", no "cero boletos". Eventos
+  // reales así hoy: BOOTCAMP, Equipo Sinergéticos, EXTERNO, etc.
+  requiereAsignacionManual: boolean;
 };
 
 export type Inventario = Map<string, FilaInventario>;
@@ -45,6 +53,7 @@ export async function cargarInventarioBoletos(): Promise<Inventario> {
   for (const r of filas.slice(3)) {
     const evento = (r[0] ?? "").trim();
     if (!evento) continue;
+    const celdasBoletos = [r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]];
     mapa.set(normalizar(evento), {
       evento,
       gral_mx: [numero(r[3]), numero(r[4]), numero(r[5])],
@@ -52,6 +61,7 @@ export async function cargarInventarioBoletos(): Promise<Inventario> {
       gral_us: [numero(r[9]), numero(r[10]), numero(r[11])],
       vip_us: [numero(r[12]), numero(r[13]), numero(r[14])],
       black: numero(r[15]),
+      requiereAsignacionManual: celdasBoletos.some((c) => (c ?? "").trim().toLowerCase() === "editable"),
     });
   }
   return mapa;
@@ -171,14 +181,21 @@ export function regionDeCliente(
   return "LATAM";
 }
 
-const ACCESO_VACIO: Accesos = {
-  general: { activo: false, cantidad: 0, variante: null },
-  vip: { activo: false, cantidad: 0, variante: null },
-  black: { activo: false, cantidad: 0, variante: null },
-};
+const ACCESO_VACIO: Accesos = { general: [], vip: [], black: [] };
 
 function accesoDe(cantidad: number, variante: Variante) {
   return { activo: cantidad > 0, cantidad, variante };
+}
+
+// Una categoría (general/vip) puede tener boletos en MX y en US a la vez
+// para el mismo cliente (ver §3 del documento) — arma la lista con una
+// entrada por variante que sí tenga cantidad, en vez de quedarse con una
+// sola y perder la otra.
+function chips(cantidadMx: number, cantidadUs: number) {
+  const resultado = [];
+  if (cantidadMx > 0) resultado.push(accesoDe(cantidadMx, "MX"));
+  if (cantidadUs > 0) resultado.push(accesoDe(cantidadUs, "US"));
+  return resultado;
 }
 
 export type ResultadoBoletos = {
@@ -219,23 +236,23 @@ export function calcularAccesos(
   if (eventoKey === "vip-su" || eventoKey === "gral-su") {
     const variante: Variante = esMx ? "MX" : "US";
     if (eventoKey === "vip-su") {
-      return { accesos: { ...ACCESO_VACIO, vip: accesoDe(1, variante) }, sinInformacion: false };
+      return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(1, variante)] }, sinInformacion: false };
     }
-    return { accesos: { ...ACCESO_VACIO, general: accesoDe(1, variante) }, sinInformacion: false };
+    return { accesos: { ...ACCESO_VACIO, general: [accesoDe(1, variante)] }, sinInformacion: false };
   }
 
   // Sección 4 — Acceso = "Renovación": regla fija por país, ignora inventario.
   if (accesoKey.includes("renov")) {
     if (esMx) {
-      return { accesos: { ...ACCESO_VACIO, general: accesoDe(2, "MX") }, sinInformacion: false };
+      return { accesos: { ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, sinInformacion: false };
     }
     if (esUsCanada) {
       return {
-        accesos: { ...ACCESO_VACIO, vip: accesoDe(2, "MX"), general: accesoDe(2, "US") },
+        accesos: { ...ACCESO_VACIO, vip: [accesoDe(2, "MX")], general: [accesoDe(2, "US")] },
         sinInformacion: false,
       };
     }
-    return { accesos: { ...ACCESO_VACIO, vip: accesoDe(2, "MX") }, sinInformacion: false };
+    return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(2, "MX")] }, sinInformacion: false };
   }
 
   // Sección 3 — evento + duración de membresía → tabla de inventario.
@@ -244,14 +261,19 @@ export function calcularAccesos(
     // Sección 6: sin override disponible en esta fase → "sin información".
     return { accesos: ACCESO_VACIO, sinInformacion: true };
   }
+  if (fila.requiereAsignacionManual) {
+    // "Editable" en el CSV es una instrucción ("asignar a mano"), no un
+    // cero — tratarlo como 0 se veía idéntico a "no le toca nada".
+    return { accesos: ACCESO_VACIO, sinInformacion: true };
+  }
 
   const memRaw = normalizar(cliente.tipoMembresia);
   const idxDur = memRaw.includes("12") ? 2 : memRaw.includes("6") ? 1 : 0;
 
   const accesos: Accesos = {
-    general: fila.gral_mx[idxDur] > 0 ? accesoDe(fila.gral_mx[idxDur], "MX") : accesoDe(fila.gral_us[idxDur], "US"),
-    vip: fila.vip_mx[idxDur] > 0 ? accesoDe(fila.vip_mx[idxDur], "MX") : accesoDe(fila.vip_us[idxDur], "US"),
-    black: accesoDe(fila.black, null),
+    general: chips(fila.gral_mx[idxDur], fila.gral_us[idxDur]),
+    vip: chips(fila.vip_mx[idxDur], fila.vip_us[idxDur]),
+    black: fila.black > 0 ? [accesoDe(fila.black, null)] : [],
   };
 
   return { accesos, sinInformacion: false };

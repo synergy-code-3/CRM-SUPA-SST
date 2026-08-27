@@ -2,7 +2,7 @@ import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { obtenerPerfilKajabi } from "./kajabi";
-import { filaACliente, fechaSkoolADateOnly, type ClienteRow } from "./supabase-map";
+import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
   Accesos,
   Cliente,
@@ -89,7 +89,7 @@ export async function listarTodosClientes(): Promise<ClienteResumen[]> {
     accesoPlataforma: r.acceso_plataforma,
     tipoMembresia: r.tipo_membresia,
     vencimientoSkool: r.vencimiento_skool,
-    accesos: r.accesos,
+    accesos: normalizarAccesos(r.accesos),
   }));
 }
 
@@ -560,11 +560,18 @@ export async function actualizarTelefonoCliente(id: string, telefono: string): P
 // SYNERGY.md) a partir de evento + tipo de membresía + acceso a
 // plataforma ya guardados. Se llama tras confirmar el acceso en Kajabi,
 // igual que hace `npm run asignar-boletos` en lote para el resto del CSV.
+//
+// Si un admin corrigió los accesos a mano ("Editar accesos"), esta función
+// no toca nada — accesosEditadoManual queda como una traba hasta que se
+// libere a propósito (ver liberarAccesosEditadoManual), para que un
+// recálculo automático (o el job masivo) no borre esa corrección sin
+// avisar.
 export async function recalcularAccesos(id: string): Promise<Cliente> {
   const { data: fila, error: errLectura } = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
   if (errLectura) throw errLectura;
   if (!fila) throw new Error("Cliente no encontrado");
   const cliente = filaACliente(fila as ClienteRow);
+  if (cliente.accesosEditadoManual) return cliente;
 
   const inventario = await cargarInventarioBoletos();
   const { accesos, sinInformacion } = calcularAccesos(
@@ -587,6 +594,19 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
     .single();
   if (error) throw error;
   return filaACliente(data as ClienteRow);
+}
+
+// Quita la traba de "editado a mano" y recalcula de inmediato — la forma
+// de que un admin decida que un cliente vuelva a seguir las reglas
+// automáticas después de haber sido corregido manualmente.
+export async function liberarAccesosEditadoManual(id: string, autor: string): Promise<Cliente> {
+  const { error } = await supabase
+    .from("clientes")
+    .update({ accesos_editado_manual: false, actualizado_en: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEvento(id, "EDICION_ACCESOS", `Accesos: se quitó la corrección manual, vuelve a calcularse solo (${autor})`, autor);
+  return recalcularAccesos(id);
 }
 
 // Se llama tras un envío exitoso de la invitación a Skool: marca el campo
@@ -704,27 +724,28 @@ export async function pausarMembresia(id: string, autor: string): Promise<Client
 }
 
 // Revoca el acceso de forma permanente (ej. reembolso) — a diferencia de
-// "Pausar", no guarda días pendientes para reanudar después: solo marca
-// "Acceso a plataforma" en "No". Si el cliente estaba pausado, se limpia
-// esa pausa para no dejar el botón "Reanudar" sobre un acceso que ya se
-// revocó por completo.
+// "Pausar", no guarda días pendientes para reanudar después: marca "Acceso
+// a plataforma" en "Revocado" (no "No" — calcularAccesos() solo reconoce
+// "revocado" para anular los boletos, y es el mismo texto que ya usa el
+// filtro "Revocados" de la lista) y recalcula de inmediato para que no se
+// quede con los boletos de antes de la revocación. Si el cliente estaba
+// pausado, se limpia esa pausa para no dejar el botón "Reanudar" sobre un
+// acceso que ya se revocó por completo.
 export async function revocarAccesoCliente(id: string, autor: string): Promise<Cliente> {
   const ahora = new Date().toISOString();
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("clientes")
     .update({
-      acceso_plataforma: "No",
+      acceso_plataforma: "Revocado",
       pausado_en: null,
       fin_acceso_al_pausar: null,
       actualizado_en: ahora,
     })
-    .eq("id", id)
-    .select("*")
-    .single();
+    .eq("id", id);
   if (error) throw error;
 
   await registrarEvento(id, "REVOCACION_ACCESO", `Acceso revocado por ${autor}`, autor);
-  return filaACliente(data as ClienteRow);
+  return recalcularAccesos(id);
 }
 
 export type ResultadoReanudar = { cliente: Cliente; fechaCalculada: string; diasRestantes: number };
@@ -768,7 +789,7 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
   const fechaRenovacionSintetica = new Date(fechaCalculada);
   fechaRenovacionSintetica.setFullYear(fechaRenovacionSintetica.getFullYear() - 1);
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("clientes")
     .update({
       pausado_en: null,
@@ -776,9 +797,7 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
       fecha_renovacion: fechaRenovacionSintetica.toISOString(),
       actualizado_en: ahora.toISOString(),
     })
-    .eq("id", id)
-    .select("*")
-    .single();
+    .eq("id", id);
   if (error) throw error;
 
   await registrarEvento(
@@ -788,7 +807,12 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
     autor
   );
 
-  return { cliente: filaACliente(data as ClienteRow), fechaCalculada, diasRestantes };
+  // Reanudar puede mover el fin de acceso hacia adelante lo suficiente
+  // para que el cliente pase a estar activo para Synergy Unlimited 2026 (o
+  // para el evento que le toque) — sin este recálculo se quedaba mostrando
+  // "Sin acceso" aunque ya le correspondieran boletos.
+  const clienteFinal = await recalcularAccesos(id);
+  return { cliente: clienteFinal, fechaCalculada, diasRestantes };
 }
 
 const CAMPOS_EDITABLES: { key: keyof CambiosDatosCliente; columna: string; label: string }[] = [
@@ -865,7 +889,17 @@ export async function actualizarDatosCliente(
 
   const nuevoEvento = cambios.evento?.trim() || null;
   const nuevoPais = cambios.pais?.trim() || null;
+  const nuevoAccesoPlataforma = cambios.accesoPlataforma?.trim() || null;
   const region = await regionParaCrearOEditar(nuevoEvento, nuevoPais);
+
+  // Los tres alimentan calcularAccesos() directamente (evento decide contra
+  // qué fila del inventario/reglas fijas se calcula, país decide MX/US,
+  // acceso a plataforma decide si aplica la regla de "Renovación"/revocado)
+  // — un cambio en cualquiera de ellos deja los boletos guardados
+  // desincronizados de lo que le toca de verdad si no se recalcula.
+  const eventoCambio = nuevoEvento !== anterior.evento;
+  const paisCambio = nuevoPais !== anterior.pais;
+  const accesoPlataformaCambio = nuevoAccesoPlataforma !== anterior.accesoPlataforma;
 
   // Si cambia el tipo de membresía, el vencimiento de Skool se recalcula
   // desde la fecha de inscripción — ignora lo que se haya escrito a mano en
@@ -885,7 +919,12 @@ export async function actualizarDatosCliente(
   const fechaRenovacionNueva = cambios.fechaRenovacion?.trim()
     ? new Date(cambios.fechaRenovacion.trim()).toISOString()
     : null;
-  const fechaRenovacionCambio = fechaRenovacionNueva !== anterior.fechaRenovacion;
+  // Comparar solo la parte de fecha (no la hora): el formulario manda
+  // "YYYY-MM-DD" (medianoche UTC al convertir), pero el valor guardado por
+  // una renovación real trae hora — comparar el ISO completo daba "cambió"
+  // en cada guardado aunque el usuario no hubiera tocado el campo.
+  const fechaRenovacionCambio =
+    fechaRenovacionNueva?.slice(0, 10) !== anterior.fechaRenovacion?.slice(0, 10);
 
   const detalle = [
     ...detalleTextos,
@@ -908,7 +947,7 @@ export async function actualizarDatosCliente(
       ciudad: cambios.ciudad?.trim() || null,
       notas: cambios.notas?.trim() || null,
       evento: nuevoEvento,
-      acceso_plataforma: cambios.accesoPlataforma?.trim() || null,
+      acceso_plataforma: nuevoAccesoPlataforma,
       tipo_membresia: nuevaMembresia,
       vencimiento_skool: vencimientoSkoolTexto,
       vencimiento_skool_fecha: vencimientoSkoolFecha,
@@ -929,7 +968,7 @@ export async function actualizarDatosCliente(
   }
 
   let clienteFinal = filaACliente(data as ClienteRow);
-  if (membresiaCambio || fechaRenovacionCambio) {
+  if (membresiaCambio || fechaRenovacionCambio || eventoCambio || paisCambio || accesoPlataformaCambio) {
     clienteFinal = await recalcularAccesos(id);
   }
   return clienteFinal;
@@ -941,8 +980,9 @@ const ACCESO_LABEL: Record<keyof Accesos, string> = {
   black: "Black Access",
 };
 
-function textoAcceso(d: { activo: boolean; cantidad: number; variante: Variante }): string {
-  return d.activo && d.cantidad > 0 ? `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}` : "Sin acceso";
+function textoAcceso(lista: { activo: boolean; cantidad: number; variante: Variante }[]): string {
+  if (lista.length === 0) return "Sin acceso";
+  return lista.map((d) => `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}`).join(" + ");
 }
 
 // Guarda los 3 niveles de acceso (General/VIP/Black) en una sola escritura —
@@ -951,6 +991,11 @@ function textoAcceso(d: { activo: boolean; cantidad: number; variante: Variante 
 // PATCH separados que podrían dejar al cliente en un estado intermedio si
 // uno falla. Registra un solo evento "EDICION" listando qué niveles
 // cambiaron (igual que actualizarDatosCliente con los demás campos).
+//
+// Marca accesos_editado_manual — esta es LA acción de override manual del
+// CRM: a partir de aquí ningún recálculo automático vuelve a tocar los
+// boletos de este cliente hasta que se libere a propósito (ver
+// liberarAccesosEditadoManual).
 export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, autor: string): Promise<Cliente> {
   const { data: fila, error: errLectura } = await supabase
     .from("clientes")
@@ -962,12 +1007,13 @@ export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, auto
   const anterior = filaACliente(fila as ClienteRow).accesos;
 
   const normalizado = (Object.keys(nuevosAccesos) as (keyof Accesos)[]).reduce((acc, nivel) => {
-    const cantidad = Math.max(0, Math.floor(nuevosAccesos[nivel].cantidad || 0));
-    acc[nivel] = {
-      activo: cantidad > 0,
-      cantidad,
-      variante: cantidad > 0 && nivel !== "black" ? nuevosAccesos[nivel].variante : null,
-    };
+    acc[nivel] = nuevosAccesos[nivel]
+      .map((d) => ({
+        activo: d.cantidad > 0,
+        cantidad: Math.max(0, Math.floor(d.cantidad || 0)),
+        variante: nivel !== "black" ? d.variante : null,
+      }))
+      .filter((d) => d.cantidad > 0);
     return acc;
   }, {} as Accesos);
 
@@ -977,7 +1023,7 @@ export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, auto
 
   const { data, error } = await supabase
     .from("clientes")
-    .update({ accesos: normalizado, actualizado_en: new Date().toISOString() })
+    .update({ accesos: normalizado, accesos_editado_manual: true, actualizado_en: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single();

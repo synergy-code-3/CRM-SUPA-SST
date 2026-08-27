@@ -1,4 +1,4 @@
-import type { Accesos, Cliente } from "./types";
+import type { Accesos, AccesoDetalle, Cliente } from "./types";
 
 // Fila cruda tal como vive en la tabla `clientes` de Supabase (snake_case).
 // `region` y `vencimiento_skool_fecha` son columnas solo-DB (no forman
@@ -28,7 +28,12 @@ export type ClienteRow = {
   llamada: string | null;
   notas_soporte: string | null;
   region: string;
-  accesos: Accesos;
+  // Forma cruda tal como está en el jsonb — puede ser la vieja (un objeto
+  // por categoría) o la nueva (una lista por categoría), ver
+  // normalizarAccesos(). Nunca se lee directo, siempre a través de
+  // filaACliente().
+  accesos: unknown;
+  accesos_editado_manual: boolean;
   etiqueta: string | null;
   tags: string[];
   kajabi_contact_id: string | null;
@@ -38,6 +43,29 @@ export type ClienteRow = {
   creado_en: string;
   actualizado_en: string;
 };
+
+// "accesos" pasó de un objeto único por categoría a una lista por categoría
+// (para poder tener VIP MX + VIP US a la vez, ver types.ts). Las filas ya
+// guardadas antes de este cambio siguen en la forma vieja hasta que algo
+// las recalcula/reedita — en vez de forzar una migración de golpe sobre
+// 23k filas, cada lectura sube la forma vieja a la nueva sola.
+function normalizarCategoria(v: unknown): AccesoDetalle[] {
+  if (Array.isArray(v)) return v as AccesoDetalle[];
+  if (v && typeof v === "object" && "cantidad" in v) {
+    const d = v as AccesoDetalle;
+    return d.cantidad > 0 ? [d] : [];
+  }
+  return [];
+}
+
+export function normalizarAccesos(raw: unknown): Accesos {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    general: normalizarCategoria(r.general),
+    vip: normalizarCategoria(r.vip),
+    black: normalizarCategoria(r.black),
+  };
+}
 
 export function filaACliente(r: ClienteRow): Cliente {
   return {
@@ -61,7 +89,8 @@ export function filaACliente(r: ClienteRow): Cliente {
     contactoWhats: r.contacto_whats,
     llamada: r.llamada,
     notasSoporte: r.notas_soporte,
-    accesos: r.accesos,
+    accesos: normalizarAccesos(r.accesos),
+    accesosEditadoManual: r.accesos_editado_manual,
     etiqueta: r.etiqueta,
     tags: r.tags ?? [],
     kajabiContactId: r.kajabi_contact_id,

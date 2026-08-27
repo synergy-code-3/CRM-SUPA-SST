@@ -6,10 +6,16 @@ export type AccesoDetalle = {
   variante: Variante;
 };
 
+// Cada categoría es una LISTA de boletos (no un solo detalle) porque un
+// mismo cliente puede tener a la vez, por ejemplo, VIP MX y VIP US —
+// algunos eventos reales del inventario dan ambos (ver
+// REGLAS-BOLETOS-SYNERGY.md sección 3). En la práctica son 0, 1 o 2
+// entradas por categoría (una por variante MX/US); "black" nunca tiene
+// variante, así que solo llega a tener 0 o 1.
 export type Accesos = {
-  general: AccesoDetalle;
-  vip: AccesoDetalle;
-  black: AccesoDetalle;
+  general: AccesoDetalle[];
+  vip: AccesoDetalle[];
+  black: AccesoDetalle[];
 };
 
 export type Cliente = {
@@ -28,6 +34,10 @@ export type Cliente = {
   fechaRenovacion: string | null;
   boletosSinInformacion: boolean; // true si el evento no existe en la tabla de inventario y no hay override
   accesos: Accesos;
+  // true cuando un admin corrigió los accesos a mano ("Editar accesos") —
+  // mientras esté en true, ningún recálculo automático los vuelve a tocar
+  // (recalcularAccesos lo respeta), hasta que se libere a propósito.
+  accesosEditadoManual: boolean;
 
   // Posición en el CSV de origen (número de fila de la última aparición de
   // este correo). Es el criterio de orden de la lista principal: la fila

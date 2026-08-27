@@ -116,11 +116,8 @@ async function main() {
       notasSoporte: limpio(fila["NOTAS DE SOPORTE TÉCNICO"]),
       // Placeholder: la asignación real (cantidad + variante MX/US) la calcula
       // `npm run asignar-boletos` a partir de REGLAS-BOLETOS-SYNERGY.md.
-      accesos: existente?.accesos ?? {
-        general: { activo: false, cantidad: 0, variante: null },
-        vip: { activo: false, cantidad: 0, variante: null },
-        black: { activo: false, cantidad: 0, variante: null },
-      },
+      accesos: existente?.accesos ?? { general: [], vip: [], black: [] },
+      accesosEditadoManual: existente?.accesosEditadoManual ?? false,
       etiqueta: existente?.etiqueta ?? null,
       tags: existente?.tags ?? [],
       kajabiContactId: existente?.kajabiContactId ?? null,

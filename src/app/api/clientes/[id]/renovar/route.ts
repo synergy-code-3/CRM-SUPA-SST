@@ -27,10 +27,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       const kajabiContactId = await altaEnKajabi(cliente.nombre, cliente.email);
       await vincularKajabiContactId(cliente.id, kajabiContactId);
       await registrarTagKajabi(cliente.email, cliente.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
-      cliente = await recalcularAccesos(cliente.id);
     } catch (err) {
       avisoKajabi = err instanceof Error ? err.message : "No se pudo otorgar el acceso en Kajabi";
     }
+    // Fuera del try de Kajabi a propósito: renovarMembresia ya cambió
+    // acceso a plataforma/tipo de membresía/fecha de renovación, que
+    // alimentan el cálculo de boletos sin importar si Kajabi respondió —
+    // si Kajabi falla, la fila no debe quedar con la etiqueta "Renovación"
+    // nueva pero los boletos del evento viejo.
+    cliente = await recalcularAccesos(cliente.id);
 
     let avisoSkool: string | null = null;
     try {

@@ -56,10 +56,14 @@ export async function altaCompletaCliente(input: AltaClienteInput, autor: string
     // sincronizador periódico (cada ~15 min) para saber que esta oferta
     // otorgada es justo la que asigna el tag en Kajabi.
     await registrarTagKajabi(cliente.email, cliente.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
-    cliente = await recalcularAccesos(cliente.id);
   } catch (err) {
     avisoKajabi = err instanceof Error ? err.message : "No se pudo otorgar el acceso en Kajabi";
   }
+  // Fuera del try: cuántos boletos le tocan depende de evento/membresía/
+  // fecha (REGLAS-BOLETOS-SYNERGY.md), no de si Kajabi respondió — un
+  // cliente recién creado debe quedar calculado igual que uno importado
+  // por CSV, sin esperar a que la sincronización de Kajabi funcione.
+  cliente = await recalcularAccesos(cliente.id);
 
   let avisoSkool: string | null = null;
   try {
