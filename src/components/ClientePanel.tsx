@@ -41,6 +41,7 @@ import {
   Gift,
   Ban,
   ShoppingBag,
+  ExternalLink,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -53,6 +54,7 @@ import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
 import { finAccesoCalculado } from "@/lib/fechas";
 import type { ConvertidoVsl } from "@/lib/vsl-soporte";
+import type { HistorialAxis } from "@/lib/axis";
 
 type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kajabi" | "vsl";
 
@@ -117,6 +119,13 @@ function formatearDireccion(d: PerfilKajabi["direccion"]): string[] {
   const linea1 = [d.calle1, d.calle2].filter(Boolean).join(", ");
   const linea2 = [d.ciudad, d.estado, d.codigoPostal].filter(Boolean).join(", ");
   return [linea1, linea2, d.pais].filter((l): l is string => !!l);
+}
+
+// Axis manda los montos en centavos (igual que Stripe) — 599700 = $5,997.00.
+function formatearCentavos(cents: number | null, currency: string | null): string | null {
+  if (cents == null) return null;
+  const monto = (cents / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency ? `${monto} ${currency.toUpperCase()}` : monto;
 }
 
 function textoAcceso(lista: Accesos[keyof Accesos]): string {
@@ -193,6 +202,13 @@ export function ClientePanel({
   const [cargandoHistoricoVsl, setCargandoHistoricoVsl] = useState(false);
   const [errorHistoricoVsl, setErrorHistoricoVsl] = useState<string | null>(null);
   const [intentadoHistoricoVsl, setIntentadoHistoricoVsl] = useState(false);
+  // "sin dato" (contacto no encontrado en Axis, 404) vs null (todavía no se
+  // intentó consultar) son casos distintos — por eso el estado usa
+  // undefined como "no consultado" en vez de reusar null para ambos.
+  const [historialAxis, setHistorialAxis] = useState<HistorialAxis | null | undefined>(undefined);
+  const [cargandoHistorialAxis, setCargandoHistorialAxis] = useState(false);
+  const [errorHistorialAxis, setErrorHistorialAxis] = useState<string | null>(null);
+  const [intentadoHistorialAxis, setIntentadoHistorialAxis] = useState(false);
   const puedeOtorgarOferta = !!usuario && tienePermiso(usuario.rol, "otorgarOferta");
   const [ofertasClub, setOfertasClub] = useState<OfertaOtorgada[]>([]);
   const [catalogoOfertasKajabi, setCatalogoOfertasKajabi] = useState<OpcionCombobox[]>([]);
@@ -252,6 +268,9 @@ export function ClientePanel({
     setHistoricoVsl(null);
     setErrorHistoricoVsl(null);
     setIntentadoHistoricoVsl(false);
+    setHistorialAxis(undefined);
+    setErrorHistorialAxis(null);
+    setIntentadoHistorialAxis(false);
     setOfertasClub([]);
     setMostrarAgregarOferta(false);
     setOfertaElegida("");
@@ -370,6 +389,34 @@ export function ClientePanel({
       cancelado = true;
     };
   }, [tab, clienteId, intentadoHistoricoVsl]);
+
+  useEffect(() => {
+    if (tab !== "vsl" || intentadoHistorialAxis) return;
+    let cancelado = false;
+    setCargandoHistorialAxis(true);
+    setErrorHistorialAxis(null);
+    fetch(`/api/clientes/${encodeURIComponent(clienteId)}/axis-historial`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "No se pudo consultar el CRM de Axis");
+        return data;
+      })
+      .then((data) => {
+        if (!cancelado) setHistorialAxis(data.historial ?? null);
+      })
+      .catch((err) => {
+        if (!cancelado) setErrorHistorialAxis(err instanceof Error ? err.message : "No se pudo consultar el CRM de Axis");
+      })
+      .finally(() => {
+        if (!cancelado) {
+          setCargandoHistorialAxis(false);
+          setIntentadoHistorialAxis(true);
+        }
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [tab, clienteId, intentadoHistorialAxis]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1885,17 +1932,175 @@ export function ClientePanel({
 
               {tab === "vsl" && (
                 <div className="space-y-5">
-                  {/* Timeline general (otro CRM, distinto de VSL) — pendiente
-                      de conectar: falta URL/autenticación/formato de su API.
-                      Mostrará primer contacto, evento, tipo de acceso y
-                      monto pagado, si escaneó el boleto, plataforma y monto
-                      de compra, y si ya se le dio acceso a Synergy
-                      Unlimited. */}
+                  {/* Timeline general (CRM "Synergy Axis") — primer contacto,
+                      eventos/boletos, compras, y estado de Synergy Unlimited. */}
                   <Tarjeta titulo="Historial">
-                    <p className="text-sm text-muted">
-                      Pendiente de conectar — todavía falta la información técnica del otro CRM (URL, autenticación
-                      y formato de respuesta).
-                    </p>
+                    {cargandoHistorialAxis ? (
+                      <p className="text-sm text-muted">Consultando en el CRM de Axis…</p>
+                    ) : errorHistorialAxis ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-danger">{errorHistorialAxis}</p>
+                        <button
+                          onClick={() => setIntentadoHistorialAxis(false)}
+                          className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Reintentar
+                        </button>
+                      </div>
+                    ) : historialAxis === null ? (
+                      <p className="text-sm text-muted">Sin historial en el CRM de Axis para este correo.</p>
+                    ) : historialAxis ? (
+                      <div className="space-y-5">
+                        <dl className="space-y-2.5 text-sm">
+                          {historialAxis.contacto.primerContacto && (
+                            <DatoFila
+                              icon={CalendarClock}
+                              label="Primer contacto"
+                              valor={`${new Date(historialAxis.contacto.primerContacto.fecha).toLocaleDateString("es-MX")} · ${historialAxis.contacto.primerContacto.fuenteSistema}${historialAxis.contacto.primerContacto.utmSource ? ` · ${historialAxis.contacto.primerContacto.utmSource}` : ""}`}
+                            />
+                          )}
+                          <DatoFila
+                            icon={Clock}
+                            label="Última actividad"
+                            valor={
+                              historialAxis.contacto.ultimaActividad
+                                ? new Date(historialAxis.contacto.ultimaActividad).toLocaleString("es-MX", {
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                  })
+                                : null
+                            }
+                          />
+                          {historialAxis.contacto.ubicacion && (
+                            <DatoFila icon={MapPin} label="Ubicación" valor={historialAxis.contacto.ubicacion} />
+                          )}
+                          {historialAxis.contacto.ltvCents != null && (
+                            <CampoValor
+                              label="Valor total de compras (LTV)"
+                              valor={formatearCentavos(historialAxis.contacto.ltvCents, null)}
+                            />
+                          )}
+                        </dl>
+
+                        {historialAxis.eventos.length > 0 && (
+                          <div>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Eventos</p>
+                            <ul className="space-y-2">
+                              {historialAxis.eventos.map((e, i) => (
+                                <li key={i} className="rounded-lg border border-silver px-3 py-2 text-sm">
+                                  <p className="font-medium text-foreground">{e.titulo}</p>
+                                  <p className="mt-0.5 text-xs text-muted">
+                                    {new Date(e.fecha).toLocaleDateString("es-MX")}
+                                    {e.tipoAcceso ? ` · ${e.tipoAcceso}` : ""}
+                                    {formatearCentavos(e.montoCents, e.currency) ? ` · ${formatearCentavos(e.montoCents, e.currency)}` : ""}
+                                  </p>
+                                  {e.escaneado !== null && (
+                                    <p
+                                      className={`mt-1 flex items-center gap-1 text-xs ${e.escaneado ? "text-success" : "text-muted"}`}
+                                    >
+                                      {e.escaneado ? (
+                                        <Check className="h-3 w-3" strokeWidth={2} />
+                                      ) : (
+                                        <AlertTriangle className="h-3 w-3" strokeWidth={1.75} />
+                                      )}
+                                      {e.escaneado
+                                        ? `Boleto escaneado el ${e.escaneadoEn ? new Date(e.escaneadoEn).toLocaleDateString("es-MX") : ""}`
+                                        : "Boleto sin escanear"}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {historialAxis.compras.length > 0 && (
+                          <div>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Compras</p>
+                            <ul className="space-y-2">
+                              {historialAxis.compras.map((c, i) => (
+                                <li key={i} className="rounded-lg border border-silver px-3 py-2 text-sm">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="font-medium text-foreground">{c.producto}</p>
+                                    <span className="flex-none rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+                                      {c.estado}
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 text-xs text-muted">
+                                    {new Date(c.fecha).toLocaleDateString("es-MX")} · {c.plataforma}
+                                    {formatearCentavos(c.montoCents, c.currency) ? ` · ${formatearCentavos(c.montoCents, c.currency)}` : ""}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                            Synergy Unlimited
+                          </p>
+                          <span
+                            className={`flex w-fit items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                              historialAxis.synergyUnlimited.elegible
+                                ? "bg-success/15 text-success"
+                                : "bg-warning/15 text-warning"
+                            }`}
+                          >
+                            {historialAxis.synergyUnlimited.elegible ? (
+                              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : (
+                              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            )}
+                            {historialAxis.synergyUnlimited.elegible ? "Elegible" : "No elegible"}
+                            {historialAxis.synergyUnlimited.motivo ? ` — ${historialAxis.synergyUnlimited.motivo}` : ""}
+                          </span>
+
+                          {historialAxis.synergyUnlimited.boletosEntregados.length > 0 && (
+                            <ul className="mt-2.5 space-y-2">
+                              {historialAxis.synergyUnlimited.boletosEntregados.map((b, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-silver px-3 py-2 text-sm"
+                                >
+                                  <div className="flex items-center gap-1.5 text-foreground">
+                                    <Ticket className="h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+                                    {b.categoria} · {b.pais.toUpperCase()}
+                                    {b.esTitular ? "" : ` (${b.asignadoNombre ?? "invitado"})`}
+                                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+                                      {b.estado}
+                                    </span>
+                                  </div>
+                                  {b.ticketUrl && (
+                                    <a
+                                      href={b.ticketUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ease-spring flex flex-none items-center gap-1 text-xs font-medium text-primary transition hover:text-primary-deep"
+                                    >
+                                      Ver boleto
+                                      <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                                    </a>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {historialAxis.synergyUnlimited.derechosCalculados.length > 0 &&
+                            historialAxis.synergyUnlimited.boletosEntregados.length === 0 && (
+                              <p className="mt-2 text-xs text-muted">
+                                Tiene derecho a{" "}
+                                {historialAxis.synergyUnlimited.derechosCalculados
+                                  .map((d) => `${d.cantidad} ${d.categoria} (${d.pais.toUpperCase()})`)
+                                  .join(", ")}
+                                , pero todavía no se le ha entregado ningún boleto.
+                              </p>
+                            )}
+                        </div>
+                      </div>
+                    ) : null}
                   </Tarjeta>
 
                   <Tarjeta titulo="Historial de compras (VSL)">
