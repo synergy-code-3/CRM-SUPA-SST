@@ -378,3 +378,10 @@ alter table clientes alter column accesos set default '{"general": [], "vip": []
 -- tocar los boletos de ese cliente. Se libera con el botón "Volver a
 -- calcular automático" del panel.
 alter table clientes add column if not exists accesos_editado_manual boolean not null default false;
+
+-- Id del "lead" en el CRM de VSL (equipo de Soporte) que originó esta
+-- solicitud, cuando se creó sola por la sincronización automática (no a
+-- mano por un vendedor) — ver src/lib/sincronizar-vsl.ts. Único: evita
+-- crear una solicitud duplicada del mismo lead en cada corrida del cron.
+-- NULL para toda solicitud llenada normal por el formulario.
+alter table solicitudes_cliente add column if not exists lead_id_vsl text unique;

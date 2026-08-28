@@ -1,13 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, ExternalLink, X } from "lucide-react";
+import { Check, ExternalLink, Pencil, Sparkles, X } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import type { EstadoSolicitud, SolicitudCliente } from "@/lib/types";
 import { FormularioSolicitudCliente } from "@/components/FormularioSolicitudCliente";
+import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 
 type SolicitudConUrls = SolicitudCliente & { comprobantesUrl: string[] };
+
+const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
+
+type FormEdicion = {
+  nombre: string;
+  correoPago: string;
+  correoAcceso: string;
+  telefono: string;
+  pais: string;
+  evento: string;
+  tipoMembresia: string;
+};
+
+function formEdicionDeSolicitud(s: SolicitudCliente): FormEdicion {
+  return {
+    nombre: s.nombre,
+    correoPago: s.correoPago,
+    correoAcceso: s.correoAcceso,
+    telefono: s.telefono,
+    pais: s.pais ?? "",
+    evento: s.evento,
+    tipoMembresia: s.tipoMembresia,
+  };
+}
 
 const ESTADO_ESTILO: Record<EstadoSolicitud, string> = {
   pendiente: "bg-warning/15 text-warning",
@@ -24,6 +49,10 @@ export default function SolicitudesPage() {
   const { usuario } = useSesion();
   const [solicitudes, setSolicitudes] = useState<SolicitudConUrls[] | null>(null);
   const [procesando, setProcesando] = useState<string | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [formEdicion, setFormEdicion] = useState<FormEdicion | null>(null);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [todosLosEventos, setTodosLosEventos] = useState<string[]>([]);
 
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
@@ -38,6 +67,41 @@ export default function SolicitudesPage() {
     cargar();
   }, [cargar]);
 
+  useEffect(() => {
+    if (!puedeRevisar) return;
+    fetch("/api/eventos-synergy")
+      .then((r) => r.json())
+      .then((data) => setTodosLosEventos([...(data.presencial ?? []), ...(data.webinar ?? []), ...(data.otro ?? [])]))
+      .catch(() => {});
+  }, [puedeRevisar]);
+
+  function abrirEdicion(s: SolicitudCliente) {
+    setEditandoId(s.id);
+    setFormEdicion(formEdicionDeSolicitud(s));
+  }
+
+  async function guardarEdicion(id: string) {
+    if (!formEdicion) return;
+    setGuardandoEdicion(true);
+    try {
+      const res = await fetch(`/api/solicitudes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formEdicion),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo guardar");
+        return;
+      }
+      setEditandoId(null);
+      setFormEdicion(null);
+      cargar();
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  }
+
   async function aprobar(id: string) {
     if (!confirm("¿Aprobar esta solicitud? Se creará el cliente y se dispararán Kajabi, Skool y el WhatsApp de bienvenida."))
       return;
@@ -49,7 +113,7 @@ export default function SolicitudesPage() {
         alert(data.error ?? "No se pudo aprobar la solicitud");
         return;
       }
-      const avisos = [data.avisoKajabi, data.avisoSkool, data.avisoGhl].filter(Boolean);
+      const avisos = [data.avisoKajabi, data.avisoSkool, data.avisoGhl, data.avisoVsl].filter(Boolean);
       if (avisos.length) alert(`Cliente creado, pero hubo problemas:\n\n${avisos.join("\n")}`);
       cargar();
     } finally {
@@ -116,10 +180,19 @@ export default function SolicitudesPage() {
                       <p className="text-xs text-muted">
                         {s.evento} · {s.tipoMembresia} · solicitado por {s.solicitadoPorNombre}
                       </p>
+                      {s.notaRevision && <p className="mt-1 text-xs text-muted">{s.notaRevision}</p>}
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[s.estado]}`}>
-                      {ESTADO_LABEL[s.estado]}
-                    </span>
+                    <div className="flex flex-none items-center gap-1.5">
+                      {s.leadIdVsl && (
+                        <span className="flex items-center gap-1 rounded-full bg-primary-dim px-2.5 py-1 text-xs font-medium text-primary-deep">
+                          <Sparkles className="h-3 w-3" strokeWidth={1.75} />
+                          Detectado por VSL
+                        </span>
+                      )}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[s.estado]}`}>
+                        {ESTADO_LABEL[s.estado]}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -137,24 +210,110 @@ export default function SolicitudesPage() {
                     ))}
                   </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => aprobar(s.id)}
-                      disabled={procesando === s.id}
-                      className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
-                    >
-                      <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
-                      Aprobar y crear cliente
-                    </button>
-                    <button
-                      onClick={() => rechazar(s.id)}
-                      disabled={procesando === s.id}
-                      className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
-                    >
-                      <X className="h-3.5 w-3.5" strokeWidth={1.75} />
-                      Rechazar
-                    </button>
-                  </div>
+                  {editandoId === s.id && formEdicion ? (
+                    <div className="space-y-2.5 rounded-lg border border-primary/30 bg-primary-dim/40 p-3">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <Campo label="Nombre">
+                          <input
+                            value={formEdicion.nombre}
+                            onChange={(e) => setFormEdicion((f) => f && { ...f, nombre: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Teléfono">
+                          <input
+                            value={formEdicion.telefono}
+                            onChange={(e) => setFormEdicion((f) => f && { ...f, telefono: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Correo de acceso">
+                          <input
+                            value={formEdicion.correoAcceso}
+                            onChange={(e) => setFormEdicion((f) => f && { ...f, correoAcceso: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Correo de pago">
+                          <input
+                            value={formEdicion.correoPago}
+                            onChange={(e) => setFormEdicion((f) => f && { ...f, correoPago: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="País">
+                          <input
+                            value={formEdicion.pais}
+                            onChange={(e) => setFormEdicion((f) => f && { ...f, pais: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Tipo de membresía">
+                          <ComboboxBuscador
+                            opciones={OPCIONES_MEMBRESIA}
+                            valor={formEdicion.tipoMembresia}
+                            onChange={(tipoMembresia) => setFormEdicion((f) => f && { ...f, tipoMembresia })}
+                            placeholder="Seleccionar…"
+                          />
+                        </Campo>
+                        <div className="col-span-2">
+                          <Campo label="Evento">
+                            <ComboboxBuscador
+                              opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
+                              valor={formEdicion.evento}
+                              onChange={(evento) => setFormEdicion((f) => f && { ...f, evento })}
+                              placeholder="Seleccionar evento…"
+                            />
+                          </Campo>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditandoId(null);
+                            setFormEdicion(null);
+                          }}
+                          className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => guardarEdicion(s.id)}
+                          disabled={guardandoEdicion}
+                          className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                        >
+                          {guardandoEdicion ? "Guardando…" : "Guardar cambios"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => aprobar(s.id)}
+                        disabled={procesando === s.id}
+                        className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
+                      >
+                        <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Aprobar y crear cliente
+                      </button>
+                      <button
+                        onClick={() => abrirEdicion(s)}
+                        disabled={procesando === s.id}
+                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                      >
+                        <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => rechazar(s.id)}
+                        disabled={procesando === s.id}
+                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
+                      >
+                        <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Rechazar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -196,5 +355,14 @@ export default function SolicitudesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
+      {children}
+    </label>
   );
 }

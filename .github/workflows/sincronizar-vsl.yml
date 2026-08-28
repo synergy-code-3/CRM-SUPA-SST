@@ -1,0 +1,14 @@
+name: Sincronizar VSL
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint de sincronización
+        run: |
+          curl -sf -X POST "https://crm-supa-tvrr.vercel.app/api/cron/sincronizar-vsl?token=${{ secrets.CRON_SECRET }}"

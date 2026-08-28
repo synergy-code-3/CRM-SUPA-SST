@@ -19,6 +19,7 @@ type SolicitudRow = {
   revisado_en: string | null;
   cliente_id: string | null;
   creado_en: string;
+  lead_id_vsl: string | null;
 };
 
 function filaASolicitud(row: SolicitudRow): SolicitudCliente {
@@ -40,6 +41,7 @@ function filaASolicitud(row: SolicitudRow): SolicitudCliente {
     revisadoEn: row.revisado_en,
     clienteId: row.cliente_id,
     creadoEn: row.creado_en,
+    leadIdVsl: row.lead_id_vsl,
   };
 }
 
@@ -55,6 +57,7 @@ export async function crearSolicitud(input: {
   comprobantes: string[];
   solicitadoPorId: string;
   solicitadoPorNombre: string;
+  leadIdVsl?: string | null;
 }): Promise<SolicitudCliente> {
   const { data, error } = await supabase
     .from("solicitudes_cliente")
@@ -70,7 +73,54 @@ export async function crearSolicitud(input: {
       comprobantes: input.comprobantes,
       solicitado_por_id: input.solicitadoPorId,
       solicitado_por_nombre: input.solicitadoPorNombre,
+      lead_id_vsl: input.leadIdVsl ?? null,
     })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaASolicitud(data as SolicitudRow);
+}
+
+export async function obtenerSolicitudPorLeadVsl(leadId: string): Promise<SolicitudCliente | null> {
+  const { data, error } = await supabase
+    .from("solicitudes_cliente")
+    .select("*")
+    .eq("lead_id_vsl", leadId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? filaASolicitud(data as SolicitudRow) : null;
+}
+
+// Antes de aprobar/rechazar el admin puede corregir estos campos — por
+// ejemplo si la sincronización automática de VSL adivinó mal el evento o el
+// país. Después de aprobada/rechazada la solicitud queda fija (el alta ya
+// se hizo con esos datos).
+export async function editarSolicitud(
+  id: string,
+  cambios: {
+    nombre?: string;
+    correoPago?: string;
+    correoAcceso?: string;
+    telefono?: string;
+    pais?: string | null;
+    evento?: string;
+    tipoMembresia?: string;
+  }
+): Promise<SolicitudCliente> {
+  const patch: Record<string, string | null> = {};
+  if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim();
+  if (cambios.correoPago !== undefined) patch.correo_pago = cambios.correoPago.trim().toLowerCase();
+  if (cambios.correoAcceso !== undefined) patch.correo_acceso = cambios.correoAcceso.trim().toLowerCase();
+  if (cambios.telefono !== undefined) patch.telefono = cambios.telefono.trim();
+  if (cambios.pais !== undefined) patch.pais = cambios.pais?.trim() || null;
+  if (cambios.evento !== undefined) patch.evento = cambios.evento.trim();
+  if (cambios.tipoMembresia !== undefined) patch.tipo_membresia = cambios.tipoMembresia.trim();
+
+  const { data, error } = await supabase
+    .from("solicitudes_cliente")
+    .update(patch)
+    .eq("id", id)
+    .eq("estado", "pendiente")
     .select("*")
     .single();
   if (error) throw error;

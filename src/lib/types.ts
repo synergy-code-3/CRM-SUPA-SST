@@ -196,6 +196,9 @@ export type SolicitudCliente = {
   revisadoEn: string | null;
   clienteId: string | null;
   creadoEn: string;
+  // Id del lead en el CRM de VSL cuando esta solicitud se creó sola por la
+  // sincronización automática — null si la llenó un vendedor a mano.
+  leadIdVsl: string | null;
 };
 
 // "Otras Ofertas": roster independiente de Clientes (Club Sinergético). Ver

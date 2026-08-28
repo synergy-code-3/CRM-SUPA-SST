@@ -15,6 +15,7 @@ const PREFIJOS_PUBLICOS_API = [
   "/api/webhooks/hotmart",
   "/api/webhooks/ghl-bienvenida-wa",
   "/api/cron/sincronizar-kajabi",
+  "/api/cron/sincronizar-vsl",
 ];
 
 export async function middleware(req: NextRequest) {

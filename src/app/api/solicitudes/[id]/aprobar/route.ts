@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { altaCompletaCliente } from "@/lib/alta-cliente";
 import { marcarSolicitudAprobada, obtenerSolicitud } from "@/lib/solicitudes";
+import { marcarAccesoDadoVsl } from "@/lib/vsl-soporte";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("revisarSolicitudes");
@@ -32,7 +33,21 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     );
 
     const actualizada = await marcarSolicitudAprobada(id, cliente.id, permiso.usuario.nombre);
-    return NextResponse.json({ solicitud: actualizada, cliente, avisoKajabi, avisoSkool, avisoGhl });
+
+    // Si esta solicitud la creó sola la sincronización con VSL, le avisamos
+    // que ya se le dio acceso — resiliente: si VSL falla, no bloquea la
+    // aprobación (el cliente ya quedó creado bien de este lado de todos
+    // modos), simplemente no se refleja del lado de ellos por ahora.
+    let avisoVsl: string | null = null;
+    if (solicitud.leadIdVsl) {
+      try {
+        await marcarAccesoDadoVsl(solicitud.leadIdVsl);
+      } catch (err) {
+        avisoVsl = err instanceof Error ? err.message : "No se pudo avisar a VSL";
+      }
+    }
+
+    return NextResponse.json({ solicitud: actualizada, cliente, avisoKajabi, avisoSkool, avisoGhl, avisoVsl });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear el cliente";
     return NextResponse.json({ error: message }, { status: 400 });
