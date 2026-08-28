@@ -1885,6 +1885,19 @@ export function ClientePanel({
 
               {tab === "vsl" && (
                 <div className="space-y-5">
+                  {/* Timeline general (otro CRM, distinto de VSL) — pendiente
+                      de conectar: falta URL/autenticación/formato de su API.
+                      Mostrará primer contacto, evento, tipo de acceso y
+                      monto pagado, si escaneó el boleto, plataforma y monto
+                      de compra, y si ya se le dio acceso a Synergy
+                      Unlimited. */}
+                  <Tarjeta titulo="Historial">
+                    <p className="text-sm text-muted">
+                      Pendiente de conectar — todavía falta la información técnica del otro CRM (URL, autenticación
+                      y formato de respuesta).
+                    </p>
+                  </Tarjeta>
+
                   <Tarjeta titulo="Historial de compras (VSL)">
                     {cargandoHistoricoVsl ? (
                       <p className="text-sm text-muted">Consultando en el CRM de VSL…</p>
