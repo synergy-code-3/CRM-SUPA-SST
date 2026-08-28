@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
+import { detectarProductoWjsMx, mayorMembresia } from "./hotmart";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
@@ -680,6 +681,51 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
   return filaACliente(data as ClienteRow);
 }
 
+// Un cliente que YA existe vuelve a comprar uno de los 3 productos de
+// Hotmart mapeados a WJS-MX (en vez de usar el botón "Renovar" del CRM) —
+// funciona casi como una renovación: ajusta fecha_renovacion (nunca
+// fecha_inscripcion, quedan como dos fechas separadas igual que en
+// renovarMembresia), sube el tipo de membresía solo si el nuevo es mayor al
+// que ya tenía, y recalcula los boletos con el motor normal por evento (no
+// la regla fija por país de "Renovar" — aquí sí se conoce el evento real,
+// así que acceso_plataforma se deja en "Si", no en "Renovación").
+export async function aplicarCompraHotmartWjsMx(
+  id: string,
+  evento: string,
+  tipoMembresiaDetectado: string,
+  producto: string
+): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+  const cliente = filaACliente(fila as ClienteRow);
+
+  const tipoMembresia = mayorMembresia(cliente.tipoMembresia, tipoMembresiaDetectado);
+  const fechaRenovacion = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("clientes")
+    .update({
+      evento,
+      tipo_membresia: tipoMembresia,
+      acceso_plataforma: "Si",
+      fecha_renovacion: fechaRenovacion,
+      actualizado_en: fechaRenovacion,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  const fin = finAccesoCalculado(null, fechaRenovacion);
+  await registrarEvento(
+    id,
+    "COMPRA_HOTMART",
+    `Compra detectada en Hotmart: "${producto}" — funciona como renovación (${tipoMembresia}), fin de acceso: ${fin ? formatearFechaSkool(fin) : "—"}`,
+    "Hotmart"
+  );
+
+  return recalcularAccesos(id);
+}
+
 // Días completos entre dos fechas ISO, usando componentes de fecha (no
 // horas/minutos) para no arrastrar diferencias de horario — mismo criterio
 // que finDeAccesoDentroDeUnAnio.
@@ -1113,12 +1159,29 @@ export async function registrarTagKajabi(
     // el que ya tenga capturado en su perfil de Kajabi — así este alta
     // automática arranca con teléfono igual que una manual, sin esperar a
     // que alguien lo escriba a mano.
-    const telefonoPendiente = await tomarTelefonoPendienteHotmart(id);
-    const telefonoCrudo = telefonoPendiente ?? (await obtenerPerfilKajabi(id).catch(() => null))?.telefono ?? null;
+    const pendientes = await tomarPendientesHotmart(id);
+    const telefonoCrudo =
+      pendientes.find((p) => p.telefono)?.telefono ?? (await obtenerPerfilKajabi(id).catch(() => null))?.telefono ?? null;
     // Mismo formato E.164 ("+...") que actualizarTelefonoCliente usa cuando
     // el cliente ya existe — sin esto, un alta automática (ésta) quedaba con
     // un teléfono sin "+" y el link tel: del panel del cliente salía roto.
     const telefono = normalizarTelefono(telefonoCrudo);
+
+    // Si alguna de las compras en espera es de uno de los 3 productos del
+    // Club Sinergético MX en Hotmart, se le asigna el evento WJS-MX desde
+    // la creación (con el tipo de membresía más alto entre las que haya,
+    // ej. compró 3 Meses y luego hizo upgrade a 1 Año antes de que este
+    // sincronizador lo alcanzara a crear).
+    let eventoWjs: string | null = null;
+    let tipoMembresiaWjs: string | null = null;
+    for (const p of pendientes) {
+      const match = detectarProductoWjsMx(p.producto);
+      if (match) {
+        eventoWjs = match.evento;
+        tipoMembresiaWjs = mayorMembresia(tipoMembresiaWjs, match.tipoMembresia);
+      }
+    }
+
     const { data, error } = await supabase
       .from("clientes")
       .insert({
@@ -1134,12 +1197,29 @@ export async function registrarTagKajabi(
         // reflejarlo desde el minuto uno, no quedarse en "sin acceso" solo
         // porque el alta no pasó por el formulario del CRM.
         acceso_plataforma: "Si",
+        ...(eventoWjs ? { evento: eventoWjs, tipo_membresia: tipoMembresiaWjs } : {}),
       })
       .select("*")
       .single();
     if (error) throw error;
     cliente = filaACliente(data as ClienteRow);
     await registrarEvento(id, "CREACION", "Cliente creado automáticamente desde Kajabi", "Kajabi");
+
+    for (const p of pendientes) {
+      const match = detectarProductoWjsMx(p.producto);
+      if (!match) continue;
+      const fecha = new Date(p.recibidoEn).toLocaleDateString("es-MX");
+      await registrarEvento(
+        id,
+        "COMPRA_HOTMART",
+        `Compra detectada en Hotmart: "${p.producto}" — ${match.tipoMembresia} (${fecha})`,
+        "Hotmart"
+      );
+    }
+
+    if (eventoWjs) {
+      cliente = await recalcularAccesos(id);
+    }
   }
 
   const detalle = `Tag de Kajabi asignado: "${tagNombre}"`;
@@ -1165,25 +1245,31 @@ export async function guardarTelefonoPendienteHotmart(
   telefono: string,
   producto: string | null
 ): Promise<void> {
+  // Insert, no upsert: puede llegar más de una compra para el mismo correo
+  // antes de que el cliente exista en el CRM (ej. compra el paquete chico y
+  // el mismo día hace upgrade al grande) — cada una se guarda como su
+  // propia fila para no perder ninguna. Ver tomarPendientesHotmart.
   const { error } = await supabase
     .from("hotmart_pendientes")
-    .upsert({ email: normalizarEmail(email), telefono, producto, recibido_en: new Date().toISOString() });
+    .insert({ email: normalizarEmail(email), telefono, producto, recibido_en: new Date().toISOString() });
   if (error) throw error;
 }
 
-// Lee el teléfono en espera para este correo y lo borra en el mismo paso
-// (una sola vez) — si no hay nada pendiente, null.
-async function tomarTelefonoPendienteHotmart(email: string): Promise<string | null> {
+type PendienteHotmart = { telefono: string; producto: string | null; recibidoEn: string };
+
+// Lee todas las compras en espera para este correo (más vieja primero) y las
+// borra en el mismo paso — si no hay nada pendiente, arreglo vacío.
+async function tomarPendientesHotmart(email: string): Promise<PendienteHotmart[]> {
   const id = normalizarEmail(email);
   const { data, error } = await supabase
     .from("hotmart_pendientes")
-    .select("telefono")
+    .select("telefono,producto,recibido_en")
     .eq("email", id)
-    .maybeSingle();
+    .order("recibido_en", { ascending: true });
   if (error) throw error;
-  if (!data) return null;
+  if (!data || data.length === 0) return [];
   await supabase.from("hotmart_pendientes").delete().eq("email", id);
-  return data.telefono;
+  return data.map((f) => ({ telefono: f.telefono, producto: f.producto, recibidoEn: f.recibido_en }));
 }
 
 const CURSOR_SYNC_KAJABI = "ultimo_customer_creado_en";

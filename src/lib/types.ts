@@ -103,7 +103,8 @@ export type TipoEvento =
   | "KAJABI"
   | "ELIMINADO"
   | "OFERTA_OTORGADA"
-  | "OFERTA_REVOCADA";
+  | "OFERTA_REVOCADA"
+  | "COMPRA_HOTMART";
 
 // Tipos "activos": los que el buscador de Actividad ofrece para filtrar. Los
 // marcados como legado arriba solo existen en eventos viejos ya guardados —
@@ -125,6 +126,7 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "ELIMINADO",
   "OFERTA_OTORGADA",
   "OFERTA_REVOCADA",
+  "COMPRA_HOTMART",
 ];
 
 export type EventoTimeline = {
@@ -158,6 +160,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   ELIMINADO: "Cliente eliminado",
   OFERTA_OTORGADA: "Oferta adicional otorgada",
   OFERTA_REVOCADA: "Oferta adicional revocada",
+  COMPRA_HOTMART: "Compra detectada (Hotmart)",
 };
 
 export type Db = {

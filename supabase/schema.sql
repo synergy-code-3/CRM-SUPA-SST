@@ -245,12 +245,24 @@ alter table clientes add column if not exists fin_acceso_al_pausar timestamptz;
 -- DESPUÉS de que ya llegó el webhook de Hotmart con el teléfono real. Se
 -- guarda aquí hasta que el cliente exista, y ese sincronizador lo recoge.
 create table if not exists hotmart_pendientes (
-  email text primary key,
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
   telefono text not null,
   producto text,
   recibido_en timestamptz not null default now()
 );
+create index if not exists idx_hotmart_pendientes_email on hotmart_pendientes (email);
 alter table hotmart_pendientes enable row level security;
+
+-- Migración desde la forma vieja (email como primary key, una sola fila por
+-- correo) a la de arriba: si la tabla ya existe de antes, correr esto una
+-- vez a mano en Supabase — se dejaba pisar una compra pendiente por otra si
+-- llegaban dos antes de que el cliente existiera (ej. compra el paquete
+-- chico y luego el upgrade el mismo día).
+-- alter table hotmart_pendientes add column if not exists id uuid not null default gen_random_uuid();
+-- alter table hotmart_pendientes drop constraint if exists hotmart_pendientes_pkey;
+-- alter table hotmart_pendientes add primary key (id);
+-- create index if not exists idx_hotmart_pendientes_email on hotmart_pendientes (email);
 
 -- Solicitudes de alta de cliente: los vendedores (admin/coordinador/abeja)
 -- ya no mandan los datos del cliente por WhatsApp, los llenan aquí junto con
