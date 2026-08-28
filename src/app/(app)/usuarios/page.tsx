@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { KeyRound, Plus, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus } from "lucide-react";
+import { KeyRound, Plus, Search, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import type { Rol } from "@/lib/permisos";
 
@@ -65,6 +65,7 @@ export default function UsuariosPage() {
   const [error, setError] = useState<string | null>(null);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [verPerfil, setVerPerfil] = useState<Usuario | null>(null);
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     if (!cargandoSesion && yo && yo.rol !== "admin") router.replace("/clientes");
@@ -118,6 +119,17 @@ export default function UsuariosPage() {
 
   const pendientes = (usuarios ?? []).filter(esPendienteDeAprobar);
 
+  // Cada palabra escrita debe aparecer en algún lado (nombre, correo o
+  // cualquiera de los teléfonos) — mismo criterio que el buscador de
+  // Clientes, para que "juan garcia" encuentre a "Juan Carlos García" sin
+  // que el orden de las palabras importe.
+  const palabrasBusqueda = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const usuariosFiltrados = (usuarios ?? []).filter((u) => {
+    if (palabrasBusqueda.length === 0) return true;
+    const texto = [u.nombre, u.email, ...u.telefonos].join(" ").toLowerCase();
+    return palabrasBusqueda.every((p) => texto.includes(p));
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -146,6 +158,16 @@ export default function UsuariosPage() {
         <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>
       )}
 
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar por nombre, correo o teléfono…"
+          className="w-full max-w-md rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
+        />
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-silver">
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">
@@ -159,7 +181,14 @@ export default function UsuariosPage() {
             </tr>
           </thead>
           <tbody>
-            {(usuarios ?? []).map((u) => (
+            {usuarios && usuariosFiltrados.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted">
+                  Ningún usuario coincide con &quot;{busqueda}&quot;.
+                </td>
+              </tr>
+            )}
+            {usuariosFiltrados.map((u) => (
               <tr key={u.id} className="border-t border-silver/60">
                 <td className="px-4 py-3 font-medium text-foreground">
                   <button
