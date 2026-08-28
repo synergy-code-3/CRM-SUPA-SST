@@ -31,7 +31,7 @@ async function listarConvertidosVsl(): Promise<ConvertidoVsl[]> {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`El CRM de Soporte respondió ${res.status}`);
+  if (!res.ok) throw new Error(`El CRM de VSL respondió ${res.status}`);
   const data = (await res.json()) as RespuestaConvertidos;
   return data.convertidos ?? [];
 }

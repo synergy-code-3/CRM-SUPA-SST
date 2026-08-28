@@ -351,14 +351,14 @@ export function ClientePanel({
     fetch(`/api/clientes/${encodeURIComponent(clienteId)}/vsl-historico`)
       .then(async (r) => {
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error ?? "No se pudo consultar el CRM de Soporte");
+        if (!r.ok) throw new Error(data.error ?? "No se pudo consultar el CRM de VSL");
         return data;
       })
       .then((data) => {
         if (!cancelado) setHistoricoVsl(data.historico ?? []);
       })
       .catch((err) => {
-        if (!cancelado) setErrorHistoricoVsl(err instanceof Error ? err.message : "No se pudo consultar el CRM de Soporte");
+        if (!cancelado) setErrorHistoricoVsl(err instanceof Error ? err.message : "No se pudo consultar el CRM de VSL");
       })
       .finally(() => {
         if (!cancelado) {
@@ -1885,9 +1885,9 @@ export function ClientePanel({
 
               {tab === "vsl" && (
                 <div className="space-y-5">
-                  <Tarjeta titulo="Historial de compras (Soporte)">
+                  <Tarjeta titulo="Historial de compras (VSL)">
                     {cargandoHistoricoVsl ? (
-                      <p className="text-sm text-muted">Consultando en el CRM de Soporte…</p>
+                      <p className="text-sm text-muted">Consultando en el CRM de VSL…</p>
                     ) : errorHistoricoVsl ? (
                       <div className="space-y-2">
                         <p className="text-sm text-danger">{errorHistoricoVsl}</p>
@@ -1901,7 +1901,7 @@ export function ClientePanel({
                       </div>
                     ) : historicoVsl && historicoVsl.length === 0 ? (
                       <p className="text-sm text-muted">
-                        Sin compras registradas para este correo en el CRM de Soporte.
+                        Sin compras registradas para este correo en el CRM de VSL.
                       </p>
                     ) : historicoVsl ? (
                       <ul className="space-y-2.5">
