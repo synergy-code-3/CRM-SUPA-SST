@@ -255,14 +255,20 @@ create index if not exists idx_hotmart_pendientes_email on hotmart_pendientes (e
 alter table hotmart_pendientes enable row level security;
 
 -- Migración desde la forma vieja (email como primary key, una sola fila por
--- correo) a la de arriba: si la tabla ya existe de antes, correr esto una
--- vez a mano en Supabase — se dejaba pisar una compra pendiente por otra si
--- llegaban dos antes de que el cliente existiera (ej. compra el paquete
--- chico y luego el upgrade el mismo día).
--- alter table hotmart_pendientes add column if not exists id uuid not null default gen_random_uuid();
--- alter table hotmart_pendientes drop constraint if exists hotmart_pendientes_pkey;
--- alter table hotmart_pendientes add primary key (id);
--- create index if not exists idx_hotmart_pendientes_email on hotmart_pendientes (email);
+-- correo): se dejaba pisar una compra pendiente por otra si llegaban dos
+-- antes de que el cliente existiera (ej. compra el paquete chico y luego el
+-- upgrade el mismo día). Idempotente — no hace nada si ya se corrió antes.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_name = 'hotmart_pendientes' and column_name = 'id'
+  ) then
+    alter table hotmart_pendientes add column id uuid not null default gen_random_uuid();
+    alter table hotmart_pendientes drop constraint hotmart_pendientes_pkey;
+    alter table hotmart_pendientes add primary key (id);
+  end if;
+end $$;
 
 -- Solicitudes de alta de cliente: los vendedores (admin/coordinador/abeja)
 -- ya no mandan los datos del cliente por WhatsApp, los llenan aquí junto con
