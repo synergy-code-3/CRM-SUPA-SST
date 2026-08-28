@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   actualizarTelefonoCliente,
-  aplicarCompraHotmartWjsMx,
+  aplicarCompraHotmartClubMx,
   guardarTelefonoPendienteHotmart,
   marcarMensajeBienvenidaWa,
   normalizarEmail,
@@ -9,7 +9,7 @@ import {
   obtenerCliente,
 } from "@/lib/db";
 import { altaEnGhl } from "@/lib/ghl";
-import { detectarProductoWjsMx, extraerDatosHotmart } from "@/lib/hotmart";
+import { detectarProductoClubMx, extraerDatosHotmart } from "@/lib/hotmart";
 
 // Hotmart no firma sus webhooks con HMAC (a diferencia de otros proveedores)
 // — la autenticidad se valida con un secreto propio embebido en la URL
@@ -42,19 +42,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, guardado: "pendiente" });
   }
 
-  // Un cliente que ya existe vuelve a comprar uno de los 3 productos del
-  // Club Sinergético MX (evento WJS-MX) — funciona casi como una
-  // renovación: ver aplicarCompraHotmartWjsMx. Rama independiente del
-  // backfill de teléfono normal de abajo: corre aunque ya tuviera teléfono,
-  // y siempre reenvía el WhatsApp de bienvenida (se siente como un
-  // "bienvenido de vuelta"), sin importar si ya se le había mandado antes.
+  // Un cliente que ya existe vuelve a comprar uno de los productos del Club
+  // Sinergético MX mapeados por Hotmart (ver detectarProductoClubMx) —
+  // funciona casi como una renovación: ver aplicarCompraHotmartClubMx. Rama
+  // independiente del backfill de teléfono normal de abajo: corre aunque ya
+  // tuviera teléfono, y siempre reenvía el WhatsApp de bienvenida (se siente
+  // como un "bienvenido de vuelta"), sin importar si ya se le había mandado
+  // antes.
   const producto = datos.producto;
-  const matchWjs = detectarProductoWjsMx(producto);
-  if (matchWjs && producto) {
+  const matchClubMx = detectarProductoClubMx(producto);
+  if (matchClubMx && producto) {
     if (!cliente.telefono) {
       await actualizarTelefonoCliente(cliente.id, datos.telefono);
     }
-    await aplicarCompraHotmartWjsMx(cliente.id, matchWjs.evento, matchWjs.tipoMembresia, producto);
+    await aplicarCompraHotmartClubMx(cliente.id, matchClubMx.evento, matchClubMx.tipoMembresia, producto);
 
     let avisoWa: string | null = null;
     const telefono = cliente.telefono ?? normalizarTelefono(datos.telefono);
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       }
       await marcarMensajeBienvenidaWa(cliente.id, "Pendiente");
     }
-    return NextResponse.json({ ok: true, compraWjsMx: true, tipoMembresia: matchWjs.tipoMembresia, avisoWa });
+    return NextResponse.json({ ok: true, compraClubMx: true, evento: matchClubMx.evento, tipoMembresia: matchClubMx.tipoMembresia, avisoWa });
   }
 
   if (cliente.telefono) {

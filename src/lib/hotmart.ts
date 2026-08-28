@@ -33,15 +33,19 @@ export function extraerDatosHotmart(payload: unknown): DatosHotmart | null {
   return { email, telefono, producto };
 }
 
-// Los 3 productos del Club Sinergético MX en Hotmart, mapeados al evento
-// WJS-MX (ya existe en el catálogo de boletos con su propia asignación por
-// duración) y al tipo de membresía correspondiente. Comparación flexible
+// Productos del Club Sinergético MX en Hotmart, mapeados al evento
+// correspondiente (ya existen en el catálogo de boletos con su propia
+// asignación por duración) y al tipo de membresía. Comparación flexible
 // (sin mayúsculas/acentos): el nombre real trae variantes ("SINERGÉTICO" vs
-// "SINERGETICO").
-const PRODUCTOS_WJS_MX: Record<string, string> = {
-  "club sinergetico mx js | 3 meses": "3 Meses",
-  "club sinergetico mx js | 6 meses": "6 Meses",
-  "club sinergetico mx js | 1 ano": "12 Meses",
+// "SINERGETICO"). Cada funnel (JS, MDL, ...) tiene sus propios 3 productos
+// (3/6/12 meses) mapeados al mismo evento.
+const PRODUCTOS_CLUB_MX: Record<string, { evento: string; tipoMembresia: string }> = {
+  "club sinergetico mx js | 3 meses": { evento: "WJS-MX", tipoMembresia: "3 Meses" },
+  "club sinergetico mx js | 6 meses": { evento: "WJS-MX", tipoMembresia: "6 Meses" },
+  "club sinergetico mx js | 1 ano": { evento: "WJS-MX", tipoMembresia: "12 Meses" },
+  "club sinergetico mx mdl | 3 meses": { evento: "WMDL-MX", tipoMembresia: "3 Meses" },
+  "club sinergetico mx mdl | 6 meses": { evento: "WMDL-MX", tipoMembresia: "6 Meses" },
+  "club sinergetico mx mdl | 1 ano": { evento: "WMDL-MX", tipoMembresia: "12 Meses" },
 };
 
 const DIACRITICOS = new RegExp("[\\u0300-\\u036f]", "g");
@@ -50,10 +54,9 @@ function normalizarNombreProducto(producto: string): string {
   return producto.trim().toLowerCase().normalize("NFD").replace(DIACRITICOS, "");
 }
 
-export function detectarProductoWjsMx(producto: string | null): { evento: string; tipoMembresia: string } | null {
+export function detectarProductoClubMx(producto: string | null): { evento: string; tipoMembresia: string } | null {
   if (!producto) return null;
-  const tipoMembresia = PRODUCTOS_WJS_MX[normalizarNombreProducto(producto)];
-  return tipoMembresia ? { evento: "WJS-MX", tipoMembresia } : null;
+  return PRODUCTOS_CLUB_MX[normalizarNombreProducto(producto)] ?? null;
 }
 
 const ORDEN_MEMBRESIA: Record<string, number> = { "3 Meses": 3, "6 Meses": 6, "12 Meses": 12 };

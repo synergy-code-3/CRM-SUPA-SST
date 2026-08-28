@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
-import { detectarProductoWjsMx, mayorMembresia } from "./hotmart";
+import { detectarProductoClubMx, mayorMembresia } from "./hotmart";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
@@ -681,15 +681,16 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
   return filaACliente(data as ClienteRow);
 }
 
-// Un cliente que YA existe vuelve a comprar uno de los 3 productos de
-// Hotmart mapeados a WJS-MX (en vez de usar el botón "Renovar" del CRM) —
-// funciona casi como una renovación: ajusta fecha_renovacion (nunca
-// fecha_inscripcion, quedan como dos fechas separadas igual que en
-// renovarMembresia), sube el tipo de membresía solo si el nuevo es mayor al
-// que ya tenía, y recalcula los boletos con el motor normal por evento (no
-// la regla fija por país de "Renovar" — aquí sí se conoce el evento real,
-// así que acceso_plataforma se deja en "Si", no en "Renovación").
-export async function aplicarCompraHotmartWjsMx(
+// Un cliente que YA existe vuelve a comprar uno de los productos del Club
+// Sinergético MX mapeados por Hotmart (ver detectarProductoClubMx, en vez
+// de usar el botón "Renovar" del CRM) — funciona casi como una renovación:
+// ajusta fecha_renovacion (nunca fecha_inscripcion, quedan como dos fechas
+// separadas igual que en renovarMembresia), sube el tipo de membresía solo
+// si el nuevo es mayor al que ya tenía, y recalcula los boletos con el
+// motor normal por evento (no la regla fija por país de "Renovar" — aquí
+// sí se conoce el evento real, así que acceso_plataforma se deja en "Si",
+// no en "Renovación").
+export async function aplicarCompraHotmartClubMx(
   id: string,
   evento: string,
   tipoMembresiaDetectado: string,
@@ -1167,19 +1168,22 @@ export async function registrarTagKajabi(
     // un teléfono sin "+" y el link tel: del panel del cliente salía roto.
     const telefono = normalizarTelefono(telefonoCrudo);
 
-    // Si alguna de las compras en espera es de uno de los 3 productos del
-    // Club Sinergético MX en Hotmart, se le asigna el evento WJS-MX desde
-    // la creación (con el tipo de membresía más alto entre las que haya,
-    // ej. compró 3 Meses y luego hizo upgrade a 1 Año antes de que este
-    // sincronizador lo alcanzara a crear).
-    let eventoWjs: string | null = null;
-    let tipoMembresiaWjs: string | null = null;
+    // Si alguna de las compras en espera es de uno de los productos del
+    // Club Sinergético MX mapeados por Hotmart, se le asigna el evento
+    // correspondiente desde la creación (con el tipo de membresía más alto
+    // entre las que haya, ej. compró 3 Meses y luego hizo upgrade a 1 Año
+    // antes de que este sincronizador lo alcanzara a crear).
+    let eventoDetectado: string | null = null;
+    let tipoMembresiaDetectado: string | null = null;
     for (const p of pendientes) {
-      const match = detectarProductoWjsMx(p.producto);
-      if (match) {
-        eventoWjs = match.evento;
-        tipoMembresiaWjs = mayorMembresia(tipoMembresiaWjs, match.tipoMembresia);
-      }
+      const match = detectarProductoClubMx(p.producto);
+      if (!match) continue;
+      // Si hubiera compras de dos funnels distintos (raro), gana el evento
+      // de la compra con la membresía más alta — es el mismo criterio que
+      // ya se usa para decidir la membresía.
+      const subeElTipo = mayorMembresia(tipoMembresiaDetectado, match.tipoMembresia) !== tipoMembresiaDetectado;
+      tipoMembresiaDetectado = mayorMembresia(tipoMembresiaDetectado, match.tipoMembresia);
+      if (subeElTipo || !eventoDetectado) eventoDetectado = match.evento;
     }
 
     const { data, error } = await supabase
@@ -1197,7 +1201,7 @@ export async function registrarTagKajabi(
         // reflejarlo desde el minuto uno, no quedarse en "sin acceso" solo
         // porque el alta no pasó por el formulario del CRM.
         acceso_plataforma: "Si",
-        ...(eventoWjs ? { evento: eventoWjs, tipo_membresia: tipoMembresiaWjs } : {}),
+        ...(eventoDetectado ? { evento: eventoDetectado, tipo_membresia: tipoMembresiaDetectado } : {}),
       })
       .select("*")
       .single();
@@ -1206,7 +1210,7 @@ export async function registrarTagKajabi(
     await registrarEvento(id, "CREACION", "Cliente creado automáticamente desde Kajabi", "Kajabi");
 
     for (const p of pendientes) {
-      const match = detectarProductoWjsMx(p.producto);
+      const match = detectarProductoClubMx(p.producto);
       if (!match) continue;
       const fecha = new Date(p.recibidoEn).toLocaleDateString("es-MX");
       await registrarEvento(
@@ -1217,7 +1221,7 @@ export async function registrarTagKajabi(
       );
     }
 
-    if (eventoWjs) {
+    if (eventoDetectado) {
       cliente = await recalcularAccesos(id);
     }
   }
