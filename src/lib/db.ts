@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
-import { detectarProductoClubMx, mayorMembresia } from "./hotmart";
+import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
@@ -682,15 +682,15 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
 }
 
 // Un cliente que YA existe vuelve a comprar uno de los productos del Club
-// Sinergético MX mapeados por Hotmart (ver detectarProductoClubMx, en vez
-// de usar el botón "Renovar" del CRM) — funciona casi como una renovación:
+// Sinergético mapeados por Hotmart (ver detectarProductoClubSinergetico, en
+// vez de usar el botón "Renovar" del CRM) — funciona casi como una renovación:
 // ajusta fecha_renovacion (nunca fecha_inscripcion, quedan como dos fechas
 // separadas igual que en renovarMembresia), sube el tipo de membresía solo
 // si el nuevo es mayor al que ya tenía, y recalcula los boletos con el
 // motor normal por evento (no la regla fija por país de "Renovar" — aquí
 // sí se conoce el evento real, así que acceso_plataforma se deja en "Si",
 // no en "Renovación").
-export async function aplicarCompraHotmartClubMx(
+export async function aplicarCompraHotmartClubSinergetico(
   id: string,
   evento: string,
   tipoMembresiaDetectado: string,
@@ -1176,7 +1176,7 @@ export async function registrarTagKajabi(
     let eventoDetectado: string | null = null;
     let tipoMembresiaDetectado: string | null = null;
     for (const p of pendientes) {
-      const match = detectarProductoClubMx(p.producto);
+      const match = detectarProductoClubSinergetico(p.producto);
       if (!match) continue;
       // Si hubiera compras de dos funnels distintos (raro), gana el evento
       // de la compra con la membresía más alta — es el mismo criterio que
@@ -1210,7 +1210,7 @@ export async function registrarTagKajabi(
     await registrarEvento(id, "CREACION", "Cliente creado automáticamente desde Kajabi", "Kajabi");
 
     for (const p of pendientes) {
-      const match = detectarProductoClubMx(p.producto);
+      const match = detectarProductoClubSinergetico(p.producto);
       if (!match) continue;
       const fecha = new Date(p.recibidoEn).toLocaleDateString("es-MX");
       await registrarEvento(
