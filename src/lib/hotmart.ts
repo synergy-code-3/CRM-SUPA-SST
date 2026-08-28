@@ -40,6 +40,7 @@ export function extraerDatosHotmart(payload: unknown): DatosHotmart | null {
 // "SINERGETICO"). Cada funnel/región (MX JS, MX MDL, LATAM Centro JS, ...)
 // tiene sus propios 3 productos (3/6/12 meses) mapeados a su propio evento.
 const PRODUCTOS_CLUB_SINERGETICO: Record<string, { evento: string; tipoMembresia: string }> = {
+  "club sinergetico general mexico": { evento: "WJS-MX", tipoMembresia: "3 Meses" },
   "club sinergetico mx js | 3 meses": { evento: "WJS-MX", tipoMembresia: "3 Meses" },
   "club sinergetico mx js | 6 meses": { evento: "WJS-MX", tipoMembresia: "6 Meses" },
   "club sinergetico mx js | 1 ano": { evento: "WJS-MX", tipoMembresia: "12 Meses" },
