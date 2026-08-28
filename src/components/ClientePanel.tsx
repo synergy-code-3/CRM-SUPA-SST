@@ -40,6 +40,7 @@ import {
   PlayCircle,
   Gift,
   Ban,
+  ShoppingBag,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -51,14 +52,16 @@ import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
 import { finAccesoCalculado } from "@/lib/fechas";
+import type { ConvertidoVsl } from "@/lib/vsl-soporte";
 
-type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kajabi";
+type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kajabi" | "vsl";
 
 const TABS: { key: Tab; label: string; icon: typeof User }[] = [
   { key: "resumen", label: "Resumen", icon: LayoutGrid },
   { key: "accesos", label: "Accesos", icon: ShieldCheck },
   { key: "seguimiento", label: "Seguimiento", icon: ClipboardList },
   { key: "kajabi", label: "Perfil de Kajabi", icon: IdCard },
+  { key: "vsl", label: "Historial de compras", icon: ShoppingBag },
   { key: "notas", label: "Notas", icon: StickyNote },
   { key: "actividad", label: "Actividad", icon: Activity },
 ];
@@ -186,6 +189,10 @@ export function ClientePanel({
   const [cargandoPerfilKajabi, setCargandoPerfilKajabi] = useState(false);
   const [errorPerfilKajabi, setErrorPerfilKajabi] = useState<string | null>(null);
   const [intentadoPerfilKajabi, setIntentadoPerfilKajabi] = useState(false);
+  const [historicoVsl, setHistoricoVsl] = useState<ConvertidoVsl[] | null>(null);
+  const [cargandoHistoricoVsl, setCargandoHistoricoVsl] = useState(false);
+  const [errorHistoricoVsl, setErrorHistoricoVsl] = useState<string | null>(null);
+  const [intentadoHistoricoVsl, setIntentadoHistoricoVsl] = useState(false);
   const puedeOtorgarOferta = !!usuario && tienePermiso(usuario.rol, "otorgarOferta");
   const [ofertasClub, setOfertasClub] = useState<OfertaOtorgada[]>([]);
   const [catalogoOfertasKajabi, setCatalogoOfertasKajabi] = useState<OpcionCombobox[]>([]);
@@ -242,6 +249,9 @@ export function ClientePanel({
     setPerfilKajabi(null);
     setErrorPerfilKajabi(null);
     setIntentadoPerfilKajabi(false);
+    setHistoricoVsl(null);
+    setErrorHistoricoVsl(null);
+    setIntentadoHistoricoVsl(false);
     setOfertasClub([]);
     setMostrarAgregarOferta(false);
     setOfertaElegida("");
@@ -332,6 +342,34 @@ export function ClientePanel({
       cancelado = true;
     };
   }, [tab, clienteId, intentadoPerfilKajabi]);
+
+  useEffect(() => {
+    if (tab !== "vsl" || intentadoHistoricoVsl) return;
+    let cancelado = false;
+    setCargandoHistoricoVsl(true);
+    setErrorHistoricoVsl(null);
+    fetch(`/api/clientes/${encodeURIComponent(clienteId)}/vsl-historico`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "No se pudo consultar el CRM de Soporte");
+        return data;
+      })
+      .then((data) => {
+        if (!cancelado) setHistoricoVsl(data.historico ?? []);
+      })
+      .catch((err) => {
+        if (!cancelado) setErrorHistoricoVsl(err instanceof Error ? err.message : "No se pudo consultar el CRM de Soporte");
+      })
+      .finally(() => {
+        if (!cancelado) {
+          setCargandoHistoricoVsl(false);
+          setIntentadoHistoricoVsl(true);
+        }
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [tab, clienteId, intentadoHistoricoVsl]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1842,6 +1880,73 @@ export function ClientePanel({
                       </Tarjeta>
                     </>
                   )}
+                </div>
+              )}
+
+              {tab === "vsl" && (
+                <div className="space-y-5">
+                  <Tarjeta titulo="Historial de compras (Soporte)">
+                    {cargandoHistoricoVsl ? (
+                      <p className="text-sm text-muted">Consultando en el CRM de Soporte…</p>
+                    ) : errorHistoricoVsl ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-danger">{errorHistoricoVsl}</p>
+                        <button
+                          onClick={() => setIntentadoHistoricoVsl(false)}
+                          className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Reintentar
+                        </button>
+                      </div>
+                    ) : historicoVsl && historicoVsl.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        Sin compras registradas para este correo en el CRM de Soporte.
+                      </p>
+                    ) : historicoVsl ? (
+                      <ul className="space-y-2.5">
+                        {historicoVsl.map((c) => (
+                          <li key={c.leadId} className="rounded-lg border border-silver px-3 py-2.5 text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-medium text-foreground">{c.producto}</p>
+                              <span
+                                className={`flex-none rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                  c.accesoDado ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+                                }`}
+                              >
+                                {c.accesoDado ? "Acceso dado" : "Acceso pendiente"}
+                              </span>
+                            </div>
+                            <dl className="mt-1.5 space-y-1 text-xs text-muted">
+                              {c.fechaVenta && (
+                                <p>
+                                  Vendido el {new Date(c.fechaVenta).toLocaleDateString("es-MX")}
+                                  {c.vendedor ? ` · ${c.vendedor}` : ""}
+                                </p>
+                              )}
+                              {c.monto != null && (
+                                <p>
+                                  {c.monto.toLocaleString("es-MX")}
+                                  {c.moneda ? ` ${c.moneda}` : ""} · {c.fuenteVenta}
+                                </p>
+                              )}
+                              {c.notas && <p className="whitespace-pre-wrap text-foreground/80">{c.notas}</p>}
+                            </dl>
+                            {c.comprobanteUrl && (
+                              <a
+                                href={c.comprobanteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ease-spring mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary transition hover:text-primary-deep"
+                              >
+                                Ver comprobante →
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </Tarjeta>
                 </div>
               )}
 
