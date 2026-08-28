@@ -59,9 +59,9 @@ type Tab = "resumen" | "accesos" | "seguimiento" | "notas" | "actividad" | "kaja
 const TABS: { key: Tab; label: string; icon: typeof User }[] = [
   { key: "resumen", label: "Resumen", icon: LayoutGrid },
   { key: "accesos", label: "Accesos", icon: ShieldCheck },
-  { key: "seguimiento", label: "Seguimiento", icon: ClipboardList },
+  { key: "vsl", label: "Historial", icon: ShoppingBag },
   { key: "kajabi", label: "Perfil de Kajabi", icon: IdCard },
-  { key: "vsl", label: "Historial de compras", icon: ShoppingBag },
+  { key: "seguimiento", label: "Seguimiento", icon: ClipboardList },
   { key: "notas", label: "Notas", icon: StickyNote },
   { key: "actividad", label: "Actividad", icon: Activity },
 ];
