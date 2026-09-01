@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Llamar al endpoint de sincronización
         run: |
-          curl -sf -X POST "https://crm-supa-tvrr.vercel.app/api/cron/sincronizar-vsl?token=${{ secrets.CRON_SECRET }}"
+          curl -sf -X POST "https://soporte.sinergeticos.com/api/cron/sincronizar-vsl?token=${{ secrets.CRON_SECRET }}"
