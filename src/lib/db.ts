@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
+import { anclaAlRenovar, calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
@@ -654,10 +654,20 @@ export function finDeAccesoDentroDeUnAnio(): string {
 // etiqueta— para aplicar la regla fija por país (2 Generales MX, etc.) en
 // vez de la tabla de inventario por evento.
 export async function renovarMembresia(id: string, autor: string): Promise<Cliente> {
+  const { data: filaActual, error: errLectura } = await supabase
+    .from("clientes")
+    .select("fecha_inscripcion,fecha_renovacion")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!filaActual) throw new Error("Cliente no encontrado");
+
   // fecha_renovacion, no fin_acceso — fecha_inscripcion nunca se toca al
   // renovar (quedan como dos fechas separadas, a propósito). "Fin de
   // acceso" sale de finAccesoCalculado(fechaInscripcion, fechaRenovacion).
-  const fechaRenovacion = new Date().toISOString();
+  // Si la membresía sigue activa, esto EXTIENDE el fin actual +1 año en vez
+  // de reiniciar desde hoy — ver anclaAlRenovar.
+  const fechaRenovacion = anclaAlRenovar(filaActual.fecha_inscripcion, filaActual.fecha_renovacion);
   const { data, error } = await supabase
     .from("clientes")
     .update({
@@ -703,7 +713,9 @@ export async function aplicarCompraHotmartClubSinergetico(
   const cliente = filaACliente(fila as ClienteRow);
 
   const tipoMembresia = mayorMembresia(cliente.tipoMembresia, tipoMembresiaDetectado);
-  const fechaRenovacion = new Date().toISOString();
+  // Si la membresía sigue activa, esto EXTIENDE el fin actual +1 año en vez
+  // de reiniciar desde hoy — ver anclaAlRenovar en fechas.ts.
+  const fechaRenovacion = anclaAlRenovar(cliente.fechaInscripcion, cliente.fechaRenovacion);
 
   const { error } = await supabase
     .from("clientes")
@@ -712,7 +724,7 @@ export async function aplicarCompraHotmartClubSinergetico(
       tipo_membresia: tipoMembresia,
       acceso_plataforma: "Si",
       fecha_renovacion: fechaRenovacion,
-      actualizado_en: fechaRenovacion,
+      actualizado_en: new Date().toISOString(),
     })
     .eq("id", id);
   if (error) throw error;

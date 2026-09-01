@@ -33,6 +33,22 @@ export function finAccesoCalculado(fechaInscripcion: string | null, fechaRenovac
   return fin;
 }
 
+// Nueva ancla al renovar (botón "Renovar" o recompra vía Hotmart): si la
+// membresía TODAVÍA está activa (su fin calculado sigue en el futuro), la
+// renovación debe EXTENDER esa fecha +1 año, no reiniciar el conteo desde
+// hoy — la persona sigue teniendo el tiempo que ya había pagado, perderlo
+// sería regalarle menos de lo que compró. Si ya venció, sí se reinicia
+// desde hoy porque no hay nada que extender. No hace falta tocar
+// finAccesoCalculado: esta ancla nueva (el fin actual, o "hoy") se guarda
+// como fecha_renovacion, y la fórmula de siempre (ancla + 1 año) hace el
+// resto — mismo criterio ya usado en reanudarMembresia (ancla "sintética").
+export function anclaAlRenovar(fechaInscripcionActual: string | null, fechaRenovacionActual: string | null): string {
+  const hoy = new Date();
+  const finActual = finAccesoCalculado(fechaInscripcionActual, fechaRenovacionActual);
+  if (finActual && finActual > hoy) return finActual.toISOString();
+  return hoy.toISOString();
+}
+
 const MESES_POR_MEMBRESIA: Record<string, number> = {
   "3 meses": 3,
   "6 meses": 6,
