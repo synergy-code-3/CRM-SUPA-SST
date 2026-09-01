@@ -27,6 +27,8 @@ SINO:
 
 **Por qué "fecha de renovación" y no "fecha de inscripción" siempre:** cuando un cliente renueva, la fecha de inscripción original **no se toca** — se guarda una fecha de renovación aparte, porque son dos datos distintos (cuándo entró vs. cuándo renovó por última vez). Para los clientes que ya existían antes de este mecanismo (fecha de renovación vacía), la fecha de inscripción hace las veces de ancla — en el flujo viejo (hoja de cálculo) esa fecha se sobrescribía en cada renovación en vez de llevarse aparte, así que sigue siendo la referencia correcta para ellos. Ver "casos extraordinarios" #1.
 
+**Qué "ancla" se guarda al renovar (botón "Renovar" o recompra vía Hotmart):** si la membresía **todavía está activa** (su fin calculado sigue en el futuro), la nueva fecha de renovación no es "hoy" — es el **fin actual**, para que el nuevo fin quede en `fin actual + 1 año` y la persona no pierda el tiempo que ya había pagado. Si **ya venció**, sí se ancla en "hoy" (no hay nada que extender). Ejemplo: alguien con fin calculado dentro de 6 meses renueva hoy → nuevo fin = fin actual + 1 año (18 meses desde hoy), no hoy + 1 año (12 meses). Implementado en `anclaAlRenovar()` (`src/lib/fechas.ts`).
+
 ## 3. Regla base: evento + duración de membresía → boletos
 
 ```
