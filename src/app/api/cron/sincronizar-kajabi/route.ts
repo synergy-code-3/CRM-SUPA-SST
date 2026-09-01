@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { autorizadoParaCron } from "@/lib/cron-auth";
 import { guardarCursorSyncKajabi, marcarInvitacionSkoolEnviada, marcarMensajeBienvenidaWa, obtenerCursorSyncKajabi, registrarTagKajabi } from "@/lib/db";
 import { altaEnGhl } from "@/lib/ghl";
 import { KAJABI_OFFER_ID_CLUB_SINERGETICO, KAJABI_TAG_MIEMBRO_DEL_CLUB, nuevosConOfertaDesde } from "@/lib/kajabi";
@@ -13,15 +14,16 @@ export const maxDuration = 60;
 const RETRASO_MINIMO_MS = 60_000;
 
 // Reemplaza al webhook nativo de Kajabi (sin permiso disponible para esta
-// cuenta): un llamador externo (cron de GitHub Actions, cada ~15 min) pega
-// aquí y se consulta activamente quién tiene la oferta otorgada desde la
+// cuenta): se consulta activamente quién tiene la oferta otorgada desde la
 // última corrida. En la primera corrida NO se procesa nada existente — solo
 // se establece "ahora" como punto de partida — para no arrastrar altas
 // viejas (incluye un error histórico donde se le otorgó la oferta a
-// contactos que nunca compraron nada).
-export async function POST(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
-  if (!token || token !== process.env.CRON_SECRET) {
+// contactos que nunca compraron nada). Invocado cada ~15 min por el Cron
+// Job de Vercel (ver vercel.json) — el cron de GitHub Actions que se usaba
+// antes no era confiable para intervalos cortos (podía tardar horas en
+// dispararse), se dejó solo como respaldo manual.
+async function manejar(req: NextRequest) {
+  if (!autorizadoParaCron(req)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
@@ -91,3 +93,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, procesados, detectados: nuevos.length });
 }
+
+export const GET = manejar;
+export const POST = manejar;

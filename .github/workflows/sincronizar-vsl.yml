@@ -1,8 +1,10 @@
 name: Sincronizar VSL
 
+# El cron real vive en Vercel (ver vercel.json) — el "schedule" de GitHub
+# Actions no era confiable para intervalos cortos (llegó a tardar horas en
+# dispararse). Este workflow se deja solo para correrlo a mano si hace
+# falta (Actions → Sincronizar VSL → Run workflow).
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 jobs:
