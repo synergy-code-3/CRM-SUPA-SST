@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
-import { detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
+import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
@@ -1183,12 +1183,13 @@ export async function registrarTagKajabi(
       if (subeElTipo || !eventoDetectado) eventoDetectado = match.evento;
     }
 
-    // Si sigue faltando teléfono o tipo de membresía, se completa con el
-    // historial de Synergy Axis (mismo que se muestra en la pestaña
+    // Si sigue faltando teléfono, tipo de membresía o evento, se completa
+    // con el historial de Synergy Axis (mismo que se muestra en la pestaña
     // Historial del perfil) — resiliente, si Axis falla simplemente no se
-    // completa nada extra. Evento se deja fuera a propósito: los nombres de
-    // funnel de Axis no corresponden 1:1 al catálogo de boletos de este CRM.
-    if (!telefonoCrudo || !tipoMembresiaDetectado) {
+    // completa nada extra. Evento solo se toma de un puñado de embudos sin
+    // ambigüedad (ver EVENTO_ALIAS_AXIS en axis.ts) — el resto se deja vacío
+    // a propósito hasta confirmar con el usuario a qué evento corresponden.
+    if (!telefonoCrudo || !tipoMembresiaDetectado || !eventoDetectado) {
       try {
         const historialAxis = await obtenerHistorialAxis(id);
         if (historialAxis) {
@@ -1197,6 +1198,9 @@ export async function registrarTagKajabi(
           }
           if (!tipoMembresiaDetectado) {
             tipoMembresiaDetectado = detectarMembresiaEnComprasAxis(historialAxis.compras);
+          }
+          if (!eventoDetectado) {
+            eventoDetectado = detectarEventoEnAxis(historialAxis);
           }
         }
       } catch {

@@ -215,6 +215,29 @@ export async function obtenerHistorialAxis(email: string): Promise<HistorialAxis
 
 const DIACRITICOS_AXIS = new RegExp("[\\u0300-\\u036f]", "g");
 
+// Embudos de Axis mapeados al catálogo de boletos de este CRM — solo los
+// casos sin ambigüedad (nombre de ciudad o funnel ya usado en Hotmart). El
+// resto (seed-*, revolucion, bootcamp-2026, etc.) se deja sin mapear a
+// propósito hasta confirmar con el usuario a qué evento real corresponden.
+const EVENTO_ALIAS_AXIS: Record<string, string> = {
+  toluca: "EPMX - TOLUCA",
+  gdl: "EPMX - GDL",
+  "webinar-mx-mdl": "WMDL-MX",
+  "webinar-mx-js": "WJS-MX",
+};
+
+// Revisa el embudo del primer contacto y el de cada evento del historial —
+// el primero que coincida con un alias conocido gana. null si ninguno.
+export function detectarEventoEnAxis(historial: HistorialAxis): string | null {
+  const candidatos = [historial.contacto.primerContacto?.embudo, ...historial.eventos.map((e) => e.embudo)];
+  for (const embudo of candidatos) {
+    if (!embudo) continue;
+    const alias = EVENTO_ALIAS_AXIS[embudo.trim().toLowerCase()];
+    if (alias) return alias;
+  }
+  return null;
+}
+
 // Busca en las compras de Axis un producto del Club Sinergético ("Club
 // Sinergético 3/6/12 meses", "Club Sinergetico | 1 año", etc.) y devuelve el
 // tipo de membresía más alto encontrado (mismo criterio que Hotmart: si hay
