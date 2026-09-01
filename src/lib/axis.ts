@@ -212,3 +212,24 @@ export async function obtenerHistorialAxis(email: string): Promise<HistorialAxis
   const data = await res.json();
   return mapearRespuesta(data);
 }
+
+const DIACRITICOS_AXIS = new RegExp("[\\u0300-\\u036f]", "g");
+
+// Busca en las compras de Axis un producto del Club Sinergético ("Club
+// Sinergético 3/6/12 meses", "Club Sinergetico | 1 año", etc.) y devuelve el
+// tipo de membresía más alto encontrado (mismo criterio que Hotmart: si hay
+// más de una compra —ej. upgrade—, gana la mayor). null si no hay ninguna.
+export function detectarMembresiaEnComprasAxis(compras: AxisCompra[]): string | null {
+  const ORDEN: Record<string, number> = { "3 Meses": 3, "6 Meses": 6, "12 Meses": 12 };
+  let mejor: string | null = null;
+  for (const c of compras) {
+    const texto = c.producto.trim().toLowerCase().normalize("NFD").replace(DIACRITICOS_AXIS, "");
+    if (!texto.includes("sinerg")) continue;
+    let tipo: string | null = null;
+    if (/12\s*mes|1\s*ano\b/.test(texto)) tipo = "12 Meses";
+    else if (/6\s*mes/.test(texto)) tipo = "6 Meses";
+    else if (/3\s*mes/.test(texto)) tipo = "3 Meses";
+    if (tipo && (!mejor || ORDEN[tipo] > ORDEN[mejor])) mejor = tipo;
+  }
+  return mejor;
+}

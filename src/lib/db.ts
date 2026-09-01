@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
+import { detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
 import { obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
@@ -1161,12 +1162,8 @@ export async function registrarTagKajabi(
     // automática arranca con teléfono igual que una manual, sin esperar a
     // que alguien lo escriba a mano.
     const pendientes = await tomarPendientesHotmart(id);
-    const telefonoCrudo =
+    let telefonoCrudo =
       pendientes.find((p) => p.telefono)?.telefono ?? (await obtenerPerfilKajabi(id).catch(() => null))?.telefono ?? null;
-    // Mismo formato E.164 ("+...") que actualizarTelefonoCliente usa cuando
-    // el cliente ya existe — sin esto, un alta automática (ésta) quedaba con
-    // un teléfono sin "+" y el link tel: del panel del cliente salía roto.
-    const telefono = normalizarTelefono(telefonoCrudo);
 
     // Si alguna de las compras en espera es de uno de los productos del
     // Club Sinergético MX mapeados por Hotmart, se le asigna el evento
@@ -1186,6 +1183,32 @@ export async function registrarTagKajabi(
       if (subeElTipo || !eventoDetectado) eventoDetectado = match.evento;
     }
 
+    // Si sigue faltando teléfono o tipo de membresía, se completa con el
+    // historial de Synergy Axis (mismo que se muestra en la pestaña
+    // Historial del perfil) — resiliente, si Axis falla simplemente no se
+    // completa nada extra. Evento se deja fuera a propósito: los nombres de
+    // funnel de Axis no corresponden 1:1 al catálogo de boletos de este CRM.
+    if (!telefonoCrudo || !tipoMembresiaDetectado) {
+      try {
+        const historialAxis = await obtenerHistorialAxis(id);
+        if (historialAxis) {
+          if (!telefonoCrudo && historialAxis.contacto.telefono) {
+            telefonoCrudo = historialAxis.contacto.telefono;
+          }
+          if (!tipoMembresiaDetectado) {
+            tipoMembresiaDetectado = detectarMembresiaEnComprasAxis(historialAxis.compras);
+          }
+        }
+      } catch {
+        // Best-effort: no bloquea el alta si Axis no responde.
+      }
+    }
+
+    // Mismo formato E.164 ("+...") que actualizarTelefonoCliente usa cuando
+    // el cliente ya existe — sin esto, un alta automática (ésta) quedaba con
+    // un teléfono sin "+" y el link tel: del panel del cliente salía roto.
+    const telefono = normalizarTelefono(telefonoCrudo);
+
     const { data, error } = await supabase
       .from("clientes")
       .insert({
@@ -1201,7 +1224,8 @@ export async function registrarTagKajabi(
         // reflejarlo desde el minuto uno, no quedarse en "sin acceso" solo
         // porque el alta no pasó por el formulario del CRM.
         acceso_plataforma: "Si",
-        ...(eventoDetectado ? { evento: eventoDetectado, tipo_membresia: tipoMembresiaDetectado } : {}),
+        ...(eventoDetectado ? { evento: eventoDetectado } : {}),
+        ...(tipoMembresiaDetectado ? { tipo_membresia: tipoMembresiaDetectado } : {}),
       })
       .select("*")
       .single();
