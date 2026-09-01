@@ -134,7 +134,7 @@ export default function OtrasOfertasPage() {
         <input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o correo…"
+          placeholder="Buscar por nombre, correo o teléfono…"
           className="w-full max-w-md rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
         />
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   Plus,
@@ -58,6 +59,16 @@ function leerFiltrosGuardados(): typeof FILTROS_VACIOS {
 }
 
 export default function ClientesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientesPageInner />
+    </Suspense>
+  );
+}
+
+function ClientesPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { usuario } = useSesion();
   const puedeCrear = !!usuario && tienePermiso(usuario.rol, "crearCliente");
   const puedeImportar = !!usuario && tienePermiso(usuario.rol, "importarCsv");
@@ -87,6 +98,15 @@ export default function ClientesPage() {
     eventos: [],
     membresias: [],
   });
+
+  // Deep-link desde el buscador del Dashboard (u otro lugar): ?cliente=<id>
+  // abre el panel directo, sin depender de que ese cliente esté en la
+  // página actual de la lista (ClientePanel lo trae por su cuenta).
+  useEffect(() => {
+    const id = searchParams.get("cliente");
+    if (id) setSeleccionado(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Retoma los filtros guardados de la sesión del navegador después del
   // primer render (no en el useState inicial, para no desalinear el HTML
@@ -314,7 +334,7 @@ export default function ClientesPage() {
         <input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o correo…"
+          placeholder="Buscar por nombre, correo o teléfono…"
           className="w-full max-w-md rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
         />
       </div>
@@ -634,7 +654,10 @@ export default function ClientesPage() {
       {seleccionado && (
         <ClientePanel
           clienteId={seleccionado}
-          onClose={() => setSeleccionado(null)}
+          onClose={() => {
+            setSeleccionado(null);
+            if (searchParams.get("cliente")) router.replace("/clientes");
+          }}
           onClienteActualizado={actualizarEnLista}
           onClienteEliminado={quitarDeLista}
         />

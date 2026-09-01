@@ -10,9 +10,11 @@ import {
   Clock,
   AlertTriangle,
   TrendingUp,
+  Search,
 } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
+import type { Cliente } from "@/lib/types";
 type Resumen = {
   totalClientes: number;
   conAcceso: number;
@@ -78,6 +80,8 @@ export default function DashboardPage() {
         <p className="text-sm text-muted">Resumen general del Club Sinergético.</p>
       </div>
 
+      <BuscadorClientesDashboard />
+
       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted">Resumen general</p>
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <Kpi icon={Users} label="Total Contactos" sub="registros" value={resumen?.totalClientes} tone="primary" />
@@ -129,6 +133,94 @@ export default function DashboardPage() {
 
 function Cargando() {
   return <p className="flex h-full items-center justify-center text-sm text-muted">Cargando…</p>;
+}
+
+// Buscador rápido de Clientes del Club desde el Dashboard: busca por
+// nombre/correo/teléfono (mismo criterio que el buscador de la lista de
+// Clientes) y al elegir un resultado navega a /clientes?cliente=<id>, que
+// abre el panel de ese cliente directo (ver el efecto que lee ese query
+// param en clientes/page.tsx).
+function BuscadorClientesDashboard() {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+  const [resultados, setResultados] = useState<Cliente[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const raiz = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickFuera(e: MouseEvent) {
+      if (raiz.current && !raiz.current.contains(e.target as Node)) setAbierto(false);
+    }
+    document.addEventListener("mousedown", onClickFuera);
+    return () => document.removeEventListener("mousedown", onClickFuera);
+  }, []);
+
+  useEffect(() => {
+    const query = q.trim();
+    if (!query) {
+      setResultados([]);
+      setBuscando(false);
+      return;
+    }
+    setBuscando(true);
+    const id = setTimeout(() => {
+      fetch(`/api/clientes?q=${encodeURIComponent(query)}&limite=8`)
+        .then((r) => (r.ok ? r.json() : { clientes: [] }))
+        .then((data) => setResultados(data.clientes ?? []))
+        .catch(() => setResultados([]))
+        .finally(() => setBuscando(false));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  function irACliente(id: string) {
+    setAbierto(false);
+    setQ("");
+    router.push(`/clientes?cliente=${encodeURIComponent(id)}`);
+  }
+
+  return (
+    <div ref={raiz} className="relative mb-8 max-w-md">
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+      <input
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setAbierto(true);
+        }}
+        onFocus={() => setAbierto(true)}
+        placeholder="Buscar cliente por nombre, correo o teléfono…"
+        className="w-full rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
+      />
+      {abierto && q.trim() && (
+        <div className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-silver bg-surface shadow-lg">
+          {buscando ? (
+            <p className="px-4 py-3 text-sm text-muted">Buscando…</p>
+          ) : resultados.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-muted">Sin coincidencias.</p>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto">
+              {resultados.map((c) => (
+                <li key={c.id}>
+                  <button
+                    onClick={() => irACliente(c.id)}
+                    className="ease-spring flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left text-sm transition hover:bg-surface-2"
+                  >
+                    <span className="font-medium text-foreground">{c.nombre}</span>
+                    <span className="text-xs text-muted">
+                      {c.email}
+                      {c.telefono ? ` · ${c.telefono}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ChartCard({

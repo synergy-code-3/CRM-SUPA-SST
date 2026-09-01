@@ -193,7 +193,7 @@ function aplicarFiltrosClientes<
   const ahora = new Date().toISOString();
   const vigencia = opciones?.vigencia ?? "actuales";
 
-  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
+  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email", "telefono"])) query = query.or(clausula);
 
   if (opciones?.estado === "activos") query = query.ilike("acceso_plataforma", "si");
   if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
@@ -1398,7 +1398,7 @@ export async function listarOtrasOfertasClientes(opciones?: FiltrosOtrasOfertas)
   const inicio = (pagina - 1) * limite;
 
   let query = supabase.from("otras_ofertas_clientes").select("*", { count: "exact" });
-  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
+  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email", "telefono"])) query = query.or(clausula);
   if (opciones?.etiqueta) query = query.eq("etiqueta", opciones.etiqueta);
   if (opciones?.tag) query = query.contains("tags", [opciones.tag]);
   query = query.order("orden_csv", { ascending: false }).range(inicio, inicio + limite - 1);
@@ -1434,7 +1434,7 @@ const CAP_EXPORTACION_OTRAS_OFERTAS = 50_000;
 export async function exportarOtrasOfertasClientes(opciones?: FiltrosOtrasOfertas): Promise<OtraOfertaCliente[]> {
   const filas = await traerTodo<OtraOfertaClienteRow>((from, to) => {
     let query = supabase.from("otras_ofertas_clientes").select("*");
-    for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email"])) query = query.or(clausula);
+    for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email", "telefono"])) query = query.or(clausula);
     if (opciones?.etiqueta) query = query.eq("etiqueta", opciones.etiqueta);
     if (opciones?.tag) query = query.contains("tags", [opciones.tag]);
     return query.order("orden_csv", { ascending: false }).range(from, to);
