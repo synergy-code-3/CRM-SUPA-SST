@@ -61,6 +61,8 @@ Es la misma idea que el caso "Renovación" de la sección 4, pero disparado por 
 Caso adicional, con cantidad y país fijos (no depende del cliente):
 
 - `Synergy` (exacto — la fila del inventario para este nombre existe pero está vacía) → **2 boletos GENERAL MX**, siempre — el boleto es para el evento Synergy Unlimited MX específicamente, así que la variante es MX sin importar dónde viva el cliente ni cuántos meses dure su membresía.
+- `MÁS+` (incluye las variantes de escritura `MÁS+ USA` y `MAS`) → **3 boletos VIP**, MX o US según el país real del cliente. **Excepción a la sección 2**: este chip se otorga aunque la membresía NO esté activa (fin calculado antes de la fecha de corte) — para este grupo la oferta del Club en Kajabi es vitalicia. Sí se respeta "Revocado" (si el acceso a plataforma está revocado, no recibe el chip pase lo que pase).
+- `BLACK ACCESS` (exacto — a diferencia de MÁS+, este SÍ sigue la regla normal de la sección 2) → **1 boleto BLACK**, siempre que la membresía esté activa. Es el acceso Black al evento Synergy Unlimited 2026.
 
 ## 4. Caso especial: Acceso = "Renovación"
 
@@ -132,6 +134,8 @@ En este CRM, los eventos presenciales viven repartidos en distintas pestañas de
 ## 8. Resumen de la jerarquía de reglas (orden de evaluación)
 
 ```
+0. ¿Acceso a plataforma = "Revocado"? SÍ → sin boletos, fin del cálculo (manda sobre todo lo demás)
+0.1. ¿Evento = "MÁS+"/"MAS"/"MÁS+ USA"? SÍ → 3 VIP fijos (MX/US según país), vitalicio — se salta el paso 1, fin del cálculo
 1. ¿Cliente activo hasta la fecha de corte? (fin calculado: renovación o inscripción, +1 año)
    NO → sin boletos
 2. ¿Acceso = "Renovación"?

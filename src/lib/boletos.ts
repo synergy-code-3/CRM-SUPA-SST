@@ -214,11 +214,6 @@ export function calcularAccesos(
   },
   inventario: Inventario
 ): ResultadoBoletos {
-  const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
-  if (!fin || fin < FECHA_CORTE) {
-    return { accesos: ACCESO_VACIO, sinInformacion: false };
-  }
-
   const eventoKey = normalizar(cliente.evento);
   const accesoKey = normalizar(cliente.accesoPlataforma);
   const { esMx, esUsCanada } = paisInfo(cliente.pais);
@@ -230,6 +225,28 @@ export function calcularAccesos(
   // cualquier cálculo automático.
   if (accesoKey.includes("revocado")) {
     return { accesos: ACCESO_VACIO, sinInformacion: false };
+  }
+
+  // evento = "MÁS+" (incluye variantes "MÁS+ USA" y "MAS" de la hoja de
+  // origen) — 3 VIP fijos, SIN importar si la membresía sigue activa: para
+  // este grupo la oferta del Club en Kajabi es vitalicia, así que el corte
+  // normal de "fin de acceso" (más abajo) no aplica. Sí respeta "Revocado"
+  // (arriba) — vitalicio no es lo mismo que "nunca se le puede quitar".
+  if (eventoKey === "más+" || eventoKey === "más+ usa" || eventoKey === "mas") {
+    const variante: Variante = esMx ? "MX" : "US";
+    return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(3, variante)] }, sinInformacion: false };
+  }
+
+  const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
+  if (!fin || fin < FECHA_CORTE) {
+    return { accesos: ACCESO_VACIO, sinInformacion: false };
+  }
+
+  // evento = "BLACK ACCESS" (exacto) — 1 acceso Black al evento Synergy
+  // Unlimited 2026, sujeto al corte normal de membresía activa (a
+  // diferencia de MÁS+ arriba). Black nunca tiene variante MX/US.
+  if (eventoKey === "black access") {
+    return { accesos: { ...ACCESO_VACIO, black: [accesoDe(1, null)] }, sinInformacion: false };
   }
 
   // Sección 3.1 — nombres de evento fijos, 1 boleto, MX/US según país.
