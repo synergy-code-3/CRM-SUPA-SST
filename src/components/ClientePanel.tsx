@@ -178,6 +178,7 @@ export function ClientePanel({
   const [error, setError] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<"email" | "telefono" | null>(null);
   const [tagsCatalogo, setTagsCatalogo] = useState<string[]>([]);
+  const [catalogoEventos, setCatalogoEventos] = useState<OpcionCombobox[]>([]);
   const [guardandoTag, setGuardandoTag] = useState<string | null>(null);
   const [estadoKajabi, setEstadoKajabi] = useState<EstadoKajabi>("cargando");
   const [pasoRenovar, setPasoRenovar] = useState<0 | 1 | 2>(0);
@@ -234,6 +235,13 @@ export function ClientePanel({
       .then((r) => r.json())
       .then((data) => setTagsCatalogo(data.opciones ?? []))
       .catch(() => setTagsCatalogo([]));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/biblioteca?tipo=evento")
+      .then((r) => r.json())
+      .then((data) => setCatalogoEventos((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
+      .catch(() => setCatalogoEventos([]));
   }, []);
 
   // Ref (no dep de efecto) para poder llamar la versión más reciente de
@@ -1811,7 +1819,12 @@ export function ClientePanel({
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-2">
                         <Campo label="Evento">
-                          <Input value={form.evento} onChange={(v) => setForm((f) => ({ ...f, evento: v }))} />
+                          <ComboboxBuscador
+                            opciones={catalogoEventos}
+                            valor={form.evento}
+                            onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                            placeholder="Seleccionar evento…"
+                          />
                         </Campo>
                         <Campo label="Fecha del evento">
                           <Input
