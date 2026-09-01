@@ -3,6 +3,8 @@ import {
   marcarAccesoPlataforma,
   marcarInvitacionSkoolEnviada,
   marcarMensajeBienvenidaWa,
+  normalizarEmail,
+  obtenerCliente,
   recalcularAccesos,
   registrarOfertaClienteClub,
   registrarTagKajabi,
@@ -38,31 +40,34 @@ export type ResultadoAltaCliente = {
   avisoOfertaAdicional: string | null;
 };
 
-// Secuencia completa de dar de alta un cliente: crea la fila en el CRM y,
-// como efectos secundarios resilientes (uno no bloquea a los demás), otorga
-// el acceso en Kajabi, manda la invitación a Skool y da de alta en GHL para
-// disparar el mensaje de bienvenida por WhatsApp. Compartida entre el alta
-// directa (POST /api/clientes) y la aprobación de una solicitud
+// Secuencia completa de dar de alta un cliente. Kajabi va PRIMERO y es
+// bloqueante a propósito (a diferencia de Skool/GHL más abajo, que sí son
+// efectos secundarios resilientes): si no se le puede dar la oferta —correo
+// inválido, ya la tiene, error de Kajabi, lo que sea— esta función lanza el
+// error tal cual y NO se crea nada en el CRM, ni se manda invitación a
+// Skool ni mensaje de bienvenida. Evita registros "fantasma" de gente que
+// en realidad no tiene acceso real. Compartida entre el alta directa
+// (POST /api/clientes) y la aprobación de una solicitud
 // (POST /api/solicitudes/[id]/aprobar) para no duplicar esta secuencia.
 export async function altaCompletaCliente(input: AltaClienteInput, autor: string): Promise<ResultadoAltaCliente> {
-  let cliente = await crearCliente({ ...input, autor });
+  // Chequeo barato antes de tocar Kajabi: si el cliente ya existe, no tiene
+  // caso gastar una llamada real a Kajabi para descubrirlo después —
+  // crearCliente() vuelve a checarlo de todos modos, por si hay una
+  // condición de carrera entre este chequeo y el insert real.
+  const yaExiste = await obtenerCliente(normalizarEmail(input.email));
+  if (yaExiste) throw new Error("Ya existe un cliente con ese correo");
 
-  let avisoKajabi: string | null = null;
-  try {
-    const kajabiContactId = await altaEnKajabi(cliente.nombre, cliente.email);
-    await vincularKajabiContactId(cliente.id, kajabiContactId);
-    cliente = await marcarAccesoPlataforma(cliente.id, "Si");
-    // Registro inmediato en la timeline: no hay que esperar al
-    // sincronizador periódico (cada ~15 min) para saber que esta oferta
-    // otorgada es justo la que asigna el tag en Kajabi.
-    await registrarTagKajabi(cliente.email, cliente.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
-  } catch (err) {
-    avisoKajabi = err instanceof Error ? err.message : "No se pudo otorgar el acceso en Kajabi";
-  }
-  // Fuera del try: cuántos boletos le tocan depende de evento/membresía/
-  // fecha (REGLAS-BOLETOS-SYNERGY.md), no de si Kajabi respondió — un
-  // cliente recién creado debe quedar calculado igual que uno importado
-  // por CSV, sin esperar a que la sincronización de Kajabi funcione.
+  const kajabiContactId = await altaEnKajabi(input.nombre, input.email);
+
+  let cliente = await crearCliente({ ...input, autor });
+  await vincularKajabiContactId(cliente.id, kajabiContactId);
+  cliente = await marcarAccesoPlataforma(cliente.id, "Si");
+  // Registro inmediato en la timeline: no hay que esperar al sincronizador
+  // periódico (cada ~15 min) para saber que esta oferta otorgada es justo
+  // la que asigna el tag en Kajabi.
+  await registrarTagKajabi(cliente.email, cliente.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
+  // Cuántos boletos le tocan depende de evento/membresía/fecha (REGLAS-
+  // BOLETOS-SYNERGY.md) — se calcula ya con el acceso a Kajabi confirmado.
   cliente = await recalcularAccesos(cliente.id);
 
   let avisoSkool: string | null = null;
@@ -96,5 +101,9 @@ export async function altaCompletaCliente(input: AltaClienteInput, autor: string
     }
   }
 
-  return { cliente, avisoKajabi, avisoSkool, avisoGhl, avisoOfertaAdicional };
+  // avisoKajabi siempre null aquí: si Kajabi hubiera fallado, la función ya
+  // habría lanzado el error arriba, antes de crear nada — se deja en la
+  // forma de retorno solo para no romper a quien la consume (UI de
+  // importación, etc.), que ya sabe mostrar "OK" cuando viene en null.
+  return { cliente, avisoKajabi: null, avisoSkool, avisoGhl, avisoOfertaAdicional };
 }
