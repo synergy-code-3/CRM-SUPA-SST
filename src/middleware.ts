@@ -16,6 +16,9 @@ const PREFIJOS_PUBLICOS_API = [
   "/api/webhooks/ghl-bienvenida-wa",
   "/api/cron/sincronizar-kajabi",
   "/api/cron/sincronizar-vsl",
+  // Consumido por synergy-axis (repo hermano), no por el navegador — se
+  // autentica con su propio bearer token (SU26_QUOTA_API_TOKEN), no cookie.
+  "/api/internal/su26-cuota",
 ];
 
 export async function middleware(req: NextRequest) {
