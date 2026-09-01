@@ -1196,7 +1196,10 @@ export function ClientePanel({
                         valor={cliente.accesoPlataforma}
                       />
                       <EstadoFila
-                        ok={!!cliente.invitacionSkool}
+                        ok={
+                          cliente.invitacionSkool?.trim().toLowerCase() === "invitación enviada" ||
+                          cliente.invitacionSkool?.trim().toLowerCase() === "invitacion enviada"
+                        }
                         label="Invitación Skool"
                         valor={cliente.invitacionSkool}
                       />

@@ -843,8 +843,15 @@ function CampoFecha({
 function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaWa: boolean }) {
   const pausado = !!cliente.pausadoEn;
   const kajabiActivo = cliente.accesoPlataforma?.trim().toLowerCase() === "si" && !pausado;
-  const skoolOk = !!cliente.invitacionSkool;
-  const bienvenidaOk = cliente.contactoWhats === "Enviado";
+  // "Invitación enviada" es lo que escribe este CRM (marcarInvitacionSkoolEnviada);
+  // "Invitacion enviada" (sin acento) es el texto tal cual de la hoja de
+  // Atención y Seguimiento importada — ambos cuentan como "sí se invitó".
+  const skoolNorm = cliente.invitacionSkool?.trim().toLowerCase();
+  const skoolOk = skoolNorm === "invitación enviada" || skoolNorm === "invitacion enviada";
+  // "Enviado" solo lo escribe el webhook real de confirmación de GHL (nunca
+  // se inventa). "MSJS Bienvenida" es el texto tal cual de la hoja
+  // importada, para clientes de antes de que existiera esa confirmación.
+  const bienvenidaOk = cliente.contactoWhats === "Enviado" || cliente.contactoWhats === "MSJS Bienvenida";
   const numeroInvalido = cliente.contactoWhats === "Número Inválido";
   // Solo parpadea mientras la lista está preguntando de verdad (recién
   // creado desde "Nuevo cliente", primeros ~90s) — no para siempre. Pasado
