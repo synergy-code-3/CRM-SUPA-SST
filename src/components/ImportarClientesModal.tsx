@@ -36,7 +36,14 @@ type ResultadoFila = {
   estadoWhatsApp?: EstadoWhatsapp;
 };
 
-type FiltroResultados = "todos" | "exitosos" | "errores";
+type FiltroResultados = "todos" | "exitosos" | "avisos" | "errores";
+
+const LABEL_FILTRO: Record<FiltroResultados, string> = {
+  todos: "Todos",
+  exitosos: "Exitosos",
+  avisos: "Revisar",
+  errores: "Errores",
+};
 
 // Mismo intervalo/tope ya probado en el panel del cliente (ver
 // esperarConfirmacionWa en ClientePanel.tsx): el Workflow real de GHL ha
@@ -325,7 +332,12 @@ export function ImportarClientesModal({
   const conFallas = resultados?.filter((r) => r.ok && (r.avisoKajabi || r.avisoSkool || r.avisoGhl)).length ?? 0;
   const fallidos = resultados?.filter((r) => !r.ok).length ?? 0;
   const resultadosFiltrados =
-    resultados?.filter((r) => (filtroResultados === "todos" ? true : filtroResultados === "exitosos" ? r.ok : !r.ok)) ?? [];
+    resultados?.filter((r) => {
+      if (filtroResultados === "todos") return true;
+      if (filtroResultados === "exitosos") return r.ok;
+      if (filtroResultados === "avisos") return r.ok && !!(r.avisoKajabi || r.avisoSkool || r.avisoGhl);
+      return !r.ok; // errores
+    }) ?? [];
   // Derivado en vez de un estado propio: siempre refleja la realidad, tanto
   // para la tanda inicial como para reintentos individuales sueltos.
   const esperandoWa = resultados?.some((r) => r.estadoWhatsApp === "confirmando") ?? false;
@@ -488,7 +500,7 @@ export function ImportarClientesModal({
               </div>
 
               <div className="mb-3 flex items-center gap-1.5">
-                {(["todos", "exitosos", "errores"] as const).map((f) => (
+                {(["todos", "exitosos", "avisos", "errores"] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => setFiltroResultados(f)}
@@ -498,7 +510,7 @@ export function ImportarClientesModal({
                         : "border border-silver bg-surface text-foreground hover:bg-surface-2"
                     }`}
                   >
-                    {f === "todos" ? "Todos" : f === "exitosos" ? "Exitosos" : "Errores"}
+                    {LABEL_FILTRO[f]}
                   </button>
                 ))}
               </div>
@@ -614,7 +626,7 @@ export function ImportarClientesModal({
                   className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
                 >
                   <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Exportar {filtroResultados === "todos" ? "todos" : filtroResultados} ({resultadosFiltrados.length})
+                  Exportar {LABEL_FILTRO[filtroResultados].toLowerCase()} ({resultadosFiltrados.length})
                 </button>
                 <button
                   onClick={onClose}
