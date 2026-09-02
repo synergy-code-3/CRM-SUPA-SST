@@ -424,6 +424,10 @@ async function main() {
             tipoMembresia: membresiaFinal,
             fechaInscripcion: fechaInscripcionFinal,
             fechaRenovacion: db.fecha_renovacion,
+            // Script histórico, no se re-ejecuta — MÁS+/Black Access ahora
+            // se resuelven por etiqueta (ver boletos.ts), no por esta
+            // pasada masiva.
+            etiqueta: null,
           },
           inventario
         );
@@ -465,6 +469,7 @@ async function main() {
           tipoMembresia: f.tipoMembresia,
           fechaInscripcion: f.fechaInscripcion,
           fechaRenovacion: null,
+          etiqueta: null,
         },
         inventario
       );

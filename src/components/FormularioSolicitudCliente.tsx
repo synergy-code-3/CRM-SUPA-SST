@@ -32,8 +32,10 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
     pais: "",
     evento: "",
     tipoMembresia: "",
+    etiqueta: "",
   });
   const [eventosPorTipo, setEventosPorTipo] = useState<EventosPorTipo>({ webinar: [], presencial: [], otro: [] });
+  const [etiquetas, setEtiquetas] = useState<{ valor: string; etiqueta: string }[]>([]);
   const [categoriaEvento, setCategoriaEvento] = useState<CategoriaEvento | null>(null);
   // Solo admin puede saltarse el selector por categoría y buscar el evento
   // directamente en la lista completa, como funcionaba antes.
@@ -58,6 +60,10 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
         })
       )
       .catch(() => setEventosPorTipo({ webinar: [], presencial: [], otro: [] }));
+    fetch("/api/etiquetas-solicitud")
+      .then((r) => r.json())
+      .then((data) => setEtiquetas((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
+      .catch(() => setEtiquetas([]));
   }, []);
 
   const todosLosEventos = [...eventosPorTipo.presencial, ...eventosPorTipo.webinar, ...eventosPorTipo.otro];
@@ -105,6 +111,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
       body.set("pais", form.pais);
       body.set("evento", form.evento);
       body.set("tipoMembresia", form.tipoMembresia);
+      if (form.etiqueta) body.set("etiqueta", form.etiqueta);
       for (const slot of slots) {
         if (slot.archivo) body.append("comprobantes", slot.archivo);
       }
@@ -116,7 +123,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
         return;
       }
 
-      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "" });
+      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "", etiqueta: "" });
       setCategoriaEvento(null);
       setSlots([
         { key: 0, archivo: null },
@@ -194,6 +201,15 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                 valor={form.tipoMembresia}
                 onChange={(tipoMembresia) => setForm((f) => ({ ...f, tipoMembresia }))}
                 placeholder="Seleccionar…"
+              />
+            </Campo>
+            <Campo label="Etiqueta (opcional)">
+              <ComboboxBuscador
+                opciones={etiquetas}
+                valor={form.etiqueta}
+                onChange={(etiqueta) => setForm((f) => ({ ...f, etiqueta }))}
+                placeholder="Seleccionar…"
+                etiquetaVacio="— Ninguna —"
               />
             </Campo>
           </div>

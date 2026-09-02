@@ -21,6 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       pais: body.pais,
       evento: body.evento,
       tipoMembresia: body.tipoMembresia,
+      etiqueta: body.etiqueta,
     });
     return NextResponse.json({ solicitud });
   } catch (err) {

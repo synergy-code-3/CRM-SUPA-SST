@@ -3,7 +3,7 @@ import path from "node:path";
 import { parse } from "csv-parse/sync";
 import { listarCatalogo } from "./catalogo";
 import { finAccesoCalculado } from "./fechas";
-import type { Accesos, Variante } from "./types";
+import type { AccesoDetalle, Accesos, Variante } from "./types";
 
 // Implementa REGLAS-BOLETOS-SYNERGY.md — motor de asignación de accesos a
 // partir de la tabla de inventario "Asignacion de boletos.csv".
@@ -198,6 +198,19 @@ function chips(cantidadMx: number, cantidadUs: number) {
   return resultado;
 }
 
+// Suma los extras de etiqueta (MÁS+/Black Access) a los chips que ya le
+// tocaban por evento — junta por variante en vez de dejar entradas
+// separadas, para que se vea como un solo número por variante.
+function sumarChips(base: AccesoDetalle[], extra: AccesoDetalle[]): AccesoDetalle[] {
+  if (extra.length === 0) return base;
+  const porVariante = new Map<string, number>();
+  for (const chip of [...base, ...extra]) {
+    const clave = chip.variante ?? "";
+    porVariante.set(clave, (porVariante.get(clave) ?? 0) + chip.cantidad);
+  }
+  return [...porVariante.entries()].map(([clave, cantidad]) => accesoDe(cantidad, (clave || null) as Variante));
+}
+
 export type ResultadoBoletos = {
   accesos: Accesos;
   sinInformacion: boolean;
@@ -211,51 +224,67 @@ export function calcularAccesos(
     tipoMembresia: string | null;
     fechaInscripcion: string | null;
     fechaRenovacion: string | null;
+    etiqueta: string | null;
   },
   inventario: Inventario
 ): ResultadoBoletos {
   const eventoKey = normalizar(cliente.evento);
+  const etiquetaKey = normalizar(cliente.etiqueta);
   const accesoKey = normalizar(cliente.accesoPlataforma);
   const { esMx, esUsCanada } = paisInfo(cliente.pais);
+  const variantePorPais: Variante = esMx ? "MX" : "US";
 
   // Regla previa (no está en el documento original, pero es sentido común de
   // control de acceso): si el CRM de origen marcó al cliente como
   // "Revocado" en Acceso a plataforma, no se le asignan boletos sin
   // importar el evento al que asistió — el estatus revocado manda sobre
-  // cualquier cálculo automático.
+  // cualquier cálculo automático, incluidos los extras de etiqueta de abajo.
   if (accesoKey.includes("revocado")) {
     return { accesos: ACCESO_VACIO, sinInformacion: false };
   }
 
-  // evento = "MÁS+" (incluye variantes "MÁS+ USA" y "MAS" de la hoja de
-  // origen) — 3 VIP fijos, SIN importar si la membresía sigue activa: para
-  // este grupo la oferta del Club en Kajabi es vitalicia, así que el corte
-  // normal de "fin de acceso" (más abajo) no aplica. Sí respeta "Revocado"
-  // (arriba) — vitalicio no es lo mismo que "nunca se le puede quitar".
-  if (eventoKey === "más+" || eventoKey === "más+ usa" || eventoKey === "mas") {
-    const variante: Variante = esMx ? "MX" : "US";
-    return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(3, variante)] }, sinInformacion: false };
-  }
+  // Etiqueta "MÁS+" (incluye "MÁS+ USA"/"MAS") — 3 VIP fijos que se SUMAN a
+  // los accesos que ya le tocan por evento (no lo reemplazan). Vitalicio:
+  // no importa si la membresía sigue activa, la oferta del Club en Kajabi
+  // es vitalicia para este grupo — por eso se resuelve antes del filtro de
+  // membresía activa de abajo. Ya no es un evento (antes vivía aquí como
+  // caso fijo de evento) — ahora es la etiqueta la que decide.
+  const extraVip: AccesoDetalle[] =
+    etiquetaKey === "más+" || etiquetaKey === "más+ usa" || etiquetaKey === "mas" ? [accesoDe(3, variantePorPais)] : [];
 
   const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
   if (!fin || fin < FECHA_CORTE) {
-    return { accesos: ACCESO_VACIO, sinInformacion: false };
+    // Sin membresía activa: lo único que sobrevive es el extra vitalicio de
+    // MÁS+ — el resto (incluido Black Access, que sí depende de estar
+    // activo) se queda vacío.
+    return { accesos: { ...ACCESO_VACIO, vip: extraVip }, sinInformacion: false };
   }
 
-  // evento = "BLACK ACCESS" (exacto) — 1 acceso Black al evento Synergy
-  // Unlimited 2026, sujeto al corte normal de membresía activa (a
-  // diferencia de MÁS+ arriba). Black nunca tiene variante MX/US.
-  if (eventoKey === "black access") {
-    return { accesos: { ...ACCESO_VACIO, black: [accesoDe(1, null)] }, sinInformacion: false };
+  // Etiqueta "Black Access" (exacta) — 1 acceso Black que se SUMA, sujeto
+  // al corte normal de membresía activa (a diferencia de MÁS+ arriba).
+  // Black nunca tiene variante MX/US. Ya no es un evento — ahora es la
+  // etiqueta la que decide, igual que MÁS+.
+  const extraBlack: AccesoDetalle[] = etiquetaKey === "black access" ? [accesoDe(1, null)] : [];
+
+  // Junta los extras de etiqueta (si hay) con lo que le toque por evento —
+  // usado en cada rama de abajo para no repetir la suma en cada return.
+  function conExtras(base: Accesos, sinInformacion: boolean): ResultadoBoletos {
+    return {
+      accesos: {
+        general: base.general,
+        vip: sumarChips(base.vip, extraVip),
+        black: sumarChips(base.black, extraBlack),
+      },
+      sinInformacion,
+    };
   }
 
   // Sección 3.1 — nombres de evento fijos, 1 boleto, MX/US según país.
   if (eventoKey === "vip-su" || eventoKey === "gral-su") {
-    const variante: Variante = esMx ? "MX" : "US";
     if (eventoKey === "vip-su") {
-      return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(1, variante)] }, sinInformacion: false };
+      return conExtras({ ...ACCESO_VACIO, vip: [accesoDe(1, variantePorPais)] }, false);
     }
-    return { accesos: { ...ACCESO_VACIO, general: [accesoDe(1, variante)] }, sinInformacion: false };
+    return conExtras({ ...ACCESO_VACIO, general: [accesoDe(1, variantePorPais)] }, false);
   }
 
   // evento = "Synergy" (exacto) — fila del inventario sin datos reales, es
@@ -263,43 +292,42 @@ export function calcularAccesos(
   // sin importar duración de membresía ni país del cliente (el boleto es
   // para ESE evento en México, no "el que le toque según dónde vive").
   if (eventoKey === "synergy") {
-    return { accesos: { ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, sinInformacion: false };
+    return conExtras({ ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, false);
   }
 
   // Sección 4 — Acceso = "Renovación": regla fija por país, ignora inventario.
   if (accesoKey.includes("renov")) {
     if (esMx) {
-      return { accesos: { ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, sinInformacion: false };
+      return conExtras({ ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, false);
     }
     if (esUsCanada) {
-      return {
-        accesos: { ...ACCESO_VACIO, vip: [accesoDe(2, "MX")], general: [accesoDe(2, "US")] },
-        sinInformacion: false,
-      };
+      return conExtras({ ...ACCESO_VACIO, vip: [accesoDe(2, "MX")], general: [accesoDe(2, "US")] }, false);
     }
-    return { accesos: { ...ACCESO_VACIO, vip: [accesoDe(2, "MX")] }, sinInformacion: false };
+    return conExtras({ ...ACCESO_VACIO, vip: [accesoDe(2, "MX")] }, false);
   }
 
   // Sección 3 — evento + duración de membresía → tabla de inventario.
   const fila = inventario.get(eventoKey);
   if (!fila) {
-    // Sección 6: sin override disponible en esta fase → "sin información".
-    return { accesos: ACCESO_VACIO, sinInformacion: true };
+    // Sección 6: sin override disponible en esta fase → "sin información"
+    // — pero si tenía extras de etiqueta, esos sí se le dan (no perderlos
+    // solo porque el evento no está catalogado o no tiene evento).
+    return conExtras(ACCESO_VACIO, true);
   }
   if (fila.requiereAsignacionManual) {
     // "Editable" en el CSV es una instrucción ("asignar a mano"), no un
     // cero — tratarlo como 0 se veía idéntico a "no le toca nada".
-    return { accesos: ACCESO_VACIO, sinInformacion: true };
+    return conExtras(ACCESO_VACIO, true);
   }
 
   const memRaw = normalizar(cliente.tipoMembresia);
   const idxDur = memRaw.includes("12") ? 2 : memRaw.includes("6") ? 1 : 0;
 
-  const accesos: Accesos = {
+  const base: Accesos = {
     general: chips(fila.gral_mx[idxDur], fila.gral_us[idxDur]),
     vip: chips(fila.vip_mx[idxDur], fila.vip_us[idxDur]),
     black: fila.black > 0 ? [accesoDe(fila.black, null)] : [],
   };
 
-  return { accesos, sinInformacion: false };
+  return conExtras(base, false);
 }

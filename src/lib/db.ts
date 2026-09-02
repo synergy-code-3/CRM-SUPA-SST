@@ -587,6 +587,7 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
       tipoMembresia: cliente.tipoMembresia,
       fechaInscripcion: cliente.fechaInscripcion,
       fechaRenovacion: cliente.fechaRenovacion,
+      etiqueta: cliente.etiqueta,
     },
     inventario
   );
@@ -885,6 +886,7 @@ const CAMPOS_EDITABLES: { key: keyof CambiosDatosCliente; columna: string; label
   { key: "ciudad", columna: "ciudad", label: "Ciudad" },
   { key: "notas", columna: "notas", label: "Notas" },
   { key: "evento", columna: "evento", label: "Evento" },
+  { key: "etiqueta", columna: "etiqueta", label: "Etiqueta" },
   { key: "accesoPlataforma", columna: "acceso_plataforma", label: "Acceso a plataforma" },
   { key: "tipoMembresia", columna: "tipo_membresia", label: "Tipo de membresía" },
   { key: "vencimientoSkool", columna: "vencimiento_skool", label: "Vencimiento Skool" },
@@ -900,6 +902,7 @@ type CambiosDatosCliente = {
   ciudad?: string | null;
   notas?: string | null;
   evento?: string | null;
+  etiqueta?: string | null;
   accesoPlataforma?: string | null;
   tipoMembresia?: string | null;
   vencimientoSkool?: string | null;
@@ -934,6 +937,7 @@ export async function actualizarDatosCliente(
     ciudad: cambios.ciudad?.trim() || "—",
     notas: cambios.notas?.trim() || "—",
     evento: cambios.evento?.trim() || "—",
+    etiqueta: cambios.etiqueta?.trim() || "—",
     accesoPlataforma: cambios.accesoPlataforma?.trim() || "—",
     tipoMembresia: cambios.tipoMembresia?.trim() || "—",
     vencimientoSkool: cambios.vencimientoSkool?.trim() || "—",
@@ -951,16 +955,19 @@ export async function actualizarDatosCliente(
     .map((c) => `${c.label}: "${c.anterior}" → "${c.nuevo}"`);
 
   const nuevoEvento = cambios.evento?.trim() || null;
+  const nuevaEtiqueta = cambios.etiqueta?.trim() || null;
   const nuevoPais = cambios.pais?.trim() || null;
   const nuevoAccesoPlataforma = cambios.accesoPlataforma?.trim() || null;
   const region = await regionParaCrearOEditar(nuevoEvento, nuevoPais);
 
-  // Los tres alimentan calcularAccesos() directamente (evento decide contra
-  // qué fila del inventario/reglas fijas se calcula, país decide MX/US,
-  // acceso a plataforma decide si aplica la regla de "Renovación"/revocado)
-  // — un cambio en cualquiera de ellos deja los boletos guardados
+  // Los cuatro alimentan calcularAccesos() directamente (evento decide
+  // contra qué fila del inventario/reglas fijas se calcula, etiqueta decide
+  // los extras de MÁS+/Black Access, país decide MX/US, acceso a
+  // plataforma decide si aplica la regla de "Renovación"/revocado) — un
+  // cambio en cualquiera de ellos deja los boletos guardados
   // desincronizados de lo que le toca de verdad si no se recalcula.
   const eventoCambio = nuevoEvento !== anterior.evento;
+  const etiquetaCambio = nuevaEtiqueta !== anterior.etiqueta;
   const paisCambio = nuevoPais !== anterior.pais;
   const accesoPlataformaCambio = nuevoAccesoPlataforma !== anterior.accesoPlataforma;
 
@@ -1010,6 +1017,7 @@ export async function actualizarDatosCliente(
       ciudad: cambios.ciudad?.trim() || null,
       notas: cambios.notas?.trim() || null,
       evento: nuevoEvento,
+      etiqueta: nuevaEtiqueta,
       acceso_plataforma: nuevoAccesoPlataforma,
       tipo_membresia: nuevaMembresia,
       vencimiento_skool: vencimientoSkoolTexto,
@@ -1031,7 +1039,7 @@ export async function actualizarDatosCliente(
   }
 
   let clienteFinal = filaACliente(data as ClienteRow);
-  if (membresiaCambio || fechaRenovacionCambio || eventoCambio || paisCambio || accesoPlataformaCambio) {
+  if (membresiaCambio || fechaRenovacionCambio || eventoCambio || etiquetaCambio || paisCambio || accesoPlataformaCambio) {
     clienteFinal = await recalcularAccesos(id);
   }
   return clienteFinal;

@@ -23,7 +23,7 @@ async function main() {
     const { data, error } = await supabase
       .from("clientes")
       .select(
-        "id,nombre,email,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion,accesos_editado_manual"
+        "id,nombre,email,evento,pais,acceso_plataforma,tipo_membresia,fecha_inscripcion,fecha_renovacion,etiqueta,accesos_editado_manual"
       )
       .order("id", { ascending: true })
       .range(from, from + PAGINA - 1);
@@ -45,6 +45,7 @@ async function main() {
           tipoMembresia: c.tipo_membresia,
           fechaInscripcion: c.fecha_inscripcion,
           fechaRenovacion: c.fecha_renovacion,
+          etiqueta: c.etiqueta,
         },
         inventario
       );

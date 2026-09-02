@@ -20,6 +20,7 @@ type FormEdicion = {
   pais: string;
   evento: string;
   tipoMembresia: string;
+  etiqueta: string;
 };
 
 function formEdicionDeSolicitud(s: SolicitudCliente): FormEdicion {
@@ -31,6 +32,7 @@ function formEdicionDeSolicitud(s: SolicitudCliente): FormEdicion {
     pais: s.pais ?? "",
     evento: s.evento,
     tipoMembresia: s.tipoMembresia,
+    etiqueta: s.etiqueta ?? "",
   };
 }
 
@@ -53,6 +55,7 @@ export default function SolicitudesPage() {
   const [formEdicion, setFormEdicion] = useState<FormEdicion | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [todosLosEventos, setTodosLosEventos] = useState<string[]>([]);
+  const [todasLasEtiquetas, setTodasLasEtiquetas] = useState<string[]>([]);
 
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
@@ -72,6 +75,10 @@ export default function SolicitudesPage() {
     fetch("/api/eventos-synergy")
       .then((r) => r.json())
       .then((data) => setTodosLosEventos([...(data.presencial ?? []), ...(data.webinar ?? []), ...(data.otro ?? [])]))
+      .catch(() => {});
+    fetch("/api/etiquetas-solicitud")
+      .then((r) => r.json())
+      .then((data) => setTodasLasEtiquetas(data.opciones ?? []))
       .catch(() => {});
   }, [puedeRevisar]);
 
@@ -178,7 +185,8 @@ export default function SolicitudesPage() {
                         Acceso: {s.correoAcceso} · Pago: {s.correoPago} · {s.telefono}
                       </p>
                       <p className="text-xs text-muted">
-                        {s.evento} · {s.tipoMembresia} · solicitado por {s.solicitadoPorNombre}
+                        {s.evento} · {s.tipoMembresia}
+                        {s.etiqueta ? ` · ${s.etiqueta}` : ""} · solicitado por {s.solicitadoPorNombre}
                       </p>
                       {s.notaRevision && <p className="mt-1 text-xs text-muted">{s.notaRevision}</p>}
                     </div>
@@ -263,6 +271,17 @@ export default function SolicitudesPage() {
                               valor={formEdicion.evento}
                               onChange={(evento) => setFormEdicion((f) => f && { ...f, evento })}
                               placeholder="Seleccionar evento…"
+                            />
+                          </Campo>
+                        </div>
+                        <div className="col-span-2">
+                          <Campo label="Etiqueta">
+                            <ComboboxBuscador
+                              opciones={todasLasEtiquetas.map((e) => ({ valor: e, etiqueta: e }))}
+                              valor={formEdicion.etiqueta}
+                              onChange={(etiqueta) => setFormEdicion((f) => f && { ...f, etiqueta })}
+                              placeholder="Seleccionar etiqueta…"
+                              etiquetaVacio="— Ninguna —"
                             />
                           </Campo>
                         </div>

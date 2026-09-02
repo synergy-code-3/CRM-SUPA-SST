@@ -10,6 +10,7 @@ type SolicitudRow = {
   pais: string | null;
   evento: string;
   tipo_membresia: string;
+  etiqueta: string | null;
   comprobantes: string[] | null;
   estado: EstadoSolicitud;
   solicitado_por_id: string;
@@ -32,6 +33,7 @@ function filaASolicitud(row: SolicitudRow): SolicitudCliente {
     pais: row.pais,
     evento: row.evento,
     tipoMembresia: row.tipo_membresia,
+    etiqueta: row.etiqueta,
     comprobantes: row.comprobantes ?? [],
     estado: row.estado,
     solicitadoPorId: row.solicitado_por_id,
@@ -54,6 +56,7 @@ export async function crearSolicitud(input: {
   pais?: string | null;
   evento: string;
   tipoMembresia: string;
+  etiqueta?: string | null;
   comprobantes: string[];
   solicitadoPorId: string;
   solicitadoPorNombre: string;
@@ -70,6 +73,7 @@ export async function crearSolicitud(input: {
       pais: input.pais?.trim() || null,
       evento: input.evento.trim(),
       tipo_membresia: input.tipoMembresia.trim(),
+      etiqueta: input.etiqueta?.trim() || null,
       comprobantes: input.comprobantes,
       solicitado_por_id: input.solicitadoPorId,
       solicitado_por_nombre: input.solicitadoPorNombre,
@@ -105,6 +109,7 @@ export async function editarSolicitud(
     pais?: string | null;
     evento?: string;
     tipoMembresia?: string;
+    etiqueta?: string | null;
   }
 ): Promise<SolicitudCliente> {
   const patch: Record<string, string | null> = {};
@@ -115,6 +120,7 @@ export async function editarSolicitud(
   if (cambios.pais !== undefined) patch.pais = cambios.pais?.trim() || null;
   if (cambios.evento !== undefined) patch.evento = cambios.evento.trim();
   if (cambios.tipoMembresia !== undefined) patch.tipo_membresia = cambios.tipoMembresia.trim();
+  if (cambios.etiqueta !== undefined) patch.etiqueta = cambios.etiqueta?.trim() || null;
 
   const { data, error } = await supabase
     .from("solicitudes_cliente")

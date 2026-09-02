@@ -403,3 +403,9 @@ alter table clientes add column if not exists accesos_editado_manual boolean not
 -- crear una solicitud duplicada del mismo lead en cada corrida del cron.
 -- NULL para toda solicitud llenada normal por el formulario.
 alter table solicitudes_cliente add column if not exists lead_id_vsl text unique;
+
+-- Etiqueta opcional (mismo catálogo que clientes.etiqueta) — para casos como
+-- "MÁS+"/"BLACK ACCESS" que ya no van en evento (ver calcularAccesos en
+-- boletos.ts): se le suman a los accesos que le tocan por evento, no los
+-- reemplazan. Se copia al cliente real al aprobar la solicitud.
+alter table solicitudes_cliente add column if not exists etiqueta text;

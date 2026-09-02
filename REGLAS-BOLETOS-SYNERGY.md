@@ -63,8 +63,15 @@ Es la misma idea que el caso "Renovación" de la sección 4, pero disparado por 
 Caso adicional, con cantidad y país fijos (no depende del cliente):
 
 - `Synergy` (exacto — la fila del inventario para este nombre existe pero está vacía) → **2 boletos GENERAL MX**, siempre — el boleto es para el evento Synergy Unlimited MX específicamente, así que la variante es MX sin importar dónde viva el cliente ni cuántos meses dure su membresía.
-- `MÁS+` (incluye las variantes de escritura `MÁS+ USA` y `MAS`) → **3 boletos VIP**, MX o US según el país real del cliente. **Excepción a la sección 2**: este chip se otorga aunque la membresía NO esté activa (fin calculado antes de la fecha de corte) — para este grupo la oferta del Club en Kajabi es vitalicia. Sí se respeta "Revocado" (si el acceso a plataforma está revocado, no recibe el chip pase lo que pase).
-- `BLACK ACCESS` (exacto — a diferencia de MÁS+, este SÍ sigue la regla normal de la sección 2) → **1 boleto BLACK**, siempre que la membresía esté activa. Es el acceso Black al evento Synergy Unlimited 2026.
+
+## 3.2 Extras por ETIQUETA (no por evento): MÁS+ y Black Access
+
+A diferencia de los casos de 3.1 (que **reemplazan** el cálculo por evento), estos dos se **SUMAN** a los boletos que ya le tocan por su evento real — un cliente puede tener evento (ej. `EPMX - GDL`, 3 Meses → 2 GENERAL MX) y además una de estas etiquetas, y el resultado final es la suma de ambos. Se leen del campo **Etiqueta** del cliente (`clientes.etiqueta`), no del campo Evento — antes de esto vivían como casos fijos de evento en la sección 3.1, se movieron aquí para poder combinarse con un evento real.
+
+- Etiqueta `MÁS+` (incluye las variantes de escritura `MÁS+ USA` y `MAS`) → **+3 boletos VIP**, MX o US según el país real del cliente. **Excepción a la sección 2**: este extra se otorga aunque la membresía NO esté activa (fin calculado antes de la fecha de corte) — para este grupo la oferta del Club en Kajabi es vitalicia. Sí se respeta "Revocado" (si el acceso a plataforma está revocado, no recibe el extra pase lo que pase).
+- Etiqueta `BLACK ACCESS` (exacto — a diferencia de MÁS+, esta SÍ sigue la regla normal de la sección 2) → **+1 boleto BLACK**, siempre que la membresía esté activa. Es el acceso Black al evento Synergy Unlimited 2026.
+
+Ejemplo real: cliente con evento `EPMX - GDL` y membresía de 3 Meses (2 GENERAL MX por evento) que además tiene la etiqueta `BLACK ACCESS` → queda con 2 GENERAL MX + 1 BLACK. Si en vez de Black Access tuviera la etiqueta `MÁS+` → queda con 2 GENERAL MX + 3 VIP.
 
 ## 4. Caso especial: Acceso = "Renovación"
 
@@ -136,15 +143,16 @@ En este CRM, los eventos presenciales viven repartidos en distintas pestañas de
 ## 8. Resumen de la jerarquía de reglas (orden de evaluación)
 
 ```
-0. ¿Acceso a plataforma = "Revocado"? SÍ → sin boletos, fin del cálculo (manda sobre todo lo demás)
-0.1. ¿Evento = "MÁS+"/"MAS"/"MÁS+ USA"? SÍ → 3 VIP fijos (MX/US según país), vitalicio — se salta el paso 1, fin del cálculo
+0. ¿Acceso a plataforma = "Revocado"? SÍ → sin boletos (ni siquiera los extras de etiqueta), fin del cálculo (manda sobre todo lo demás)
+0.1. ¿Etiqueta = "MÁS+"/"MAS"/"MÁS+ USA"? SÍ → +3 VIP fijos (MX/US según país), vitalicio — se calcula aunque el paso 1 diga que no está activo (se suma al final, no reemplaza el resto)
 1. ¿Cliente activo hasta la fecha de corte? (fin calculado: renovación o inscripción, +1 año)
-   NO → sin boletos
+   NO → sin boletos (solo sobrevive el extra de MÁS+ del paso 0.1, si aplica)
+1.1. ¿Etiqueta = "BLACK ACCESS"? SÍ → +1 Black fijo, se suma al resultado final (a diferencia de MÁS+, sí requiere estar activo)
 2. ¿Acceso = "Renovación"?
-   SÍ → chip fijo por país (2 boletos), fin del cálculo
+   SÍ → chip fijo por país (2 boletos), fin del cálculo base (+ extras de etiqueta si aplican)
 3. ¿Existe el evento en la tabla de inventario?
    NO → ¿hay override manual? SÍ → usar override con país del cliente
-        NO → "sin información"
+        NO → "sin información" (aunque sí se dan los extras de etiqueta si aplican)
    SÍ → calcular chips base por evento+duración
 4. ¿Existe override manual para este correo?
    SÍ → aplicar override (VIP / BLACK / GRAL / MIXTO) sobre el resultado del paso 3

@@ -75,6 +75,7 @@ type Form = {
   ciudad: string;
   notas: string;
   evento: string;
+  etiqueta: string;
   fechaEvento: string;
   accesoPlataforma: string;
   tipoMembresia: string;
@@ -97,6 +98,7 @@ function formDeCliente(c: Cliente | null): Form {
     ciudad: c?.ciudad ?? "",
     notas: c?.notas ?? "",
     evento: c?.evento ?? "",
+    etiqueta: c?.etiqueta ?? "",
     fechaEvento: c?.fechaEvento ?? "",
     accesoPlataforma: c?.accesoPlataforma ?? "",
     tipoMembresia: c?.tipoMembresia ?? "",
@@ -189,6 +191,7 @@ export function ClientePanel({
   const [copiado, setCopiado] = useState<"email" | "telefono" | null>(null);
   const [tagsCatalogo, setTagsCatalogo] = useState<string[]>([]);
   const [catalogoEventos, setCatalogoEventos] = useState<OpcionCombobox[]>([]);
+  const [catalogoEtiquetas, setCatalogoEtiquetas] = useState<OpcionCombobox[]>([]);
   const [guardandoTag, setGuardandoTag] = useState<string | null>(null);
   const [estadoKajabi, setEstadoKajabi] = useState<EstadoKajabi>("cargando");
   const [pasoRenovar, setPasoRenovar] = useState<0 | 1 | 2>(0);
@@ -252,6 +255,13 @@ export function ClientePanel({
       .then((r) => r.json())
       .then((data) => setCatalogoEventos((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
       .catch(() => setCatalogoEventos([]));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/biblioteca?tipo=etiqueta")
+      .then((r) => r.json())
+      .then((data) => setCatalogoEtiquetas((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
+      .catch(() => setCatalogoEtiquetas([]));
   }, []);
 
   // Ref (no dep de efecto) para poder llamar la versión más reciente de
@@ -1230,6 +1240,7 @@ export function ClientePanel({
                       <dl className="space-y-2.5 text-sm">
                         <CampoValor label="País" valor={cliente.pais} />
                         <CampoValor label="Evento" valor={cliente.evento} />
+                        <CampoValor label="Etiqueta" valor={cliente.etiqueta} />
                       </dl>
                     ) : (
                       <div className="space-y-3">
@@ -1244,6 +1255,15 @@ export function ClientePanel({
                         </Campo>
                         <Campo label="País">
                           <Input value={form.pais} onChange={(v) => setForm((f) => ({ ...f, pais: v }))} />
+                        </Campo>
+                        <Campo label="Etiqueta">
+                          <ComboboxBuscador
+                            opciones={catalogoEtiquetas}
+                            valor={form.etiqueta}
+                            onChange={(etiqueta) => setForm((f) => ({ ...f, etiqueta }))}
+                            placeholder="Seleccionar etiqueta…"
+                            etiquetaVacio="— Ninguna —"
+                          />
                         </Campo>
                       </div>
                     )}

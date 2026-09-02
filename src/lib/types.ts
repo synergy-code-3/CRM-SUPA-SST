@@ -190,6 +190,7 @@ export type SolicitudCliente = {
   pais: string | null;
   evento: string;
   tipoMembresia: string;
+  etiqueta: string | null;
   comprobantes: string[]; // rutas en el bucket privado "comprobantes-pago"
   estado: EstadoSolicitud;
   solicitadoPorId: string;

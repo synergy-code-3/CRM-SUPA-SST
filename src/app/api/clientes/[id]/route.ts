@@ -48,6 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ciudad: body.ciudad,
           notas: body.notas,
           evento: body.evento,
+          etiqueta: body.etiqueta,
           accesoPlataforma: body.accesoPlataforma,
           tipoMembresia: body.tipoMembresia,
           vencimientoSkool: body.vencimientoSkool,
