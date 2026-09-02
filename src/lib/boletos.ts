@@ -232,7 +232,6 @@ export function calcularAccesos(
   const etiquetaKey = normalizar(cliente.etiqueta);
   const accesoKey = normalizar(cliente.accesoPlataforma);
   const { esMx, esUsCanada } = paisInfo(cliente.pais);
-  const variantePorPais: Variante = esMx ? "MX" : "US";
 
   // Regla previa (no está en el documento original, pero es sentido común de
   // control de acceso): si el CRM de origen marcó al cliente como
@@ -243,14 +242,21 @@ export function calcularAccesos(
     return { accesos: ACCESO_VACIO, sinInformacion: false };
   }
 
-  // Etiqueta "MÁS+" (incluye "MÁS+ USA"/"MAS") — 3 VIP fijos que se SUMAN a
-  // los accesos que ya le tocan por evento (no lo reemplazan). Vitalicio:
-  // no importa si la membresía sigue activa, la oferta del Club en Kajabi
-  // es vitalicia para este grupo — por eso se resuelve antes del filtro de
+  // Etiqueta "MÁS+"/"MAS" — 3 VIP MX fijos que se SUMAN a los accesos que ya
+  // le tocan por evento (no lo reemplazan). "MÁS+ USA" es la etiqueta
+  // separada para los de Estados Unidos — la variante la decide el nombre
+  // de la etiqueta, nunca el país capturado del cliente (ese campo puede
+  // venir vacío o distinto, y no debe voltear la variante). Vitalicio: no
+  // importa si la membresía sigue activa, la oferta del Club en Kajabi es
+  // vitalicia para este grupo — por eso se resuelve antes del filtro de
   // membresía activa de abajo. Ya no es un evento (antes vivía aquí como
   // caso fijo de evento) — ahora es la etiqueta la que decide.
   const extraVip: AccesoDetalle[] =
-    etiquetaKey === "más+" || etiquetaKey === "más+ usa" || etiquetaKey === "mas" ? [accesoDe(3, variantePorPais)] : [];
+    etiquetaKey === "más+" || etiquetaKey === "mas"
+      ? [accesoDe(3, "MX")]
+      : etiquetaKey === "más+ usa"
+        ? [accesoDe(3, "US")]
+        : [];
 
   const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
   if (!fin || fin < FECHA_CORTE) {
