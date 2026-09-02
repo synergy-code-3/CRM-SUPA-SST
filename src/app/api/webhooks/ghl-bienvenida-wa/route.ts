@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignorado: "marcado manualmente como Número Inválido" });
   }
 
-  const estado = estadoParam === "enviado" ? "Enviado" : "Pendiente";
+  const estado = estadoParam === "enviado" ? "Enviado" : "No se pudo entregar";
   await marcarMensajeBienvenidaWa(
     id,
     estado,

@@ -907,7 +907,10 @@ function CampoFecha({
 
 // Un vistazo a las 3 cosas que pasan al dar de alta a un cliente: acceso en
 // Kajabi (punto), invitación a Skool y mensaje de bienvenida (barritas
-// diagonales) — brillan en verde cuando ya se hicieron, gris cuando no.
+// diagonales) — brillan en verde cuando ya se hicieron, gris cuando no se ha
+// intentado nada, y la de bienvenida se pone amarilla cuando GHL confirmó
+// que de verdad no se pudo entregar (no se deja apagada como si nada
+// hubiera pasado).
 function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaWa: boolean }) {
   const pausado = !!cliente.pausadoEn;
   const kajabiActivo = cliente.accesoPlataforma?.trim().toLowerCase() === "si" && !pausado;
@@ -921,11 +924,16 @@ function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaW
   // importada, para clientes de antes de que existiera esa confirmación.
   const bienvenidaOk = cliente.contactoWhats === "Enviado" || cliente.contactoWhats === "MSJS Bienvenida";
   const numeroInvalido = cliente.contactoWhats === "Número Inválido";
+  // GHL confirmó de verdad que no se pudo entregar — distinto de "Pendiente"
+  // (nunca se ha confirmado nada todavía). Se marca en amarillo en vez de
+  // apagarse en gris, para no perderla entre los que ni siquiera se han
+  // intentado.
+  const bienvenidaFallida = cliente.contactoWhats === "No se pudo entregar";
   // Solo parpadea mientras la lista está preguntando de verdad (recién
   // creado desde "Nuevo cliente", primeros ~90s) — no para siempre. Pasado
   // ese tiempo sin confirmación, o si GHL confirmó que no se pudo entregar,
   // se apaga en vez de quedar parpadeando indefinidamente.
-  const esperandoBienvenida = enEsperaWa && !bienvenidaOk && !numeroInvalido;
+  const esperandoBienvenida = enEsperaWa && !bienvenidaOk && !numeroInvalido && !bienvenidaFallida;
 
   const tituloKajabi = pausado ? "Kajabi: pausado" : kajabiActivo ? "Kajabi: acceso activo" : "Kajabi: sin acceso";
   const tituloSkool = skoolOk ? "Skool: invitación enviada" : "Skool: sin invitación";
@@ -933,9 +941,11 @@ function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaW
     ? "Mensaje de bienvenida: número inválido"
     : bienvenidaOk
       ? "Mensaje de bienvenida: enviado"
-      : esperandoBienvenida
-        ? "Mensaje de bienvenida: esperando confirmación de GHL…"
-        : "Mensaje de bienvenida: pendiente / sin confirmar";
+      : bienvenidaFallida
+        ? "Mensaje de bienvenida: GHL confirmó que no se pudo entregar"
+        : esperandoBienvenida
+          ? "Mensaje de bienvenida: esperando confirmación de GHL…"
+          : "Mensaje de bienvenida: pendiente / sin confirmar";
 
   return (
     <div
@@ -964,7 +974,9 @@ function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaW
               ? "animate-foco-encendido bg-success shadow-[0_0_6px_var(--color-success)]"
               : esperandoBienvenida
                 ? "animate-foco-espera bg-success"
-                : "bg-silver"
+                : bienvenidaFallida
+                  ? "bg-warning shadow-[0_0_6px_var(--color-warning)]"
+                  : "bg-silver"
         }`}
       />
     </div>

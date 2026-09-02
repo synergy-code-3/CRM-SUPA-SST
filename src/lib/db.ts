@@ -511,7 +511,7 @@ export async function marcarAccesoPlataforma(id: string, valor: string): Promise
 // (reenvío manual vs. confirmación real del webhook de GHL).
 export async function marcarMensajeBienvenidaWa(
   id: string,
-  estado: Extract<EstadoMensajeBienvenidaWa, "Enviado" | "Pendiente">,
+  estado: Extract<EstadoMensajeBienvenidaWa, "Enviado" | "Pendiente" | "No se pudo entregar">,
   autor?: string,
   detalle?: string
 ): Promise<Cliente> {

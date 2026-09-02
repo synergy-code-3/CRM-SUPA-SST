@@ -173,10 +173,13 @@ export type Db = {
   eventos: EventoTimeline[];
 };
 
-// Estados posibles del "Mensaje de Bienvenida WA". La automatización (alta de
-// cliente o el botón "Enviar") solo escribe "Enviado" o "Pendiente" —
-// "Número Inválido" es exclusivamente una elección manual del equipo.
-export const ESTADOS_MENSAJE_BIENVENIDA_WA = ["Enviado", "Pendiente", "Número Inválido"] as const;
+// Estados posibles del "Mensaje de Bienvenida WA". La automatización escribe
+// "Pendiente" al pedir el envío (o al reintentarlo), y luego el webhook real
+// de GHL lo cierra en "Enviado" o "No se pudo entregar" — nunca deja una
+// entrega fallida confirmada mezclada con "Pendiente" (que es "sin
+// confirmar todavía", no "falló"). "Número Inválido" es exclusivamente una
+// elección manual del equipo.
+export const ESTADOS_MENSAJE_BIENVENIDA_WA = ["Enviado", "Pendiente", "No se pudo entregar", "Número Inválido"] as const;
 export type EstadoMensajeBienvenidaWa = (typeof ESTADOS_MENSAJE_BIENVENIDA_WA)[number];
 
 // Solicitud de alta de cliente hecha por un vendedor (cualquier rol) desde
