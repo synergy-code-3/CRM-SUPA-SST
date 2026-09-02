@@ -971,16 +971,25 @@ export async function actualizarDatosCliente(
   const paisCambio = nuevoPais !== anterior.pais;
   const accesoPlataformaCambio = nuevoAccesoPlataforma !== anterior.accesoPlataforma;
 
-  // Si cambia el tipo de membresía, el vencimiento de Skool se recalcula
-  // desde la fecha de inscripción — ignora lo que se haya escrito a mano en
-  // ese mismo guardado, para no dejar una fecha inconsistente con la nueva
-  // duración.
+  // Si cambia el tipo de membresía, o si la invitación de Skool pasa a
+  // "enviada" (desde el desplegable de Seguimiento), el vencimiento de
+  // Skool se recalcula desde la fecha de inscripción — ignora lo que se
+  // haya escrito a mano en ese mismo guardado, para no dejar una fecha
+  // inconsistente. Sin este segundo disparador, marcar la invitación como
+  // enviada sin tocar la membresía dejaba el vencimiento en blanco para
+  // siempre (pasó con 558 clientes reales del import).
   const nuevaMembresia = cambios.tipoMembresia?.trim() || null;
   const membresiaCambio = nuevaMembresia !== anterior.tipoMembresia;
 
+  const nuevaInvitacionSkool = cambios.invitacionSkool?.trim() || null;
+  const invitacionSkoolKey = nuevaInvitacionSkool?.toLowerCase();
+  const invitacionSkoolPasaAEnviada =
+    (invitacionSkoolKey === "invitación enviada" || invitacionSkoolKey === "invitacion enviada") &&
+    nuevaInvitacionSkool !== anterior.invitacionSkool;
+
   let vencimientoSkoolTexto = cambios.vencimientoSkool?.trim() || null;
   let vencimientoSkoolFecha = fechaSkoolADateOnly(parsearFechaSkool(vencimientoSkoolTexto));
-  if (membresiaCambio && anterior.fechaInscripcion) {
+  if ((membresiaCambio || invitacionSkoolPasaAEnviada) && anterior.fechaInscripcion) {
     const recalculado = calcularVencimientoSkool(anterior.fechaInscripcion, nuevaMembresia);
     vencimientoSkoolTexto = recalculado ? formatearFechaSkool(recalculado) : null;
     vencimientoSkoolFecha = fechaSkoolADateOnly(recalculado);
