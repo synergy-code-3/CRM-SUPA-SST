@@ -469,10 +469,28 @@ export function ClientePanel({
     if (!cliente || !puedeEditar) return;
     setGuardando(true);
     setError(null);
+    // form.finAcceso arranca con el valor ya calculado (etiqueta original del
+    // cliente), no vacío — si el admin edita solo otro campo (ej. la
+    // etiqueta) sin tocar "Fin de acceso", ese valor viejo se reenviaría tal
+    // cual y el back lo reinterpretaría con la etiqueta NUEVA, moviendo
+    // fecha_renovacion sin que nadie haya pedido eso. Solo se manda como
+    // edición real si de verdad cambió contra lo que tenía el cliente antes
+    // de entrar a editar.
+    const infoFinAccesoOriginal = finAccesoConEtiqueta(
+      cliente.fechaInscripcion,
+      cliente.fechaRenovacion,
+      cliente.etiqueta,
+      cliente.etiquetaAsignadaEn
+    );
+    const finAccesoOriginal =
+      infoFinAccesoOriginal.vitalicio || !infoFinAccesoOriginal.fecha
+        ? ""
+        : isoAFechaInput(infoFinAccesoOriginal.fecha.toISOString());
+    const finAccesoFueEditado = form.finAcceso !== finAccesoOriginal;
     const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo: "datos", ...form }),
+      body: JSON.stringify({ tipo: "datos", ...form, finAcceso: finAccesoFueEditado ? form.finAcceso : "" }),
     });
     const data = await res.json();
     setGuardando(false);
