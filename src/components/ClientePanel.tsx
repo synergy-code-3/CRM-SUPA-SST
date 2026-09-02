@@ -42,6 +42,7 @@ import {
   Ban,
   ShoppingBag,
   ExternalLink,
+  Undo2,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -191,6 +192,12 @@ export function ClientePanel({
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<Form>(formDeCliente(null));
   const [guardando, setGuardando] = useState(false);
+  // Snapshot del cliente justo antes del último "Guardar" de la tarjeta de
+  // datos — permite deshacer ese guardado con un clic sin tener que volver
+  // a escribir todo a mano. Un solo nivel (no es un historial completo):
+  // se reemplaza en cada guardado nuevo y se limpia al deshacer.
+  const [ultimoCambioDatos, setUltimoCambioDatos] = useState<Cliente | null>(null);
+  const [deshaciendo, setDeshaciendo] = useState(false);
   const [editandoAccesos, setEditandoAccesos] = useState(false);
   const [borradorAccesos, setBorradorAccesos] = useState<Accesos | null>(null);
   const [confirmandoAccesos, setConfirmandoAccesos] = useState(false);
@@ -315,6 +322,7 @@ export function ClientePanel({
     setOfertaElegida("");
     setConfirmandoRevocarId(null);
     setError(null);
+    setUltimoCambioDatos(null);
     Promise.all([
       fetch(`/api/clientes/${encodeURIComponent(clienteId)}`),
       fetch(`/api/clientes/${encodeURIComponent(clienteId)}/eventos`),
@@ -467,6 +475,7 @@ export function ClientePanel({
 
   async function guardar() {
     if (!cliente || !puedeEditar) return;
+    const clienteAntesDeGuardar = cliente;
     setGuardando(true);
     setError(null);
     // form.finAcceso arranca con el valor ya calculado (etiqueta original del
@@ -501,6 +510,40 @@ export function ClientePanel({
     setCliente(data.cliente);
     onClienteActualizado(data.cliente);
     setEditando(false);
+    setUltimoCambioDatos(clienteAntesDeGuardar);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
+      r.json()
+    );
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  // Deshace el último "Guardar" de la tarjeta de datos, restaurando los
+  // valores que tenía el cliente justo antes de ese guardado. Manda
+  // finAcceso vacío a propósito: así el back cae siempre al camino de
+  // fechaRenovacion cruda (formDeCliente ya la trae exacta del snapshot),
+  // en vez de re-derivarla a través de finAccesoDeseado — es la forma más
+  // fiel de devolver exactamente lo que había antes, sin importar qué campo
+  // haya cambiado el guardado que se está deshaciendo.
+  async function deshacerUltimoCambio() {
+    if (!cliente || !ultimoCambioDatos || !puedeEditar) return;
+    setDeshaciendo(true);
+    setError(null);
+    const formPrevio = formDeCliente(ultimoCambioDatos);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "datos", ...formPrevio, finAcceso: "" }),
+    });
+    const data = await res.json();
+    setDeshaciendo(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo deshacer el cambio");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
+    setForm(formDeCliente(data.cliente));
+    setUltimoCambioDatos(null);
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
     );
@@ -1122,13 +1165,26 @@ export function ClientePanel({
                   </>
                 )}
                 {!puedeEditar ? null : !editando ? (
-                  <button
-                    onClick={() => setEditando(true)}
-                    className="ease-spring ml-auto flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/35 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/55"
-                  >
-                    <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
-                    Editar
-                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    {ultimoCambioDatos && (
+                      <button
+                        onClick={deshacerUltimoCambio}
+                        disabled={deshaciendo}
+                        title="Deshace el último guardado de datos del cliente"
+                        className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/35 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/55 disabled:opacity-50"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        {deshaciendo ? "Deshaciendo…" : "Deshacer último cambio"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setEditando(true)}
+                      className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/35 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/55"
+                    >
+                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      Editar
+                    </button>
+                  </div>
                 ) : (
                   <div className="ml-auto flex items-center gap-2">
                     <button
