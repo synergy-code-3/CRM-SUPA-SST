@@ -52,7 +52,7 @@ import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
-import { finAccesoCalculado } from "@/lib/fechas";
+import { finAccesoConEtiqueta } from "@/lib/fechas";
 import type { ConvertidoVsl } from "@/lib/vsl-soporte";
 import type { HistorialAxis } from "@/lib/axis";
 
@@ -1748,8 +1748,9 @@ export function ClientePanel({
                         <CampoValor
                           label="Fin de acceso (calculado)"
                           valor={(() => {
-                            const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
-                            return fin ? fin.toLocaleDateString("es-MX") : null;
+                            const info = finAccesoConEtiqueta(cliente.fechaInscripcion, cliente.fechaRenovacion, cliente.etiqueta);
+                            if (info.vitalicio) return "Membresía Vitalicia";
+                            return info.fecha ? info.fecha.toLocaleDateString("es-MX") : null;
                           })()}
                         />
                       </dl>

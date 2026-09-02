@@ -49,6 +49,40 @@ export function anclaAlRenovar(fechaInscripcionActual: string | null, fechaRenov
   return hoy.toISOString();
 }
 
+// "Fin de acceso" que se le muestra al equipo, ajustado por etiqueta (ver
+// calcularAccesos en boletos.ts — mismas claves de etiqueta que ahí, para
+// que la fecha mostrada sea consistente con los boletos que de verdad se le
+// dieron):
+//  - MÁS+ (incluye "MÁS+ USA"/"MAS"): vitalicio de verdad — no tiene caso
+//    mostrar una fecha calculada que ya pasó cuando el cliente sigue
+//    recibiendo su acceso igual.
+//  - BLACK ACCESS: +1 año sobre la fecha calculada normal.
+//  - Cualquier otra etiqueta (o ninguna): la fecha calculada normal, sin
+//    ajuste.
+export type FinAccesoInfo = { vitalicio: true } | { vitalicio: false; fecha: Date | null };
+
+export function finAccesoConEtiqueta(
+  fechaInscripcion: string | null,
+  fechaRenovacion: string | null,
+  etiqueta: string | null
+): FinAccesoInfo {
+  const etiquetaKey = etiqueta?.trim().toLowerCase() ?? "";
+  if (etiquetaKey === "más+" || etiquetaKey === "más+ usa" || etiquetaKey === "mas") {
+    return { vitalicio: true };
+  }
+
+  const fin = finAccesoCalculado(fechaInscripcion, fechaRenovacion);
+  if (!fin) return { vitalicio: false, fecha: null };
+
+  if (etiquetaKey === "black access") {
+    const finExtendido = new Date(fin);
+    finExtendido.setFullYear(finExtendido.getFullYear() + 1);
+    return { vitalicio: false, fecha: finExtendido };
+  }
+
+  return { vitalicio: false, fecha: fin };
+}
+
 const MESES_POR_MEMBRESIA: Record<string, number> = {
   "3 meses": 3,
   "6 meses": 6,
