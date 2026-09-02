@@ -58,6 +58,20 @@ function leerFiltrosGuardados(): typeof FILTROS_VACIOS {
   }
 }
 
+// Mostrar/ocultar el panel de filtros en escritorio (para ver más filas de
+// la tabla sin scroll) — igual criterio de persistencia que los filtros de
+// arriba, para que la preferencia sobreviva a navegar a otra sección.
+const CLAVE_FILTROS_VISIBLES_STORAGE = "crm-filtros-clientes-visibles";
+
+function leerFiltrosVisiblesGuardado(): boolean {
+  try {
+    const guardado = sessionStorage.getItem(CLAVE_FILTROS_VISIBLES_STORAGE);
+    return guardado === null ? true : guardado === "1";
+  } catch {
+    return true;
+  }
+}
+
 export default function ClientesPage() {
   return (
     <Suspense fallback={null}>
@@ -94,6 +108,7 @@ function ClientesPageInner() {
   // siempre se ven en línea, sin importar esto.
   const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false);
   const { registrar: registrarFiltrosMovil } = useFiltrosMovil();
+  const [filtrosVisibles, setFiltrosVisibles] = useState(true);
   const [opciones, setOpciones] = useState<{ eventos: string[]; membresias: string[] }>({
     eventos: [],
     membresias: [],
@@ -113,7 +128,20 @@ function ClientesPageInner() {
   // del servidor con el del cliente).
   useEffect(() => {
     setFiltros(leerFiltrosGuardados());
+    setFiltrosVisibles(leerFiltrosVisiblesGuardado());
   }, []);
+
+  function alternarFiltrosVisibles() {
+    setFiltrosVisibles((v) => {
+      const nuevo = !v;
+      try {
+        sessionStorage.setItem(CLAVE_FILTROS_VISIBLES_STORAGE, nuevo ? "1" : "0");
+      } catch {
+        // sessionStorage puede fallar en modo privado — no bloquea el toggle.
+      }
+      return nuevo;
+    });
+  }
 
   useEffect(() => {
     try {
@@ -329,20 +357,33 @@ function ClientesPageInner() {
         </div>
       </div>
 
-      <div className="relative mb-4">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre, correo o teléfono…"
-          className="w-full max-w-md rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
-        />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, correo o teléfono…"
+            className="w-full rounded-xl border border-silver bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
+          />
+        </div>
+        <button
+          onClick={alternarFiltrosVisibles}
+          className="ease-spring hidden flex-none items-center gap-1.5 rounded-xl border border-silver bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2 md:flex"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${filtrosVisibles ? "" : "-rotate-90"}`}
+            strokeWidth={2}
+          />
+          {filtrosVisibles ? "Ocultar filtros" : "Mostrar filtros"}
+        </button>
       </div>
 
       {/* Celular: los filtros ya no van aquí — se abren desde el ítem
           "Filtros" del menú lateral (ver Sidebar.tsx + FiltrosMovilSheet
-          más abajo). En escritorio este panel siempre está visible. */}
-      <div className="shell mb-5 hidden rounded-[1.5rem] p-2 diffused md:block">
+          más abajo). En escritorio se pueden ocultar con el botón de arriba,
+          para dejar más espacio a la tabla — persistido en sessionStorage. */}
+      <div className={`shell mb-5 hidden rounded-[1.5rem] p-2 diffused ${filtrosVisibles ? "md:block" : ""}`}>
         <div className="core space-y-3 rounded-[calc(1.5rem-0.5rem)] p-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <Pildora
