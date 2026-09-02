@@ -580,7 +580,11 @@ function ClientesPageInner() {
         </div>
       )}
 
-      <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:h-[calc(100vh-21rem)]">
+      <div
+        className={`shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused ${
+          filtrosVisibles ? "md:h-[calc(100vh-21rem)]" : "md:h-[calc(100vh-12rem)]"
+        }`}
+      >
         <div className="core flex flex-1 flex-col overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
           {cargando ? (
             <p className="p-8 text-center text-sm text-muted">Cargando clientes…</p>
