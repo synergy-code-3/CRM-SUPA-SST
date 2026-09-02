@@ -438,7 +438,9 @@ export async function crearCliente(input: {
   if (existente) throw new Error("Ya existe un cliente con ese correo");
 
   const evento = input.evento?.trim() || null;
+  const etiqueta = input.etiqueta?.trim() || null;
   const region = await regionParaCrearOEditar(evento, input.pais ?? null);
+  const ahora = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("clientes")
@@ -454,10 +456,14 @@ export async function crearCliente(input: {
       // resto del CRM (nunca se captura a mano en este formulario).
       // "Fin de acceso" no se guarda — se calcula siempre desde esta fecha
       // (+1 año, sin fecha_renovacion todavía) con finAccesoCalculado().
-      fecha_inscripcion: new Date().toISOString(),
+      fecha_inscripcion: ahora,
       evento,
       tipo_membresia: input.tipoMembresia?.trim() || null,
-      etiqueta: input.etiqueta?.trim() || null,
+      etiqueta,
+      // Ver finAccesoConEtiqueta() (fechas.ts): un alta nueva con etiqueta
+      // ya cuenta como "asignada de aquí en adelante", así que el ajuste de
+      // Fin de acceso (MÁS+/Black Access) sí le aplica desde el día uno.
+      etiqueta_asignada_en: etiqueta ? ahora : null,
       // Muy por encima de cualquier fila del CSV: los altas manuales
       // siempre encabezan la lista, como corresponde a "lo más reciente".
       orden_csv: Date.now(),
@@ -1017,6 +1023,14 @@ export async function actualizarDatosCliente(
     .filter(Boolean)
     .join(" · ");
 
+  const ahora = new Date().toISOString();
+  // Ver finAccesoConEtiqueta() (fechas.ts): solo se re-marca cuando la
+  // etiqueta de verdad cambia — así el ajuste de Fin de acceso (MÁS+/Black
+  // Access) aplica a partir de este cambio, no a los clientes que ya
+  // traían la etiqueta de antes (ej. los migrados desde el CSV, que se
+  // quedan con etiqueta_asignada_en en null a propósito).
+  const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora : null) : anterior.etiquetaAsignadaEn;
+
   const { data, error } = await supabase
     .from("clientes")
     .update({
@@ -1027,6 +1041,7 @@ export async function actualizarDatosCliente(
       notas: cambios.notas?.trim() || null,
       evento: nuevoEvento,
       etiqueta: nuevaEtiqueta,
+      etiqueta_asignada_en: etiquetaAsignadaEnNueva,
       acceso_plataforma: nuevoAccesoPlataforma,
       tipo_membresia: nuevaMembresia,
       vencimiento_skool: vencimientoSkoolTexto,
@@ -1036,7 +1051,7 @@ export async function actualizarDatosCliente(
       notas_soporte: cambios.notasSoporte?.trim() || null,
       fecha_renovacion: fechaRenovacionNueva,
       region,
-      actualizado_en: new Date().toISOString(),
+      actualizado_en: ahora,
     })
     .eq("id", id)
     .select("*")

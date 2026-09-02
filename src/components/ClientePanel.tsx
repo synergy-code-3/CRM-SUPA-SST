@@ -1748,7 +1748,12 @@ export function ClientePanel({
                         <CampoValor
                           label="Fin de acceso (calculado)"
                           valor={(() => {
-                            const info = finAccesoConEtiqueta(cliente.fechaInscripcion, cliente.fechaRenovacion, cliente.etiqueta);
+                            const info = finAccesoConEtiqueta(
+                              cliente.fechaInscripcion,
+                              cliente.fechaRenovacion,
+                              cliente.etiqueta,
+                              cliente.etiquetaAsignadaEn
+                            );
                             if (info.vitalicio) return "Membresía Vitalicia";
                             return info.fecha ? info.fecha.toLocaleDateString("es-MX") : null;
                           })()}

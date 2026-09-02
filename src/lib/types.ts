@@ -61,6 +61,11 @@ export type Cliente = {
 
   // Clasificación propia del CRM, independiente de los tags de Kajabi.
   etiqueta: string | null;
+  // Cuándo se asignó la etiqueta ACTUAL — null si nunca se asignó por el
+  // flujo normal (ej. clientes migrados desde el CSV). Ver
+  // finAccesoConEtiqueta() en fechas.ts: el ajuste de "Fin de acceso" por
+  // MÁS+/Black Access solo aplica cuando esto no es null.
+  etiquetaAsignadaEn: string | null;
 
   // Tags asignados desde el panel del cliente (catálogo "Biblioteca"),
   // distintos de "etiqueta": un cliente puede tener varios.

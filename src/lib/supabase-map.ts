@@ -35,6 +35,7 @@ export type ClienteRow = {
   accesos: unknown;
   accesos_editado_manual: boolean;
   etiqueta: string | null;
+  etiqueta_asignada_en: string | null;
   tags: string[];
   kajabi_contact_id: string | null;
   eliminado_en: string | null;
@@ -92,6 +93,7 @@ export function filaACliente(r: ClienteRow): Cliente {
     accesos: normalizarAccesos(r.accesos),
     accesosEditadoManual: r.accesos_editado_manual,
     etiqueta: r.etiqueta,
+    etiquetaAsignadaEn: r.etiqueta_asignada_en,
     tags: r.tags ?? [],
     kajabiContactId: r.kajabi_contact_id,
     eliminadoEn: r.eliminado_en,

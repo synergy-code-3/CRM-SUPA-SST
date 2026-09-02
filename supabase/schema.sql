@@ -409,3 +409,13 @@ alter table solicitudes_cliente add column if not exists lead_id_vsl text unique
 -- boletos.ts): se le suman a los accesos que le tocan por evento, no los
 -- reemplazan. Se copia al cliente real al aprobar la solicitud.
 alter table solicitudes_cliente add column if not exists etiqueta text;
+
+-- Cuándo se asignó la etiqueta ACTUAL del cliente (null = nunca se asignó
+-- por este flujo, ej. los 769 clientes migrados el 2026-09-02 desde el CSV,
+-- cuyo evento MÁS+/BLACK ACCESS se movió a etiqueta con un script — ver
+-- migrar-etiqueta en el historial de scripts). Sirve para que
+-- finAccesoConEtiqueta() (fechas.ts) sepa si debe ajustar "Fin de acceso"
+-- (+1 año para Black Access, "Vitalicia" para MÁS+) — SOLO para etiquetas
+-- asignadas de aquí en adelante, no para las migradas (esas ya traían la
+-- fecha de inscripción ajustada a mano desde el CSV de origen).
+alter table clientes add column if not exists etiqueta_asignada_en timestamptz;

@@ -59,19 +59,29 @@ export function anclaAlRenovar(fechaInscripcionActual: string | null, fechaRenov
 //  - BLACK ACCESS: +1 año sobre la fecha calculada normal.
 //  - Cualquier otra etiqueta (o ninguna): la fecha calculada normal, sin
 //    ajuste.
+//
+// SOLO aplica cuando `etiquetaAsignadaEn` no es null — es decir, cuando la
+// etiqueta se asignó por el flujo normal del CRM (crearCliente/
+// actualizarDatosCliente) de aquí en adelante. Los clientes migrados desde
+// el CSV (evento MÁS+/BLACK ACCESS movido a etiqueta el 2026-09-02) se
+// quedan con etiquetaAsignadaEn en null a propósito: su fecha de
+// inscripción ya venía ajustada a mano en la hoja de origen, así que no se
+// les debe sumar el ajuste otra vez encima.
 export type FinAccesoInfo = { vitalicio: true } | { vitalicio: false; fecha: Date | null };
 
 export function finAccesoConEtiqueta(
   fechaInscripcion: string | null,
   fechaRenovacion: string | null,
-  etiqueta: string | null
+  etiqueta: string | null,
+  etiquetaAsignadaEn: string | null
 ): FinAccesoInfo {
-  const etiquetaKey = etiqueta?.trim().toLowerCase() ?? "";
+  const fin = finAccesoCalculado(fechaInscripcion, fechaRenovacion);
+  const etiquetaKey = etiquetaAsignadaEn ? (etiqueta?.trim().toLowerCase() ?? "") : "";
+
   if (etiquetaKey === "más+" || etiquetaKey === "más+ usa" || etiquetaKey === "mas") {
     return { vitalicio: true };
   }
 
-  const fin = finAccesoCalculado(fechaInscripcion, fechaRenovacion);
   if (!fin) return { vitalicio: false, fecha: null };
 
   if (etiquetaKey === "black access") {

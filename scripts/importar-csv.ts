@@ -119,6 +119,7 @@ async function main() {
       accesos: existente?.accesos ?? { general: [], vip: [], black: [] },
       accesosEditadoManual: existente?.accesosEditadoManual ?? false,
       etiqueta: existente?.etiqueta ?? null,
+      etiquetaAsignadaEn: existente?.etiquetaAsignadaEn ?? null,
       tags: existente?.tags ?? [],
       kajabiContactId: existente?.kajabiContactId ?? null,
       eliminadoEn: existente?.eliminadoEn ?? null,
