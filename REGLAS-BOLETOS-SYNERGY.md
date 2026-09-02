@@ -53,10 +53,10 @@ Un cliente puede tener **más de un chip a la vez** (ej. GRAL MX y BLACK simult�
 
 ## 3.1 Casos especiales de nombre de evento fijo
 
-Algunos códigos de evento no representan un evento real con inventario propio, sino una categoría directa de boleto. Estos se resuelven por nombre exacto del evento, sin consultar la tabla de inventario, dando siempre **1 boleto**, eligiendo MX/US según el país del cliente:
+Algunos códigos de evento no representan un evento real con inventario propio, sino una categoría directa de boleto. Estos se resuelven por nombre exacto del evento, sin consultar la tabla de inventario, dando siempre **1 boleto, variante MX** — sin importar el país del cliente (el boleto es para ESE evento en México, no "el que le toque según dónde vive"):
 
-- `VIP-SU` → 1 boleto VIP (MX o US según país)
-- `GRAL-SU` → 1 boleto GENERAL (MX o US según país)
+- `VIP-SU` → 1 boleto VIP MX
+- `GRAL-SU` → 1 boleto GENERAL MX
 
 Es la misma idea que el caso "Renovación" de la sección 4, pero disparado por el nombre del evento en vez de por el campo de acceso.
 

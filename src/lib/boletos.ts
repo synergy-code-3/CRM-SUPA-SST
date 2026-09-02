@@ -279,12 +279,14 @@ export function calcularAccesos(
     };
   }
 
-  // Sección 3.1 — nombres de evento fijos, 1 boleto, MX/US según país.
+  // Sección 3.1 — nombres de evento fijos, 1 boleto, siempre variante MX
+  // (el boleto es para ESE evento en México, no "el que le toque según
+  // dónde vive el cliente" — mismo criterio que el caso "Synergy" de abajo).
   if (eventoKey === "vip-su" || eventoKey === "gral-su") {
     if (eventoKey === "vip-su") {
-      return conExtras({ ...ACCESO_VACIO, vip: [accesoDe(1, variantePorPais)] }, false);
+      return conExtras({ ...ACCESO_VACIO, vip: [accesoDe(1, "MX")] }, false);
     }
-    return conExtras({ ...ACCESO_VACIO, general: [accesoDe(1, variantePorPais)] }, false);
+    return conExtras({ ...ACCESO_VACIO, general: [accesoDe(1, "MX")] }, false);
   }
 
   // evento = "Synergy" (exacto) — fila del inventario sin datos reales, es
