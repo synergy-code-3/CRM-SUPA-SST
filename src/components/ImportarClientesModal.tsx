@@ -23,6 +23,12 @@ type ResultadoFila = {
   fila: FilaCsv;
   ok: boolean;
   error?: string;
+  // true cuando el error es específicamente "ya existe un cliente con ese
+  // correo" (altaCompletaCliente lo rechaza antes de tocar Kajabi) — se
+  // separa de los demás errores porque no es una falla real, es esperado:
+  // la persona ya cayó por Kajabi (o por cualquier otro medio) antes de
+  // subir este CSV.
+  yaExistia?: boolean;
   avisoKajabi?: string | null;
   avisoSkool?: string | null;
   avisoGhl?: string | null;
@@ -36,14 +42,17 @@ type ResultadoFila = {
   estadoWhatsApp?: EstadoWhatsapp;
 };
 
-type FiltroResultados = "todos" | "exitosos" | "avisos" | "errores";
+type FiltroResultados = "todos" | "exitosos" | "avisos" | "ya_existian" | "errores";
 
 const LABEL_FILTRO: Record<FiltroResultados, string> = {
   todos: "Todos",
   exitosos: "Exitosos",
   avisos: "Revisar",
+  ya_existian: "Ya en el CRM",
   errores: "Errores",
 };
+
+const MENSAJE_YA_EXISTE = "Ya existe un cliente con ese correo";
 
 // Mismo intervalo/tope ya probado en el panel del cliente (ver
 // esperarConfirmacionWa en ClientePanel.tsx): el Workflow real de GHL ha
@@ -215,7 +224,8 @@ export function ImportarClientesModal({
         });
         const data = await res.json();
         if (!res.ok) {
-          salida.push({ fila, ok: false, error: data.error ?? "Error desconocido" });
+          const error = data.error ?? "Error desconocido";
+          salida.push({ fila, ok: false, error, yaExistia: error === MENSAJE_YA_EXISTE });
         } else {
           salida.push({
             fila,
@@ -286,7 +296,7 @@ export function ImportarClientesModal({
         r.fila.nombre,
         r.fila.email,
         r.fila.telefono,
-        r.ok ? "Creado" : `Error: ${r.error ?? ""}`,
+        r.ok ? "Creado" : r.yaExistia ? "Ya existe en el CRM" : `Error: ${r.error ?? ""}`,
         textoKajabi(r),
         textoSkool(r),
         textoWhatsapp(r),
@@ -330,13 +340,15 @@ export function ImportarClientesModal({
 
   const exitosos = resultados?.filter((r) => r.ok).length ?? 0;
   const conFallas = resultados?.filter((r) => r.ok && (r.avisoKajabi || r.avisoSkool || r.avisoGhl)).length ?? 0;
-  const fallidos = resultados?.filter((r) => !r.ok).length ?? 0;
+  const yaExistian = resultados?.filter((r) => r.yaExistia).length ?? 0;
+  const fallidos = resultados?.filter((r) => !r.ok && !r.yaExistia).length ?? 0;
   const resultadosFiltrados =
     resultados?.filter((r) => {
       if (filtroResultados === "todos") return true;
       if (filtroResultados === "exitosos") return r.ok;
       if (filtroResultados === "avisos") return r.ok && !!(r.avisoKajabi || r.avisoSkool || r.avisoGhl);
-      return !r.ok; // errores
+      if (filtroResultados === "ya_existian") return !!r.yaExistia;
+      return !r.ok && !r.yaExistia; // errores
     }) ?? [];
   // Derivado en vez de un estado propio: siempre refleja la realidad, tanto
   // para la tanda inicial como para reintentos individuales sueltos.
@@ -484,7 +496,7 @@ export function ImportarClientesModal({
 
           {resultados && (
             <>
-              <div className="mb-4 grid grid-cols-3 gap-2">
+              <div className="mb-4 grid grid-cols-4 gap-2">
                 <div className="rounded-xl border border-success/30 bg-success/10 p-3 text-center">
                   <p className="text-lg font-semibold text-success">{exitosos}</p>
                   <p className="text-xs text-muted">Creados</p>
@@ -493,6 +505,13 @@ export function ImportarClientesModal({
                   <p className="text-lg font-semibold text-warning">{conFallas}</p>
                   <p className="text-xs text-muted">Con avisos (revisar)</p>
                 </div>
+                <div
+                  className="rounded-xl border border-silver bg-surface-2 p-3 text-center"
+                  title="No se les volvió a dar la oferta ni se les reinvitó — ya estaban en el CRM antes de este CSV."
+                >
+                  <p className="text-lg font-semibold text-foreground">{yaExistian}</p>
+                  <p className="text-xs text-muted">Ya en el CRM</p>
+                </div>
                 <div className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-center">
                   <p className="text-lg font-semibold text-danger">{fallidos}</p>
                   <p className="text-xs text-muted">No creados</p>
@@ -500,7 +519,7 @@ export function ImportarClientesModal({
               </div>
 
               <div className="mb-3 flex items-center gap-1.5">
-                {(["todos", "exitosos", "avisos", "errores"] as const).map((f) => (
+                {(["todos", "exitosos", "avisos", "ya_existian", "errores"] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => setFiltroResultados(f)}
@@ -543,6 +562,14 @@ export function ImportarClientesModal({
                         <td className="px-3 py-2">
                           {r.ok ? (
                             <CheckCircle2 className="h-4 w-4 text-success" strokeWidth={1.75} />
+                          ) : r.yaExistia ? (
+                            <span
+                              className="flex items-center gap-1 text-muted"
+                              title="Ya existía en el CRM antes de este CSV — no se le volvió a dar la oferta en Kajabi ni se le reinvitó."
+                            >
+                              <AlertTriangle className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                              Ya existe en el CRM
+                            </span>
                           ) : (
                             <span className="flex items-center gap-1 text-danger">
                               <XCircle className="h-4 w-4 flex-none" strokeWidth={1.75} />
