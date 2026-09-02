@@ -93,6 +93,25 @@ export function finAccesoConEtiqueta(
   return { vitalicio: false, fecha: fin };
 }
 
+// Inversa de finAccesoConEtiqueta(): a partir del "Fin de acceso" que el
+// admin quiere ver (editando ese campo en ClientePanel), calcula qué
+// fecha_renovacion hay que guardar para que, al recalcularlo, dé
+// exactamente esa fecha — respeta el mismo ajuste de Black Access (+1 año)
+// para que el campo editable y el campo calculado nunca se desincronicen.
+// No se usa para MÁS+: ese caso no tiene fecha que editar (vitalicio de
+// verdad), se filtra antes de llamar a esta función.
+export function fechaRenovacionDesdeFinDeseado(
+  finDeseado: Date,
+  etiqueta: string | null,
+  etiquetaAsignadaEn: string | null
+): Date {
+  const etiquetaKey = etiquetaAsignadaEn ? (etiqueta?.trim().toLowerCase() ?? "") : "";
+  const anios = etiquetaKey === "black access" ? 2 : 1;
+  const resultado = new Date(finDeseado);
+  resultado.setFullYear(resultado.getFullYear() - anios);
+  return resultado;
+}
+
 const MESES_POR_MEMBRESIA: Record<string, number> = {
   "3 meses": 3,
   "6 meses": 6,

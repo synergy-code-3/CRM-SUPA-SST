@@ -1,5 +1,13 @@
 import { supabase } from "./supabase";
-import { anclaAlRenovar, calcularVencimientoSkool, finAccesoCalculado, formatearFechaSkool, parsearFechaSkool } from "./fechas";
+import {
+  anclaAlRenovar,
+  calcularVencimientoSkool,
+  fechaRenovacionDesdeFinDeseado,
+  finAccesoCalculado,
+  finAccesoConEtiqueta,
+  formatearFechaSkool,
+  parsearFechaSkool,
+} from "./fechas";
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
@@ -915,11 +923,20 @@ type CambiosDatosCliente = {
   invitacionSkool?: string | null;
   llamada?: string | null;
   notasSoporte?: string | null;
-  // "YYYY-MM-DD" (input type=date) o null/vacío para limpiarla. Solo se
-  // llena a mano para corregir un caso viejo — el botón "Renovar" la pone
-  // sola. "Fin de acceso" ya no se guarda ni se edita: sale siempre de
-  // finAccesoCalculado(fechaInscripcion, fechaRenovacion).
+  // "YYYY-MM-DD" (input type=date) o null/vacío para limpiarla. Ya no se
+  // edita directo desde ClientePanel (ver finAccesoDeseado abajo) — se
+  // manda tal cual para no perder el ancla en los casos donde no hay un
+  // "Fin de acceso" editable que mostrar (MÁS+, vitalicio). El botón
+  // "Renovar" también la pone sola, por su cuenta.
   fechaRenovacion?: string | null;
+  // "YYYY-MM-DD": lo que el admin escribió en el campo editable "Fin de
+  // acceso" de ClientePanel. Nunca se guarda tal cual — se traduce a la
+  // fecha_renovacion que hay que guardar para que, al recalcularse con
+  // finAccesoConEtiqueta(), dé exactamente esta fecha (ver
+  // fechaRenovacionDesdeFinDeseado en fechas.ts). Si viene presente, manda
+  // sobre fechaRenovacion. No aplica a clientes MÁS+ (vitalicio, sin fecha
+  // que editar) — la UI no lo manda para esos casos.
+  finAccesoDeseado?: string | null;
 };
 
 export async function actualizarDatosCliente(
@@ -1001,9 +1018,24 @@ export async function actualizarDatosCliente(
     vencimientoSkoolFecha = fechaSkoolADateOnly(recalculado);
   }
 
-  const fechaRenovacionNueva = cambios.fechaRenovacion?.trim()
-    ? new Date(cambios.fechaRenovacion.trim()).toISOString()
-    : null;
+  const ahora = new Date().toISOString();
+  // Ver finAccesoConEtiqueta() (fechas.ts): solo se re-marca cuando la
+  // etiqueta de verdad cambia — así el ajuste de Fin de acceso (MÁS+/Black
+  // Access) aplica a partir de este cambio, no a los clientes que ya
+  // traían la etiqueta de antes (ej. los migrados desde el CSV, que se
+  // quedan con etiqueta_asignada_en en null a propósito).
+  const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora : null) : anterior.etiquetaAsignadaEn;
+
+  const finAccesoDeseadoTexto = cambios.finAccesoDeseado?.trim() || null;
+  const fechaRenovacionNueva = finAccesoDeseadoTexto
+    ? fechaRenovacionDesdeFinDeseado(
+        new Date(finAccesoDeseadoTexto),
+        nuevaEtiqueta,
+        etiquetaAsignadaEnNueva
+      ).toISOString()
+    : cambios.fechaRenovacion?.trim()
+      ? new Date(cambios.fechaRenovacion.trim()).toISOString()
+      : null;
   // Comparar solo la parte de fecha (no la hora): el formulario manda
   // "YYYY-MM-DD" (medianoche UTC al convertir), pero el valor guardado por
   // una renovación real trae hora — comparar el ISO completo daba "cambió"
@@ -1016,20 +1048,22 @@ export async function actualizarDatosCliente(
     membresiaCambio
       ? `Vencimiento Skool recalculado: "${anterior.vencimientoSkool ?? "—"}" → "${vencimientoSkoolTexto ?? "—"}"`
       : null,
-    fechaRenovacionCambio
-      ? `Fecha de renovación: "${anterior.fechaRenovacion ? formatearFechaSkool(new Date(anterior.fechaRenovacion)) : "—"}" → "${fechaRenovacionNueva ? formatearFechaSkool(new Date(fechaRenovacionNueva)) : "—"}"`
-      : null,
+    fechaRenovacionCambio && finAccesoDeseadoTexto
+      ? `Fin de acceso: "${(() => {
+          const finAnterior = finAccesoConEtiqueta(
+            anterior.fechaInscripcion,
+            anterior.fechaRenovacion,
+            anterior.etiqueta,
+            anterior.etiquetaAsignadaEn
+          );
+          return finAnterior.vitalicio || !finAnterior.fecha ? "—" : formatearFechaSkool(finAnterior.fecha);
+        })()}" → "${formatearFechaSkool(new Date(finAccesoDeseadoTexto))}"`
+      : fechaRenovacionCambio
+        ? `Fecha de renovación: "${anterior.fechaRenovacion ? formatearFechaSkool(new Date(anterior.fechaRenovacion)) : "—"}" → "${fechaRenovacionNueva ? formatearFechaSkool(new Date(fechaRenovacionNueva)) : "—"}"`
+        : null,
   ]
     .filter(Boolean)
     .join(" · ");
-
-  const ahora = new Date().toISOString();
-  // Ver finAccesoConEtiqueta() (fechas.ts): solo se re-marca cuando la
-  // etiqueta de verdad cambia — así el ajuste de Fin de acceso (MÁS+/Black
-  // Access) aplica a partir de este cambio, no a los clientes que ya
-  // traían la etiqueta de antes (ej. los migrados desde el CSV, que se
-  // quedan con etiqueta_asignada_en en null a propósito).
-  const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora : null) : anterior.etiquetaAsignadaEn;
 
   const { data, error } = await supabase
     .from("clientes")

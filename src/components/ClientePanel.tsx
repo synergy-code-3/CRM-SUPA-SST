@@ -83,7 +83,13 @@ type Form = {
   invitacionSkool: string;
   llamada: string;
   notasSoporte: string;
+  // Ya no se muestra en el formulario — se manda tal cual para no perder el
+  // ancla en clientes MÁS+ (vitalicio, sin "Fin de acceso" editable). Para
+  // todos los demás, el campo editable de verdad es finAcceso.
   fechaRenovacion: string;
+  // "Fin de acceso" editable (ver finAccesoDeseado en db.ts). Vacío para
+  // clientes MÁS+ — esos no tienen fecha que editar.
+  finAcceso: string;
 };
 
 function isoAFechaInput(iso: string | null): string {
@@ -107,6 +113,11 @@ function formDeCliente(c: Cliente | null): Form {
     llamada: c?.llamada ?? "",
     notasSoporte: c?.notasSoporte ?? "",
     fechaRenovacion: isoAFechaInput(c?.fechaRenovacion ?? null),
+    finAcceso: (() => {
+      if (!c) return "";
+      const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+      return info.vitalicio || !info.fecha ? "" : isoAFechaInput(info.fecha.toISOString());
+    })(),
   };
 }
 
@@ -1733,55 +1744,75 @@ export function ClientePanel({
                     )}
                   </Tarjeta>
 
-                  <Tarjeta titulo="Acceso a plataforma (histórico)">
-                    {!editando ? (
-                      <dl className="space-y-2.5 text-sm">
-                        <CampoValor label="Registrado en el CSV de origen" valor={cliente.accesoPlataforma} />
-                        <CampoValor
-                          label="Fecha de renovación"
-                          valor={
-                            cliente.fechaRenovacion
-                              ? new Date(cliente.fechaRenovacion).toLocaleDateString("es-MX")
-                              : null
-                          }
-                        />
-                        <CampoValor
-                          label="Fin de acceso (calculado)"
-                          valor={(() => {
-                            const info = finAccesoConEtiqueta(
-                              cliente.fechaInscripcion,
-                              cliente.fechaRenovacion,
-                              cliente.etiqueta,
-                              cliente.etiquetaAsignadaEn
-                            );
-                            if (info.vitalicio) return "Membresía Vitalicia";
-                            return info.fecha ? info.fecha.toLocaleDateString("es-MX") : null;
-                          })()}
-                        />
-                      </dl>
-                    ) : (
-                      <div className="space-y-3">
-                        <Campo label="Acceso a plataforma">
-                          <Input
-                            value={form.accesoPlataforma}
-                            onChange={(v) => setForm((f) => ({ ...f, accesoPlataforma: v }))}
-                          />
-                        </Campo>
-                        <Campo label="Fecha de renovación">
-                          <input
-                            type="date"
-                            value={form.fechaRenovacion}
-                            onChange={(e) => setForm((f) => ({ ...f, fechaRenovacion: e.target.value }))}
-                            className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
-                          />
-                        </Campo>
-                        <p className="text-xs text-muted">
-                          &quot;Fin de acceso&quot; ya no se edita a mano — se calcula solo (fecha de renovación, o
-                          si no hay, fecha de inscripción, + 1 año).
-                        </p>
-                      </div>
-                    )}
-                  </Tarjeta>
+                  {(() => {
+                    const infoFinAcceso = finAccesoConEtiqueta(
+                      cliente.fechaInscripcion,
+                      cliente.fechaRenovacion,
+                      cliente.etiqueta,
+                      cliente.etiquetaAsignadaEn
+                    );
+                    const esBlackAccess =
+                      !!cliente.etiquetaAsignadaEn && cliente.etiqueta?.trim().toLowerCase() === "black access";
+                    return (
+                      <Tarjeta titulo="Acceso a plataforma (histórico)">
+                        {!editando ? (
+                          <dl className="space-y-2.5 text-sm">
+                            <CampoValor label="Registrado en el CSV de origen" valor={cliente.accesoPlataforma} />
+                            <CampoValor
+                              label="Fecha de renovación"
+                              valor={
+                                cliente.fechaRenovacion
+                                  ? new Date(cliente.fechaRenovacion).toLocaleDateString("es-MX")
+                                  : null
+                              }
+                            />
+                            <CampoValor
+                              label="Fin de acceso (calculado)"
+                              valor={
+                                infoFinAcceso.vitalicio
+                                  ? "Membresía Vitalicia"
+                                  : infoFinAcceso.fecha
+                                    ? infoFinAcceso.fecha.toLocaleDateString("es-MX")
+                                    : null
+                              }
+                            />
+                          </dl>
+                        ) : (
+                          <div className="space-y-3">
+                            <Campo label="Acceso a plataforma">
+                              <Input
+                                value={form.accesoPlataforma}
+                                onChange={(v) => setForm((f) => ({ ...f, accesoPlataforma: v }))}
+                              />
+                            </Campo>
+                            {infoFinAcceso.vitalicio ? (
+                              <Campo label="Fin de acceso">
+                                <p className="py-1.5 text-sm text-muted">
+                                  Membresía Vitalicia — no editable (etiqueta MÁS+, no tiene fecha de fin de acceso).
+                                </p>
+                              </Campo>
+                            ) : (
+                              <>
+                                <Campo label="Fin de acceso">
+                                  <input
+                                    type="date"
+                                    value={form.finAcceso}
+                                    onChange={(e) => setForm((f) => ({ ...f, finAcceso: e.target.value }))}
+                                    className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                                  />
+                                </Campo>
+                                <p className="text-xs text-muted">
+                                  Al guardar, la fecha de renovación se recalcula sola por debajo para que
+                                  &quot;Fin de acceso&quot; quede exactamente en lo que pongas aquí
+                                  {esBlackAccess ? " (el año extra de Black Access ya está incluido en esta fecha)" : ""}.
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </Tarjeta>
+                    );
+                  })()}
                 </div>
               )}
 
