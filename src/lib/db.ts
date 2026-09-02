@@ -1288,6 +1288,75 @@ export async function registrarTagKajabi(
   return { cliente, esNuevo };
 }
 
+// Ventana en la que tiene sentido seguir reintentando — pasado esto, si
+// Axis nunca tuvo el dato es porque no lo va a tener (o el cliente viene de
+// otra fuente, ej. el CSV histórico) y ya no vale la pena seguir gastando
+// llamadas a su API en cada corrida del cron.
+const DIAS_REINTENTO_AXIS = 7;
+const TOPE_REINTENTOS_AXIS = 20;
+
+export type ResultadoReintentoAxis = { revisados: number; completados: number };
+
+// Cuando registrarTagKajabi crea un cliente justo en el momento en que
+// Kajabi ya confirmó el acceso pero Axis todavía no terminaba de registrar
+// la compra (carrera entre los dos sistemas), el cliente se queda sin
+// evento/tipo de membresía para siempre si nadie vuelve a intentar. Esta
+// función revisa a los creados recientemente que siguen incompletos y
+// reintenta el mismo respaldo de Axis — se llama en cada corrida del cron
+// de Kajabi (cada ~15 min) para que se autocorrija solo. Tope de 20 por
+// corrida para no alargar la función dentro de maxDuration.
+export async function reintentarCompletadoAxis(): Promise<ResultadoReintentoAxis> {
+  const desde = new Date();
+  desde.setDate(desde.getDate() - DIAS_REINTENTO_AXIS);
+
+  const { data: candidatos, error } = await supabase
+    .from("clientes")
+    .select("id,telefono,evento,tipo_membresia")
+    .or("tipo_membresia.is.null,evento.is.null")
+    .gte("creado_en", desde.toISOString())
+    .limit(TOPE_REINTENTOS_AXIS);
+  if (error) throw error;
+  if (!candidatos || candidatos.length === 0) return { revisados: 0, completados: 0 };
+
+  let completados = 0;
+  for (const c of candidatos) {
+    try {
+      const historial = await obtenerHistorialAxis(c.id);
+      if (!historial) continue;
+
+      const cambios: Record<string, unknown> = {};
+      if (!c.telefono && historial.contacto.telefono) {
+        cambios.telefono = normalizarTelefono(historial.contacto.telefono);
+      }
+      if (!c.tipo_membresia) {
+        const m = detectarMembresiaEnComprasAxis(historial.compras);
+        if (m) cambios.tipo_membresia = m;
+      }
+      if (!c.evento) {
+        const e = detectarEventoEnAxis(historial);
+        if (e) cambios.evento = e;
+      }
+      if (Object.keys(cambios).length === 0) continue;
+
+      await supabase.from("clientes").update({ ...cambios, actualizado_en: new Date().toISOString() }).eq("id", c.id);
+      await registrarEvento(
+        c.id,
+        "EDICION_DATOS",
+        `Completado con datos de Synergy Axis: ${Object.entries(cambios).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+        "Axis (reintento)"
+      );
+      if (cambios.evento || cambios.tipo_membresia) {
+        await recalcularAccesos(c.id);
+      }
+      completados++;
+    } catch {
+      // Best-effort: un fallo con un candidato no debe tronar el resto.
+    }
+  }
+
+  return { revisados: candidatos.length, completados };
+}
+
 // --- Teléfonos de Hotmart en espera (ver hotmart_pendientes en schema.sql) ---
 
 export async function guardarTelefonoPendienteHotmart(

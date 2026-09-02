@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { autorizadoParaCron } from "@/lib/cron-auth";
-import { guardarCursorSyncKajabi, marcarInvitacionSkoolEnviada, marcarMensajeBienvenidaWa, obtenerCursorSyncKajabi, registrarTagKajabi } from "@/lib/db";
+import {
+  guardarCursorSyncKajabi,
+  marcarInvitacionSkoolEnviada,
+  marcarMensajeBienvenidaWa,
+  obtenerCursorSyncKajabi,
+  registrarTagKajabi,
+  reintentarCompletadoAxis,
+} from "@/lib/db";
 import { altaEnGhl } from "@/lib/ghl";
 import { KAJABI_OFFER_ID_CLUB_SINERGETICO, KAJABI_TAG_MIEMBRO_DEL_CLUB, nuevosConOfertaDesde } from "@/lib/kajabi";
 import { invitarASkool } from "@/lib/skool";
@@ -91,7 +98,18 @@ async function manejar(req: NextRequest) {
     await guardarCursorSyncKajabi(ultimoProcesado);
   }
 
-  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length });
+  // Reintento best-effort: clientes creados recientemente que se quedaron
+  // sin evento/tipo de membresía porque Axis todavía no tenía su compra
+  // registrada en el momento de la creación (carrera entre Kajabi y Axis) —
+  // ver reintentarCompletadoAxis(). No bloquea la respuesta si falla.
+  let axis: { revisados: number; completados: number } | null = null;
+  try {
+    axis = await reintentarCompletadoAxis();
+  } catch (err) {
+    console.error("Reintento de Axis falló, se reintenta en la siguiente corrida:", err);
+  }
+
+  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis });
 }
 
 export const GET = manejar;
