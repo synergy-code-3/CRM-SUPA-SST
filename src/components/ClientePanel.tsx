@@ -114,6 +114,16 @@ const ACCESO_LABEL: Record<keyof Accesos, string> = {
   black: "Black Access",
 };
 
+const OPCIONES_MEMBRESIA: OpcionCombobox[] = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
+
+const OPCIONES_INVITACION_SKOOL: OpcionCombobox[] = [{ valor: "Invitación enviada", etiqueta: "Invitación enviada" }];
+
+const OPCIONES_LLAMADA: OpcionCombobox[] = [
+  { valor: "Si", etiqueta: "Sí" },
+  { valor: "No", etiqueta: "No" },
+  { valor: "No contesto", etiqueta: "No contestó" },
+];
+
 function formatearDireccion(d: PerfilKajabi["direccion"]): string[] {
   if (!d) return [];
   const linea1 = [d.calle1, d.calle2].filter(Boolean).join(", ");
@@ -1835,9 +1845,12 @@ export function ClientePanel({
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <Campo label="Tipo de membresía">
-                          <Input
-                            value={form.tipoMembresia}
+                          <ComboboxBuscador
+                            opciones={OPCIONES_MEMBRESIA}
+                            valor={form.tipoMembresia}
                             onChange={(v) => setForm((f) => ({ ...f, tipoMembresia: v }))}
+                            placeholder="Seleccionar…"
+                            etiquetaVacio="— Sin definir —"
                           />
                         </Campo>
                         <Campo label="Vencimiento Skool">
@@ -1848,13 +1861,21 @@ export function ClientePanel({
                         </Campo>
                       </div>
                       <Campo label="Invitación de Skool">
-                        <Input
-                          value={form.invitacionSkool}
+                        <ComboboxBuscador
+                          opciones={OPCIONES_INVITACION_SKOOL}
+                          valor={form.invitacionSkool}
                           onChange={(v) => setForm((f) => ({ ...f, invitacionSkool: v }))}
+                          placeholder="Seleccionar…"
+                          etiquetaVacio="— Sin invitar —"
                         />
                       </Campo>
                       <Campo label="Llamada">
-                        <Input value={form.llamada} onChange={(v) => setForm((f) => ({ ...f, llamada: v }))} />
+                        <ComboboxBuscador
+                          opciones={OPCIONES_LLAMADA}
+                          valor={form.llamada}
+                          onChange={(v) => setForm((f) => ({ ...f, llamada: v }))}
+                          placeholder="Seleccionar…"
+                        />
                       </Campo>
                     </div>
                   )}

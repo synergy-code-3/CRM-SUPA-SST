@@ -462,6 +462,9 @@ export async function crearCliente(input: {
       // siempre encabezan la lista, como corresponde a "lo más reciente".
       orden_csv: Date.now(),
       region,
+      // Default al crear — "No" hasta que alguien lo mueva a mano en el
+      // desplegable de Seguimiento (Sí / No / No contestó).
+      llamada: "No",
     })
     .select("*")
     .single();
@@ -1242,6 +1245,9 @@ export async function registrarTagKajabi(
         acceso_plataforma: "Si",
         ...(eventoDetectado ? { evento: eventoDetectado } : {}),
         ...(tipoMembresiaDetectado ? { tipo_membresia: tipoMembresiaDetectado } : {}),
+        // Default al crear — "No" hasta que alguien lo mueva a mano en el
+        // desplegable de Seguimiento (Sí / No / No contestó).
+        llamada: "No",
       })
       .select("*")
       .single();
