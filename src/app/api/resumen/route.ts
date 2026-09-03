@@ -18,6 +18,21 @@ function agruparTopMasOtros(
   return principales;
 }
 
+// Solo hay 3 membresías reales (3/6/12 Meses) — el CSV de origen trae el
+// mismo valor con distinta mayúscula/minúscula en algunas filas ("3 MESES"
+// vs "3 Meses"), y sin normalizar antes de agrupar el dashboard las cuenta
+// como si fueran categorías separadas. Cualquier otro texto libre se deja
+// tal cual (cae en "Otros" al agrupar).
+const MEMBRESIA_CANONICA: Record<string, string> = {
+  "3 meses": "3 Meses",
+  "6 meses": "6 Meses",
+  "12 meses": "12 Meses",
+};
+
+function normalizarMembresiaParaDashboard(v: string): string {
+  return MEMBRESIA_CANONICA[v.trim().toLowerCase()] ?? v.trim();
+}
+
 function claveMes(fecha: Date): string {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -64,7 +79,8 @@ export async function GET() {
     if (acceso.toLowerCase() === "si") conAcceso++;
 
     if (c.tipoMembresia) {
-      membresias[c.tipoMembresia] = (membresias[c.tipoMembresia] ?? 0) + 1;
+      const clave = normalizarMembresiaParaDashboard(c.tipoMembresia);
+      membresias[clave] = (membresias[clave] ?? 0) + 1;
     }
 
     const venceSkool = parsearFechaSkool(c.vencimientoSkool);
