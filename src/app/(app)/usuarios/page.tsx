@@ -82,7 +82,7 @@ export default function UsuariosPage() {
     cargar();
   }, []);
 
-  async function actualizar(id: string, cambios: Record<string, unknown>) {
+  async function actualizar(id: string, cambios: Record<string, unknown>): Promise<boolean> {
     setError(null);
     const res = await fetch(`/api/usuarios/${id}`, {
       method: "PATCH",
@@ -92,21 +92,23 @@ export default function UsuariosPage() {
     const data = await res.json();
     if (!res.ok) {
       setError(data.error ?? "No se pudo actualizar");
-      return;
+      return false;
     }
     cargar();
+    return true;
   }
 
-  async function eliminar(id: string, nombre: string) {
-    if (!confirm(`¿Eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return;
+  async function eliminar(id: string, nombre: string): Promise<boolean> {
+    if (!confirm(`¿Eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return false;
     setError(null);
     const res = await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok) {
       setError(data.error ?? "No se pudo eliminar");
-      return;
+      return false;
     }
     cargar();
+    return true;
   }
 
   function resetearPassword(id: string) {
@@ -275,15 +277,40 @@ export default function UsuariosPage() {
         />
       )}
 
-      {verPerfil && <PerfilUsuarioDetalle usuario={verPerfil} onClose={() => setVerPerfil(null)} />}
+      {verPerfil && (
+        <PerfilUsuarioDetalle
+          usuario={verPerfil}
+          onClose={() => setVerPerfil(null)}
+          onAceptar={async () => {
+            if (await actualizar(verPerfil.id, { activo: true })) setVerPerfil(null);
+          }}
+          onRechazar={async () => {
+            if (await eliminar(verPerfil.id, verPerfil.nombre)) setVerPerfil(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// Vista de solo lectura para que admin vea el perfil completo (foto,
-// teléfonos) que cada quien llena desde su propio "Mi perfil" — no se edita
-// desde aquí, eso sigue siendo cosa de cada usuario.
-function PerfilUsuarioDetalle({ usuario, onClose }: { usuario: Usuario; onClose: () => void }) {
+// Perfil completo (foto, teléfonos) que cada quien llena desde su propio
+// "Mi perfil" — no se edita desde aquí, eso sigue siendo cosa de cada
+// usuario. La única acción que sí vive aquí es aceptar/rechazar una cuenta
+// autoregistrada pendiente: en la tabla esos botones quedan fuera de vista
+// en pantallas angostas (la fila se corta), así que este modal es el
+// camino que sí funciona igual en celular que en PC.
+function PerfilUsuarioDetalle({
+  usuario,
+  onClose,
+  onAceptar,
+  onRechazar,
+}: {
+  usuario: Usuario;
+  onClose: () => void;
+  onAceptar: () => void;
+  onRechazar: () => void;
+}) {
+  const pendiente = esPendienteDeAprobar(usuario);
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
@@ -303,6 +330,11 @@ function PerfilUsuarioDetalle({ usuario, onClose }: { usuario: Usuario; onClose:
 
           <div className="flex flex-col items-center gap-2">
             <Avatar usuario={usuario} tamano={20} />
+            {pendiente && (
+              <p className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning">
+                Pendiente de aprobar
+              </p>
+            )}
             {perfilIncompleto(usuario) && (
               <p className="text-xs text-warning">Perfil incompleto — falta teléfono y/o foto.</p>
             )}
@@ -345,6 +377,23 @@ function PerfilUsuarioDetalle({ usuario, onClose }: { usuario: Usuario; onClose:
               </span>
             </div>
           </dl>
+
+          {pendiente && (
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={onRechazar}
+                className="ease-spring flex-1 rounded-xl border border-danger/30 px-4 py-2.5 text-sm font-medium text-danger transition hover:bg-danger/10"
+              >
+                Rechazar
+              </button>
+              <button
+                onClick={onAceptar}
+                className="ease-spring flex-1 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
+              >
+                Aceptar
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
