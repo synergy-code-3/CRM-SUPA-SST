@@ -287,6 +287,11 @@ export default function UsuariosPage() {
           onRechazar={async () => {
             if (await eliminar(verPerfil.id, verPerfil.nombre)) setVerPerfil(null);
           }}
+          onCambiarRol={async (rol) => {
+            if (await actualizar(verPerfil.id, { rol })) {
+              setVerPerfil((v) => (v ? { ...v, rol } : v));
+            }
+          }}
         />
       )}
     </div>
@@ -295,20 +300,23 @@ export default function UsuariosPage() {
 
 // Perfil completo (foto, teléfonos) que cada quien llena desde su propio
 // "Mi perfil" — no se edita desde aquí, eso sigue siendo cosa de cada
-// usuario. La única acción que sí vive aquí es aceptar/rechazar una cuenta
-// autoregistrada pendiente: en la tabla esos botones quedan fuera de vista
-// en pantallas angostas (la fila se corta), así que este modal es el
-// camino que sí funciona igual en celular que en PC.
+// usuario. Las únicas acciones que sí viven aquí son aceptar/rechazar una
+// cuenta autoregistrada pendiente y cambiar el rol: en la tabla esos
+// controles quedan fuera de vista en pantallas angostas (la fila se corta),
+// así que este modal es el camino que sí funciona igual en celular que en
+// PC — incluso después de aceptar, para poder ajustar el rol más tarde.
 function PerfilUsuarioDetalle({
   usuario,
   onClose,
   onAceptar,
   onRechazar,
+  onCambiarRol,
 }: {
   usuario: Usuario;
   onClose: () => void;
   onAceptar: () => void;
   onRechazar: () => void;
+  onCambiarRol: (rol: Rol) => void;
 }) {
   const pendiente = esPendienteDeAprobar(usuario);
   return (
@@ -348,12 +356,20 @@ function PerfilUsuarioDetalle({
                 {usuario.email}
               </span>
             </div>
-            <div className="flex items-start gap-2 text-foreground">
-              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
-              <span>
-                <span className="text-muted">Rol: </span>
-                {ROL_LABEL[usuario.rol]}
-              </span>
+            <div className="flex items-center gap-2 text-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+              <span className="text-muted">Rol:</span>
+              <select
+                value={usuario.rol}
+                onChange={(e) => onCambiarRol(e.target.value as Rol)}
+                className="rounded-lg border border-silver bg-surface px-2 py-1 text-xs text-foreground outline-none"
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROL_LABEL[r]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-start gap-2 text-foreground">
               <Phone className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
