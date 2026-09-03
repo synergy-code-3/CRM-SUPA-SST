@@ -419,3 +419,36 @@ alter table solicitudes_cliente add column if not exists etiqueta text;
 -- asignadas de aquí en adelante, no para las migradas (esas ya traían la
 -- fecha de inscripción ajustada a mano desde el CSV de origen).
 alter table clientes add column if not exists etiqueta_asignada_en timestamptz;
+
+-- Avisos internos del equipo: solo admin crea/edita/borra (permiso
+-- gestionarAvisos), pero todos los roles los ven (permiso verAvisos). Cada
+-- aviso nuevo se le muestra como ventana emergente bloqueante a todo
+-- usuario que no sea el autor, hasta que confirme "Enterado" — ver
+-- avisos_confirmaciones. El polling de GET /api/avisos/pendientes (cada
+-- ~30s desde Sidebar.tsx) es lo que lo acerca a "tiempo real" sin
+-- depender de websockets, que el proyecto no usa hoy.
+create table if not exists avisos (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null,
+  mensaje text not null,
+  autor_id uuid not null references usuarios (id) on delete cascade,
+  autor_nombre text not null, -- copiado al crear, mismo criterio que "autor" en eventos_timeline
+  creado_en timestamptz not null default now(),
+  editado_en timestamptz -- null = nunca se editó
+);
+create index if not exists idx_avisos_creado_en on avisos (creado_en desc);
+alter table avisos enable row level security;
+
+-- Quién confirmó "Enterado" cada aviso, y cuándo — solo visible para admin
+-- (se muestra como nota debajo del aviso en /avisos). Borrar el aviso
+-- borra en cascada sus confirmaciones; editar el aviso NO las toca.
+create table if not exists avisos_confirmaciones (
+  id uuid primary key default gen_random_uuid(),
+  aviso_id uuid not null references avisos (id) on delete cascade,
+  usuario_id uuid not null references usuarios (id) on delete cascade,
+  usuario_nombre text not null,
+  confirmado_en timestamptz not null default now(),
+  unique (aviso_id, usuario_id)
+);
+create index if not exists idx_avisos_confirmaciones_aviso_id on avisos_confirmaciones (aviso_id);
+alter table avisos_confirmaciones enable row level security;

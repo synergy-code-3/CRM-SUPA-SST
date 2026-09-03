@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, ChevronDown } from "lucide-react";
+import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
@@ -22,7 +23,7 @@ const NAV: {
   label: string;
   icon: typeof LayoutDashboard;
   permiso: Accion;
-  contador?: "solicitudes" | "usuarios";
+  contador?: "solicitudes" | "usuarios" | "avisos";
 }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, permiso: "verDashboard" },
   { href: "/clientes", label: "Clientes Club Sinergético", icon: Users, permiso: "verClientes" },
@@ -32,9 +33,10 @@ const NAV: {
   { href: "/biblioteca", label: "Biblioteca", icon: Library, permiso: "verBiblioteca" },
   { href: "/eliminados", label: "Eliminados", icon: Trash2, permiso: "verEliminados" },
   { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
+  { href: "/avisos", label: "Avisos", icon: Megaphone, permiso: "verAvisos", contador: "avisos" },
 ];
 
-type Conteos = { solicitudes: number; usuarios: number };
+type Conteos = { solicitudes: number; usuarios: number; avisos: number };
 
 // Antes 60s — se sentía nada "en tiempo real" (un admin viendo la pantalla
 // no veía la burbuja aparecer hasta un minuto después de que alguien se
@@ -42,17 +44,16 @@ type Conteos = { solicitudes: number; usuarios: number };
 const INTERVALO_CONTEOS_MS = 10 * 1000;
 
 // Burbuja de "cosas pendientes por revisar" (solicitudes de cliente nuevo,
-// usuarios recién autoregistrados) — solo se consulta si el rol puede
-// revisar al menos una de las dos, para no gastar la llamada de más en
-// coordinador/abeja (la ruta igual devolvería 0 en ambas).
+// usuarios recién autoregistrados, avisos sin confirmar). Antes solo se
+// consultaba si el rol podía revisar solicitudes o usuarios — ahora
+// siempre se consulta, porque cualquier rol puede tener avisos sin
+// confirmar (la ruta ya calcula 0 en solicitudes/usuarios para quien no
+// tiene permiso, así que no se gasta nada de más).
 function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
-  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, usuarios: 0 });
+  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, usuarios: 0, avisos: 0 });
 
   useEffect(() => {
     if (!usuario) return;
-    const puedeVerAlgo =
-      tienePermiso(usuario.rol, "revisarSolicitudes") || tienePermiso(usuario.rol, "gestionarUsuarios");
-    if (!puedeVerAlgo) return;
 
     let cancelado = false;
     async function cargar() {
@@ -60,7 +61,7 @@ function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
         const res = await fetch("/api/notificaciones/pendientes");
         if (!res.ok || cancelado) return;
         const data = await res.json();
-        if (!cancelado) setConteos({ solicitudes: data.solicitudes ?? 0, usuarios: data.usuarios ?? 0 });
+        if (!cancelado) setConteos({ solicitudes: data.solicitudes ?? 0, usuarios: data.usuarios ?? 0, avisos: data.avisos ?? 0 });
       } catch {
         // Sin conteo esta vez — se reintenta solo en el próximo intervalo.
       }
@@ -151,8 +152,34 @@ const ENLACES_RENOVACION: { label: string; url: string }[] = [
   { label: "Renovación LATAM", url: "https://pay.hotmart.com/D106300176V?off=ill2992e" },
 ];
 
+// Igual criterio de persistencia que "Ocultar filtros" en Clientes
+// (src/app/(app)/clientes/page.tsx): sessionStorage, visible por default.
+const CLAVE_ENLACES_RENOVACION_VISIBLES = "crm-enlaces-renovacion-visibles";
+
+function leerEnlacesVisiblesGuardado(): boolean {
+  try {
+    const guardado = sessionStorage.getItem(CLAVE_ENLACES_RENOVACION_VISIBLES);
+    return guardado === null ? true : guardado === "1";
+  } catch {
+    return true;
+  }
+}
+
 function EnlacesRenovacion() {
   const [copiado, setCopiado] = useState<string | null>(null);
+  const [visibles, setVisibles] = useState(leerEnlacesVisiblesGuardado);
+
+  function alternarVisibles() {
+    setVisibles((v) => {
+      const nuevo = !v;
+      try {
+        sessionStorage.setItem(CLAVE_ENLACES_RENOVACION_VISIBLES, nuevo ? "1" : "0");
+      } catch {
+        // sessionStorage puede fallar en modo privado — no bloquea el toggle.
+      }
+      return nuevo;
+    });
+  }
 
   function copiar(url: string) {
     navigator.clipboard.writeText(url).then(() => {
@@ -163,23 +190,123 @@ function EnlacesRenovacion() {
 
   return (
     <div className="mb-1 border-t border-silver/70 pt-3">
-      <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <button
+        onClick={alternarVisibles}
+        className="ease-spring flex w-full items-center gap-1.5 rounded-xl px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted transition hover:text-foreground"
+      >
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${visibles ? "" : "-rotate-90"}`} strokeWidth={2} />
         Enlaces de Renovación
-      </p>
-      {ENLACES_RENOVACION.map((e) => (
-        <button
-          key={e.url}
-          onClick={() => copiar(e.url)}
-          className="ease-spring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-foreground"
-        >
-          {copiado === e.url ? (
-            <Check className="h-4.5 w-4.5 flex-none text-success" strokeWidth={1.75} />
-          ) : (
-            <Link2 className="h-4.5 w-4.5 flex-none" strokeWidth={1.75} />
+      </button>
+      {visibles &&
+        ENLACES_RENOVACION.map((e) => (
+          <button
+            key={e.url}
+            onClick={() => copiar(e.url)}
+            className="ease-spring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-foreground"
+          >
+            {copiado === e.url ? (
+              <Check className="h-4.5 w-4.5 flex-none text-success" strokeWidth={1.75} />
+            ) : (
+              <Link2 className="h-4.5 w-4.5 flex-none" strokeWidth={1.75} />
+            )}
+            {copiado === e.url ? "Copiado" : e.label}
+          </button>
+        ))}
+    </div>
+  );
+}
+
+// Sin websockets todavía en el proyecto — este poll cada 30s (más una
+// revisión al montar) es lo que acerca la entrega de avisos a "tiempo
+// real" sin depender de infraestructura nueva.
+const INTERVALO_AVISOS_MS = 30 * 1000;
+
+// Cola local de avisos sin confirmar (más viejo primero, ya la manda así
+// GET /api/avisos/pendientes) — el modal siempre muestra cola[0]. Cada
+// poll reemplaza la cola completa con lo que diga el server, así que una
+// vez confirmado un aviso ya no vuelve a aparecer en el siguiente poll.
+function useAvisosPendientes(usuario: UsuarioSesion | null) {
+  const [cola, setCola] = useState<Aviso[]>([]);
+
+  useEffect(() => {
+    if (!usuario) return;
+    let cancelado = false;
+    async function cargar() {
+      try {
+        const res = await fetch("/api/avisos/pendientes");
+        if (!res.ok || cancelado) return;
+        const data = await res.json();
+        if (!cancelado) setCola(data.avisos ?? []);
+      } catch {
+        // Sin novedades esta vez — se reintenta en el próximo intervalo.
+      }
+    }
+    cargar();
+    const intervalo = setInterval(cargar, INTERVALO_AVISOS_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [usuario]);
+
+  return {
+    avisoActual: cola[0] ?? null,
+    quitarDeLaCola: (id: string) => setCola((c) => c.filter((a) => a.id !== id)),
+  };
+}
+
+// Ventana emergente bloqueante: no tiene botón de cerrar ni se cierra al
+// tocar el fondo mientras no se marque "Enterado" — a propósito, es la
+// forma de garantizar que el aviso de verdad se leyó antes de poder
+// seguir usando el CRM.
+function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () => void }) {
+  const [enterado, setEnterado] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+
+  async function marcarEnterado() {
+    setConfirmando(true);
+    try {
+      await fetch(`/api/avisos/${aviso.id}/confirmar`, { method: "POST" });
+      setEnterado(true);
+    } finally {
+      setConfirmando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground/40 p-6 backdrop-blur-[2px]">
+      <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
+        <div className="core rounded-[calc(2rem-0.5rem)] p-6">
+          <div className="mb-3 flex items-center gap-2 text-primary">
+            <Megaphone className="h-5 w-5 flex-none" strokeWidth={1.75} />
+            <h2 className="text-base font-semibold text-foreground">{aviso.titulo}</h2>
+          </div>
+          <p className="mb-2 text-xs text-muted">
+            {aviso.autorNombre} · {new Date(aviso.creadoEn).toLocaleString("es-MX")}
+          </p>
+          <p className="mb-5 whitespace-pre-wrap text-sm text-foreground">{aviso.mensaje}</p>
+
+          <label className="ease-spring mb-4 flex items-center gap-2 rounded-xl border border-silver bg-surface-2 px-3 py-2.5 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={enterado}
+              disabled={confirmando || enterado}
+              onChange={marcarEnterado}
+              className="h-4 w-4 flex-none rounded border-silver"
+            />
+            Enterado
+          </label>
+
+          {enterado && (
+            <button
+              onClick={onCerrar}
+              className="ease-spring w-full rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
+            >
+              Cerrar
+            </button>
           )}
-          {copiado === e.url ? "Copiado" : e.label}
-        </button>
-      ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -193,6 +320,7 @@ export function Sidebar() {
   const [abierto, setAbierto] = useState(false);
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const conteos = useConteosPendientes(usuario);
+  const { avisoActual, quitarDeLaCola } = useAvisosPendientes(usuario);
 
   // Cierra el drawer solo con la navegación (no al abrirlo), para que un
   // clic en un link de menú no deje el drawer abierto detrás de la página
@@ -329,6 +457,7 @@ export function Sidebar() {
       )}
 
       {mostrarPerfil && <MiPerfilModal onClose={() => setMostrarPerfil(false)} />}
+      {avisoActual && <AvisoPendienteModal aviso={avisoActual} onCerrar={() => quitarDeLaCola(avisoActual.id)} />}
     </>
   );
 }

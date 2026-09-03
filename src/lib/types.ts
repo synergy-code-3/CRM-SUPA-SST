@@ -248,3 +248,26 @@ export type OfertaOtorgada = {
   revocadoEn: string | null;
   revocadoPor: string | null;
 };
+
+// Quién confirmó "Enterado" un aviso, y cuándo — solo se le manda al
+// front cuando el que pide la lista es admin (ver listarAvisos en
+// src/lib/avisos.ts).
+export type AvisoConfirmacion = {
+  usuarioId: string;
+  usuarioNombre: string;
+  confirmadoEn: string;
+};
+
+// Aviso interno del equipo (ver Avisos y Actualizaciones). confirmaciones
+// viene null para coordinador/abeja — no es que esté vacío, es que el back
+// ni siquiera se los manda.
+export type Aviso = {
+  id: string;
+  titulo: string;
+  mensaje: string;
+  autorId: string;
+  autorNombre: string;
+  creadoEn: string;
+  editadoEn: string | null;
+  confirmaciones: AvisoConfirmacion[] | null;
+};
