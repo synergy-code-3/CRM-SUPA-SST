@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
@@ -143,6 +143,47 @@ function CuentaFooter({ onAbrirPerfil }: { onAbrirPerfil: () => void }) {
   );
 }
 
+// Enlaces fijos de checkout de renovación — un botón por región copia su
+// enlace al portapapeles, no navega a ningún lado.
+const ENLACES_RENOVACION: { label: string; url: string }[] = [
+  { label: "Renovación MX", url: "https://checkout.synergyforeducation.com/pay/pl_d5a368bddbdd56eac7c049c65fe3d6c9" },
+  { label: "Renovación USA", url: "https://www.synergyforeducation.com/offers/hAH7JZbL" },
+  { label: "Renovación LATAM", url: "https://pay.hotmart.com/D106300176V?off=ill2992e" },
+];
+
+function EnlacesRenovacion() {
+  const [copiado, setCopiado] = useState<string | null>(null);
+
+  function copiar(url: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiado(url);
+      setTimeout(() => setCopiado(null), 1500);
+    });
+  }
+
+  return (
+    <div className="mb-1 border-t border-silver/70 pt-3">
+      <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        Enlaces de Renovación
+      </p>
+      {ENLACES_RENOVACION.map((e) => (
+        <button
+          key={e.url}
+          onClick={() => copiar(e.url)}
+          className="ease-spring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-foreground"
+        >
+          {copiado === e.url ? (
+            <Check className="h-4.5 w-4.5 flex-none text-success" strokeWidth={1.75} />
+          ) : (
+            <Link2 className="h-4.5 w-4.5 flex-none" strokeWidth={1.75} />
+          )}
+          {copiado === e.url ? "Copiado" : e.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const PERFIL_MOSTRADO_KEY = "perfilIncompletoMostrado";
 
 export function Sidebar() {
@@ -199,6 +240,7 @@ export function Sidebar() {
             );
           })}
         </nav>
+        <EnlacesRenovacion />
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
       </aside>
 
@@ -280,6 +322,7 @@ export function Sidebar() {
               </div>
             )}
 
+            <EnlacesRenovacion />
             <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>
