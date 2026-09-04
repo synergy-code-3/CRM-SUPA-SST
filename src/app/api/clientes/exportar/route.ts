@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { exportarClientes, type EstadoFiltro, type RegionFiltro, type TipoEventoFiltro, type VigenciaFiltro } from "@/lib/db";
+import {
+  exportarClientes,
+  type EstadoFiltro,
+  type ProcesoFiltro,
+  type RegionFiltro,
+  type TipoEventoFiltro,
+  type VigenciaFiltro,
+} from "@/lib/db";
 
 // Trae todos los clientes que matcheen los filtros (no solo la página
 // visible) para el botón "Descargar CSV". Acepta los mismos query params que
@@ -22,6 +29,7 @@ export async function GET(req: NextRequest) {
   const hasta = searchParams.get("hasta") ?? undefined;
   const vencidosAntesDe = searchParams.get("vencidosAntesDe") ?? undefined;
   const vigencia = (searchParams.get("vigencia") as VigenciaFiltro | null) ?? undefined;
+  const proceso = (searchParams.get("proceso") as ProcesoFiltro | null) ?? undefined;
 
   try {
     const clientes = await exportarClientes({
@@ -35,6 +43,7 @@ export async function GET(req: NextRequest) {
       hasta,
       vencidosAntesDe,
       vigencia,
+      proceso,
     });
     return NextResponse.json({ clientes });
   } catch (err) {

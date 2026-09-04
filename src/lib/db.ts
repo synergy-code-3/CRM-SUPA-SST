@@ -107,6 +107,10 @@ export type EstadoFiltro = "todos" | "activos" | "revocados";
 export type RegionFiltro = "todos" | "MX" | "US" | "LATAM";
 export type VigenciaFiltro = "actuales" | "futuros" | "todos";
 export type TipoEventoFiltro = "todos" | "webinar" | "presencial";
+// "Sin Kajabi" no aplica: crearCliente() bloquea el alta si Kajabi falla
+// (ver alta-cliente.ts), así que ningún cliente real puede quedar sin
+// Kajabi — no tiene caso ofrecer ese filtro.
+export type ProcesoFiltro = "todos" | "sin_skool" | "sin_bienvenida";
 
 export type FiltrosClientes = {
   busqueda?: string;
@@ -119,6 +123,7 @@ export type FiltrosClientes = {
   hasta?: string;
   vencidosAntesDe?: string;
   vigencia?: VigenciaFiltro;
+  proceso?: ProcesoFiltro;
   limite?: number;
   pagina?: number;
 };
@@ -221,6 +226,20 @@ function aplicarFiltrosClientes<
   if (opciones?.hasta) query = query.lte("fecha_inscripcion", opciones.hasta);
 
   if (opciones?.vencidosAntesDe) query = query.lt("vencimiento_skool_fecha", opciones.vencidosAntesDe);
+
+  // Mismo criterio de "enviado" que EstadoOnboarding (clientes/page.tsx):
+  // Skool cuenta como enviado con "Invitación enviada" o "Invitacion
+  // enviada" (sin acento, texto tal cual de la hoja importada); Bienvenida
+  // WA con "Enviado" o "MSJS Bienvenida" (igual, texto de la hoja vieja).
+  // "Sin X" es null O cualquier otro valor que no sea esos.
+  if (opciones?.proceso === "sin_skool") {
+    query = query.or(
+      "invitacion_skool.is.null,and(invitacion_skool.not.ilike.Invitación enviada,invitacion_skool.not.ilike.Invitacion enviada)"
+    );
+  }
+  if (opciones?.proceso === "sin_bienvenida") {
+    query = query.or("contacto_whats.is.null,and(contacto_whats.neq.Enviado,contacto_whats.neq.MSJS Bienvenida)");
+  }
 
   if (vigencia === "actuales") query = query.or(`fecha_inscripcion.is.null,fecha_inscripcion.lte.${ahora}`);
   if (vigencia === "futuros") query = query.gt("fecha_inscripcion", ahora);

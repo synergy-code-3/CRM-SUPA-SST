@@ -29,11 +29,15 @@ const LIMITE = 100;
 type Estado = "todos" | "activos" | "revocados";
 type Region = "todos" | "MX" | "US" | "LATAM";
 type TipoEvento = "todos" | "webinar" | "presencial";
+// "Sin Kajabi" queda fuera a propósito — el alta bloquea si Kajabi falla,
+// así que ningún cliente real puede quedar sin Kajabi (ver alta-cliente.ts).
+type Proceso = "todos" | "sin_skool" | "sin_bienvenida";
 
 const FILTROS_VACIOS = {
   estado: "todos" as Estado,
   region: "todos" as Region,
   tipoEvento: "todos" as TipoEvento,
+  proceso: "todos" as Proceso,
   eventos: [] as string[],
   membresias: [] as string[],
   desde: "",
@@ -168,6 +172,7 @@ function ClientesPageInner() {
     if (filtros.estado !== "todos") params.set("estado", filtros.estado);
     if (filtros.region !== "todos") params.set("region", filtros.region);
     if (filtros.tipoEvento !== "todos") params.set("tipoEvento", filtros.tipoEvento);
+    if (filtros.proceso !== "todos") params.set("proceso", filtros.proceso);
     if (filtros.eventos.length) params.set("eventos", filtros.eventos.join(","));
     if (filtros.membresias.length) params.set("membresias", filtros.membresias.join(","));
     if (filtros.desde) params.set("desde", filtros.desde);
@@ -272,6 +277,7 @@ function ClientesPageInner() {
     filtros.estado !== "todos" ||
     filtros.region !== "todos" ||
     filtros.tipoEvento !== "todos" ||
+    filtros.proceso !== "todos" ||
     filtros.eventos.length > 0 ||
     filtros.membresias.length > 0 ||
     !!filtros.desde ||
@@ -282,6 +288,7 @@ function ClientesPageInner() {
     filtros.estado !== "todos",
     filtros.region !== "todos",
     filtros.tipoEvento !== "todos",
+    filtros.proceso !== "todos",
     filtros.eventos.length > 0,
     filtros.membresias.length > 0,
     !!filtros.desde,
@@ -417,6 +424,16 @@ function ClientesPageInner() {
               onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
             />
             <span className="mx-0.5 h-5 w-px bg-silver" />
+            <Pildora
+              opciones={[
+                { valor: "todos", label: "Todos" },
+                { valor: "sin_skool", label: "Sin Skool" },
+                { valor: "sin_bienvenida", label: "Sin Bienvenida" },
+              ]}
+              valor={filtros.proceso}
+              onChange={(v) => setFiltros((f) => ({ ...f, proceso: v as Proceso }))}
+            />
+            <span className="mx-0.5 h-5 w-px bg-silver" />
             <MultiSelect
               label="eventos"
               todasLabel="Todos los eventos"
@@ -520,6 +537,18 @@ function ClientesPageInner() {
                   ]}
                   valor={filtros.tipoEvento}
                   onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Proceso</p>
+                <Pildora
+                  opciones={[
+                    { valor: "todos", label: "Todos" },
+                    { valor: "sin_skool", label: "Sin Skool" },
+                    { valor: "sin_bienvenida", label: "Sin Bienvenida" },
+                  ]}
+                  valor={filtros.proceso}
+                  onChange={(v) => setFiltros((f) => ({ ...f, proceso: v as Proceso }))}
                 />
               </div>
               <div>
