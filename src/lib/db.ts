@@ -1428,11 +1428,29 @@ export async function registrarTagKajabi(
     .maybeSingle();
   if (errLectura) throw errLectura;
 
+  // Si no hay match directo por id, puede ser un cliente al que le
+  // cambiaron el correo desde el CRM (ver actualizarDatosCliente): su id
+  // sigue siendo el correo original (nunca se toca), pero Kajabi ya solo
+  // conoce el correo nuevo — así que cualquier aviso de Kajabi sobre ese
+  // contacto (este webhook, o el cron de sincronización) llega con el
+  // correo nuevo. Sin este respaldo por "email" se creaba un cliente
+  // duplicado cada vez que Kajabi volvía a avisar algo de ese contacto.
+  let existenteOAlias = existente;
+  if (!existenteOAlias) {
+    const { data: porEmail, error: errAlias } = await supabase
+      .from("clientes")
+      .select("*")
+      .eq("email", id)
+      .maybeSingle();
+    if (errAlias) throw errAlias;
+    existenteOAlias = porEmail;
+  }
+
   let cliente: Cliente;
   let esNuevo = false;
 
-  if (existente) {
-    cliente = filaACliente(existente as ClienteRow);
+  if (existenteOAlias) {
+    cliente = filaACliente(existenteOAlias as ClienteRow);
   } else {
     esNuevo = true;
     const region = await regionParaCrearOEditar(null, null);
@@ -1537,17 +1555,22 @@ export async function registrarTagKajabi(
     }
   }
 
+  // A partir de aquí siempre el id real del cliente — en el caso de
+  // respaldo por alias (arriba), "id" es el correo nuevo que mandó Kajabi,
+  // pero cliente.id sigue siendo el correo original congelado. Escribir la
+  // timeline con "id" ahí hubiera violado la referencia a clientes(id).
+  const idReal = cliente.id;
   const detalle = `Tag de Kajabi asignado: "${tagNombre}"`;
   const { data: yaRegistrado, error: errDup } = await supabase
     .from("eventos_timeline")
     .select("id")
-    .eq("cliente_id", id)
+    .eq("cliente_id", idReal)
     .eq("tipo", "KAJABI")
     .eq("detalle", detalle)
     .maybeSingle();
   if (errDup) throw errDup;
   if (!yaRegistrado) {
-    await registrarEvento(id, "KAJABI", detalle, "Kajabi");
+    await registrarEvento(idReal, "KAJABI", detalle, "Kajabi");
   }
 
   return { cliente, esNuevo };
@@ -1628,6 +1651,15 @@ export async function reintentarCompletadoAxis(): Promise<ResultadoReintentoAxis
 // golpe.
 const TOPE_RECONCILIACION_OFERTA = 30;
 
+// Sin este piso, la cola son ~15,784 clientes vencidos del CSV histórico
+// (importados desde antes de que existiera este CRM) — la inmensa mayoría
+// nunca va a tener la oferta otra vez en Kajabi, así que revisarlos a todos
+// solo gasta llamadas a Kajabi sin encontrar nada, y le quita turno a
+// clientes reales que sí renovaron por fuera del CRM. Se limita a partir de
+// esta fecha (cuando se acotó la reconciliación) — un cliente viejo del CSV
+// que de verdad vuelve a comprar sigue entrando por el alta/webhook normal.
+const RECONCILIACION_DESDE = "2026-09-04T00:00:00.000Z";
+
 export type ResultadoReconciliacionOferta = {
   revisados: number;
   reactivados: { id: string; nombre: string; email: string; finAcceso: string }[];
@@ -1651,6 +1683,7 @@ export async function reconciliarOfertasVencidas(): Promise<ResultadoReconciliac
     .select("id,nombre,email,fecha_inscripcion,fecha_renovacion")
     .is("eliminado_en", null)
     .is("pausado_en", null)
+    .gte("creado_en", RECONCILIACION_DESDE)
     .or("acceso_plataforma.is.null,and(acceso_plataforma.neq.Si,acceso_plataforma.neq.Renovación)")
     .order("revisado_oferta_en", { ascending: true, nullsFirst: true })
     .limit(TOPE_RECONCILIACION_OFERTA);
