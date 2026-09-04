@@ -511,6 +511,15 @@ export function ClientePanel({
     onClienteActualizado(data.cliente);
     setEditando(false);
     setUltimoCambioDatos(clienteAntesDeGuardar);
+    // Solo cuando la etiqueta se acaba de convertir en Black Access en este
+    // guardado — no en cada edición suelta que no tenga nada que ver con
+    // esto.
+    if (
+      clienteAntesDeGuardar.etiqueta?.trim().toLowerCase() !== "black access" &&
+      data.cliente.etiqueta?.trim().toLowerCase() === "black access"
+    ) {
+      avisarActualizarFinAccesoEnKajabi(data.cliente);
+    }
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
     );
@@ -644,6 +653,7 @@ export function ClientePanel({
     setForm(formDeCliente(data.cliente));
     onClienteActualizado(data.cliente);
     setEstadoKajabi(data.avisoKajabi ? "revocada" : "activa");
+    avisarActualizarFinAccesoEnKajabi(data.cliente);
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
     );
@@ -1001,6 +1011,19 @@ export function ClientePanel({
       r.json()
     );
     setEventos(eventosRes.eventos ?? []);
+  }
+
+  // Kajabi no se entera solo de que "Fin de acceso" cambió aquí (renovar o
+  // agregar Black Access no le mandan una fecha de vencimiento a Kajabi,
+  // que la maneja por su cuenta) — así que toca recordarle al admin ir a
+  // actualizarla a mano en el perfil de Kajabi de la persona, con la fecha
+  // exacta que le toca (misma que se calcula para "Fin de acceso" aquí).
+  function avisarActualizarFinAccesoEnKajabi(c: Cliente) {
+    const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+    if (info.vitalicio || !info.fecha) return;
+    window.alert(
+      `No olvides ir a Kajabi y actualizar a mano la fecha de "Fin de acceso" en el perfil de ${c.nombre} a: ${info.fecha.toLocaleDateString("es-MX")}.`
+    );
   }
 
   function copiar(valor: string, campo: "email" | "telefono") {
