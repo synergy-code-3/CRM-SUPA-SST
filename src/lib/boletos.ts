@@ -225,6 +225,11 @@ export function calcularAccesos(
     fechaInscripcion: string | null;
     fechaRenovacion: string | null;
     etiqueta: string | null;
+    // Mismo campo que usa finAccesoConEtiqueta() (fechas.ts) para decidir si
+    // el bono de +1 año de Black Access aplica — null en clientes migrados
+    // desde el CSV (ver etiqueta_asignada_en en schema.sql), que ya traían
+    // la fecha de inscripción ajustada a mano de origen.
+    etiquetaAsignadaEn: string | null;
   },
   inventario: Inventario
 ): ResultadoBoletos {
@@ -259,10 +264,18 @@ export function calcularAccesos(
         : [];
 
   const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
-  if (!fin || fin < FECHA_CORTE) {
-    // Sin membresía activa: lo único que sobrevive es el extra vitalicio de
-    // MÁS+ — el resto (incluido Black Access, que sí depende de estar
-    // activo) se queda vacío.
+  // Black Access trae su propio año extra de acceso al Club (mismo bono que
+  // ya se muestra en "Fin de acceso" vía finAccesoConEtiqueta, fechas.ts) —
+  // ese año extra SÍ cuenta para decidir si la membresía sigue activa de
+  // cara al corte, así que el filtro de abajo lo suma antes de comparar. Sin
+  // esto, alguien cuya membresía ya venció antes del corte se quedaba sin el
+  // boleto Black aunque el año que trae Black Access ya lo cubriera.
+  const esBlackAccess = etiquetaKey === "black access" && !!cliente.etiquetaAsignadaEn;
+  const finConBonoBlack = esBlackAccess && fin ? new Date(fin.getFullYear() + 1, fin.getMonth(), fin.getDate()) : fin;
+  if (!finConBonoBlack || finConBonoBlack < FECHA_CORTE) {
+    // Sin membresía activa (ni siquiera con el bono de Black Access, si
+    // aplica): lo único que sobrevive es el extra vitalicio de MÁS+ — el
+    // resto se queda vacío.
     return { accesos: { ...ACCESO_VACIO, vip: extraVip }, sinInformacion: false };
   }
 

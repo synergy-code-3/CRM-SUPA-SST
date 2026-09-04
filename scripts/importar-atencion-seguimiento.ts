@@ -428,6 +428,7 @@ async function main() {
             // se resuelven por etiqueta (ver boletos.ts), no por esta
             // pasada masiva.
             etiqueta: null,
+            etiquetaAsignadaEn: null,
           },
           inventario
         );
@@ -470,6 +471,7 @@ async function main() {
           fechaInscripcion: f.fechaInscripcion,
           fechaRenovacion: null,
           etiqueta: null,
+          etiquetaAsignadaEn: null,
         },
         inventario
       );

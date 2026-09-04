@@ -621,6 +621,7 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
       fechaInscripcion: cliente.fechaInscripcion,
       fechaRenovacion: cliente.fechaRenovacion,
       etiqueta: cliente.etiqueta,
+      etiquetaAsignadaEn: cliente.etiquetaAsignadaEn,
     },
     inventario
   );
