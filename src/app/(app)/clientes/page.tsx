@@ -942,7 +942,15 @@ function CampoFecha({
 // hubiera pasado).
 function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaWa: boolean }) {
   const pausado = !!cliente.pausadoEn;
-  const kajabiActivo = cliente.accesoPlataforma?.trim().toLowerCase() === "si" && !pausado;
+  // "Renovación" es el valor que pone el botón "Renovar" (ver
+  // renovarMembresia, db.ts) — es un acceso real a Kajabi (esa misma acción
+  // ya lo otorga), el texto es distinto de "Si" solo porque también sirve
+  // de bandera para el motor de boletos (ver calcularAccesos, boletos.ts:
+  // "Acceso = Renovación" dispara su propia regla fija). Sin este OR, el
+  // foco se quedaba apagado después de renovar aunque el acceso sí estaba
+  // ahí.
+  const accesoPlataformaKey = cliente.accesoPlataforma?.trim().toLowerCase();
+  const kajabiActivo = (accesoPlataformaKey === "si" || accesoPlataformaKey === "renovación") && !pausado;
   // "Invitación enviada" es lo que escribe este CRM (marcarInvitacionSkoolEnviada);
   // "Invitacion enviada" (sin acento) es el texto tal cual de la hoja de
   // Atención y Seguimiento importada — ambos cuentan como "sí se invitó".

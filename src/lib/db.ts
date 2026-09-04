@@ -1046,6 +1046,20 @@ export async function actualizarDatosCliente(
   // quedan con etiqueta_asignada_en en null a propósito).
   const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora : null) : anterior.etiquetaAsignadaEn;
 
+  // Al agregarle la etiqueta Black Access a alguien cuya membresía YA
+  // estaba vencida (no solo antes del corte de Synergy Unlimited — vencida
+  // de verdad, hoy), también se le renueva — antes solo se le ajustaba la
+  // fecha que se ve en pantalla (finAccesoConEtiqueta) sin tocar la
+  // fecha_renovacion real, dejándolo con Kajabi/Skool caducados aunque el
+  // perfil mostrara una fecha vigente. Solo aplica a este caso puntual: si
+  // ya estaba activa no se toca (anclaAlRenovar no haría nada raro ahí,
+  // pero no hay necesidad — es el admin quien decide renovar a alguien
+  // activo, no una etiqueta).
+  const etiquetaKeyNueva = nuevaEtiqueta?.trim().toLowerCase() ?? "";
+  const seAgregaBlackAccess = etiquetaCambio && etiquetaKeyNueva === "black access";
+  const finAnteriorSinAjuste = finAccesoCalculado(anterior.fechaInscripcion, anterior.fechaRenovacion);
+  const membresiaYaVencida = !finAnteriorSinAjuste || finAnteriorSinAjuste < new Date();
+
   const finAccesoDeseadoTexto = cambios.finAccesoDeseado?.trim() || null;
   const fechaRenovacionNueva = finAccesoDeseadoTexto
     ? fechaRenovacionDesdeFinDeseado(
@@ -1053,9 +1067,11 @@ export async function actualizarDatosCliente(
         nuevaEtiqueta,
         etiquetaAsignadaEnNueva
       ).toISOString()
-    : cambios.fechaRenovacion?.trim()
-      ? new Date(cambios.fechaRenovacion.trim()).toISOString()
-      : null;
+    : seAgregaBlackAccess && membresiaYaVencida
+      ? anclaAlRenovar(anterior.fechaInscripcion, anterior.fechaRenovacion)
+      : cambios.fechaRenovacion?.trim()
+        ? new Date(cambios.fechaRenovacion.trim()).toISOString()
+        : null;
   // Comparar solo la parte de fecha (no la hora): el formulario manda
   // "YYYY-MM-DD" (medianoche UTC al convertir), pero el valor guardado por
   // una renovación real trae hora — comparar el ISO completo daba "cambió"
@@ -1078,9 +1094,17 @@ export async function actualizarDatosCliente(
           );
           return finAnterior.vitalicio || !finAnterior.fecha ? "—" : formatearFechaSkool(finAnterior.fecha);
         })()}" → "${formatearFechaSkool(new Date(finAccesoDeseadoTexto))}"`
-      : fechaRenovacionCambio
-        ? `Fecha de renovación: "${anterior.fechaRenovacion ? formatearFechaSkool(new Date(anterior.fechaRenovacion)) : "—"}" → "${fechaRenovacionNueva ? formatearFechaSkool(new Date(fechaRenovacionNueva)) : "—"}"`
-        : null,
+      : fechaRenovacionCambio && seAgregaBlackAccess && membresiaYaVencida
+        ? `Se le extendió la membresía por Black Access: "${
+            finAnteriorSinAjuste ? formatearFechaSkool(finAnteriorSinAjuste) : "—"
+          }" → "${
+            fechaRenovacionNueva && finAccesoCalculado(null, fechaRenovacionNueva)
+              ? formatearFechaSkool(finAccesoCalculado(null, fechaRenovacionNueva) as Date)
+              : "—"
+          }"`
+        : fechaRenovacionCambio
+          ? `Fecha de renovación: "${anterior.fechaRenovacion ? formatearFechaSkool(new Date(anterior.fechaRenovacion)) : "—"}" → "${fechaRenovacionNueva ? formatearFechaSkool(new Date(fechaRenovacionNueva)) : "—"}"`
+          : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -1163,6 +1187,20 @@ export async function aplicarSolicitudAClienteExistente(
   const anclaSkool = vencimientoActual && vencimientoActual > ahora ? vencimientoActual : ahora;
   const nuevoVencimiento = calcularVencimientoSkool(anclaSkool.toISOString(), nuevaMembresia);
 
+  // Mismo criterio que actualizarDatosCliente(): si se le agrega Black
+  // Access a alguien cuya membresía del Club YA estaba vencida (no solo
+  // antes del corte de Synergy Unlimited — vencida de verdad), también se
+  // le renueva de verdad (fecha_renovacion), no solo se le ajusta lo que se
+  // ve en pantalla.
+  const etiquetaKeyNueva = nuevaEtiqueta?.trim().toLowerCase() ?? "";
+  const seAgregaBlackAccess = etiquetaCambio && etiquetaKeyNueva === "black access";
+  const finAnteriorSinAjuste = finAccesoCalculado(anterior.fechaInscripcion, anterior.fechaRenovacion);
+  const membresiaYaVencida = !finAnteriorSinAjuste || finAnteriorSinAjuste < ahora;
+  const fechaRenovacionNueva =
+    seAgregaBlackAccess && membresiaYaVencida
+      ? anclaAlRenovar(anterior.fechaInscripcion, anterior.fechaRenovacion)
+      : anterior.fechaRenovacion;
+
   const { data, error } = await supabase
     .from("clientes")
     .update({
@@ -1171,6 +1209,7 @@ export async function aplicarSolicitudAClienteExistente(
       tipo_membresia: nuevaMembresia,
       vencimiento_skool: nuevoVencimiento ? formatearFechaSkool(nuevoVencimiento) : anterior.vencimientoSkool,
       vencimiento_skool_fecha: nuevoVencimiento ? fechaSkoolADateOnly(nuevoVencimiento) : null,
+      fecha_renovacion: fechaRenovacionNueva,
       actualizado_en: ahora.toISOString(),
     })
     .eq("id", clienteId)
@@ -1181,6 +1220,11 @@ export async function aplicarSolicitudAClienteExistente(
   const detalle = [
     etiquetaCambio ? `Etiqueta: "${anterior.etiqueta ?? "—"}" → "${nuevaEtiqueta ?? "—"}"` : null,
     `Vencimiento Skool extendido por solicitud: "${anterior.vencimientoSkool ?? "—"}" → "${nuevoVencimiento ? formatearFechaSkool(nuevoVencimiento) : "—"}"`,
+    seAgregaBlackAccess && membresiaYaVencida
+      ? `Se le extendió la membresía por Black Access: "${
+          finAnteriorSinAjuste ? formatearFechaSkool(finAnteriorSinAjuste) : "—"
+        }" → "${formatearFechaSkool(finAccesoCalculado(null, fechaRenovacionNueva as string) as Date)}"`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
