@@ -71,6 +71,12 @@ const TABS: { key: Tab; label: string; icon: typeof User }[] = [
 
 type Form = {
   nombre: string;
+  // clientes.id (URL del perfil, llave de Kajabi histórica) nunca cambia —
+  // esto es la columna "email" separada, editable de verdad. Al guardar con
+  // un valor distinto, el back deja el correo viejo en Notas, actualiza el
+  // contacto en Kajabi y manda una invitación nueva de Skool — ver
+  // actualizarDatosCliente en db.ts.
+  email: string;
   telefono: string;
   pais: string;
   ciudad: string;
@@ -100,6 +106,7 @@ function isoAFechaInput(iso: string | null): string {
 function formDeCliente(c: Cliente | null): Form {
   return {
     nombre: c?.nombre ?? "",
+    email: c?.email ?? "",
     telefono: c?.telefono ?? "",
     pais: c?.pais ?? "",
     ciudad: c?.ciudad ?? "",
@@ -1354,6 +1361,9 @@ export function ClientePanel({
                       <div className="space-y-3">
                         <Campo label="Nombre">
                           <Input value={form.nombre} onChange={(v) => setForm((f) => ({ ...f, nombre: v }))} />
+                        </Campo>
+                        <Campo label="Correo">
+                          <Input value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} />
                         </Campo>
                         <Campo label="Teléfono">
                           <Input

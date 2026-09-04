@@ -136,6 +136,19 @@ async function actualizarContactoExistente(contactId: string, nombre: string): P
   });
 }
 
+// Usada al editar el correo de un cliente desde el CRM (clientes.id nunca
+// cambia, pero el contacto real en Kajabi sí debe reflejar el correo nuevo
+// para que futuras compras/checkouts lo encuentren ahí) — ver
+// actualizarDatosCliente en db.ts.
+export async function actualizarCorreoContacto(contactId: string, email: string): Promise<void> {
+  await kajabiFetch(`/contacts/${contactId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      data: { type: "contacts", id: contactId, attributes: { email } },
+    }),
+  });
+}
+
 export async function obtenerOCrearContacto(nombre: string, email: string): Promise<string> {
   const existente = await buscarContactoPorCorreo(email);
   if (existente) {

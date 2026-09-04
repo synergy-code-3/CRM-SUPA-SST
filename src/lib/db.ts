@@ -11,7 +11,8 @@ import {
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
-import { estadoOfertaContacto, KAJABI_OFFER_ID_CLUB_SINERGETICO, obtenerPerfilKajabi } from "./kajabi";
+import { actualizarCorreoContacto, estadoOfertaContacto, KAJABI_OFFER_ID_CLUB_SINERGETICO, obtenerPerfilKajabi } from "./kajabi";
+import { invitarASkool } from "./skool";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
   Accesos,
@@ -915,6 +916,7 @@ export async function reanudarMembresia(id: string, autor: string): Promise<Resu
 
 const CAMPOS_EDITABLES: { key: keyof CambiosDatosCliente; columna: string; label: string }[] = [
   { key: "nombre", columna: "nombre", label: "Nombre" },
+  { key: "email", columna: "email", label: "Correo" },
   { key: "telefono", columna: "telefono", label: "Teléfono" },
   { key: "pais", columna: "pais", label: "País" },
   { key: "ciudad", columna: "ciudad", label: "Ciudad" },
@@ -931,6 +933,10 @@ const CAMPOS_EDITABLES: { key: keyof CambiosDatosCliente; columna: string; label
 
 type CambiosDatosCliente = {
   nombre: string;
+  // clientes.id (el correo original de alta) nunca se toca — ver el bloque
+  // de emailCambio en actualizarDatosCliente. Vacío/ausente = no se toca el
+  // correo actual.
+  email?: string | null;
   telefono?: string | null;
   pais?: string | null;
   ciudad?: string | null;
@@ -990,12 +996,31 @@ export async function actualizarDatosCliente(
   const accesoPlataformaCrudo =
     seAgregaBlackAccess && membresiaYaVencida ? "Si" : cambios.accesoPlataforma;
 
+  // clientes.id (el correo original de alta) nunca se toca — es la llave
+  // técnica de URLs/Kajabi histórico/FKs (ninguna trae ON UPDATE CASCADE,
+  // ver schema.sql). Cuando el cliente de verdad cambió de correo, solo se
+  // actualiza la columna "email" (separada de "id" en el esquema) y el
+  // correo viejo se deja registrado en Notas — así no se pierde el rastro
+  // de con qué correo se le identificaba antes.
+  const nuevoEmail = cambios.email?.trim() ? normalizarEmail(cambios.email) : anterior.email;
+  const emailCambio = nuevoEmail !== anterior.email;
+  if (emailCambio) {
+    const colision = await obtenerCliente(nuevoEmail);
+    if (colision && colision.id !== anterior.id) {
+      throw new Error(`Ya existe un cliente con el correo "${nuevoEmail}"`);
+    }
+  }
+  const notasConCorreoAnterior = emailCambio
+    ? [`Correo anterior: ${anterior.email}`, cambios.notas?.trim() || ""].filter(Boolean).join("\n")
+    : cambios.notas?.trim() || "";
+
   const nuevos: Record<string, string> = {
     nombre: cambios.nombre.trim(),
+    email: nuevoEmail,
     telefono: normalizarTelefono(cambios.telefono) ?? "—",
     pais: cambios.pais?.trim() || "—",
     ciudad: cambios.ciudad?.trim() || "—",
-    notas: cambios.notas?.trim() || "—",
+    notas: notasConCorreoAnterior || "—",
     evento: cambios.evento?.trim() || "—",
     etiqueta: cambios.etiqueta?.trim() || "—",
     accesoPlataforma: accesoPlataformaCrudo?.trim() || "—",
@@ -1123,10 +1148,11 @@ export async function actualizarDatosCliente(
     .from("clientes")
     .update({
       nombre: cambios.nombre.trim(),
+      email: nuevoEmail,
       telefono: normalizarTelefono(cambios.telefono),
       pais: nuevoPais,
       ciudad: cambios.ciudad?.trim() || null,
-      notas: cambios.notas?.trim() || null,
+      notas: notasConCorreoAnterior || null,
       evento: nuevoEvento,
       etiqueta: nuevaEtiqueta,
       etiqueta_asignada_en: etiquetaAsignadaEnNueva,
@@ -1146,11 +1172,39 @@ export async function actualizarDatosCliente(
     .single();
   if (error) throw error;
 
-  if (detalle) {
-    await registrarEvento(id, "EDICION_DATOS", detalle, autor);
+  let clienteFinal = filaACliente(data as ClienteRow);
+
+  // Efectos del cambio de correo — deliberadamente NO bloqueantes: si
+  // Kajabi o Skool fallan, el correo ya quedó actualizado en el CRM (con el
+  // viejo a salvo en Notas) y la falla queda registrada en la misma línea
+  // de la timeline para que el admin la note y lo resuelva a mano. GHL/
+  // WhatsApp a propósito no se toca aquí — si el admin quiere actualizarlo
+  // ahí, lo hace manual con el botón "Enviar" que ya existe.
+  const advertenciasEmail: string[] = [];
+  if (emailCambio) {
+    if (clienteFinal.kajabiContactId) {
+      try {
+        await actualizarCorreoContacto(clienteFinal.kajabiContactId, nuevoEmail);
+      } catch (err) {
+        advertenciasEmail.push(
+          `No se pudo actualizar el correo en Kajabi: ${err instanceof Error ? err.message : "error desconocido"}`
+        );
+      }
+    }
+    try {
+      await invitarASkool(nuevoEmail);
+    } catch (err) {
+      advertenciasEmail.push(
+        `No se pudo enviar la invitación de Skool al correo nuevo: ${err instanceof Error ? err.message : "error desconocido"}`
+      );
+    }
   }
 
-  let clienteFinal = filaACliente(data as ClienteRow);
+  const detalleFinal = [detalle, ...advertenciasEmail].filter(Boolean).join(" · ");
+  if (detalleFinal) {
+    await registrarEvento(id, "EDICION_DATOS", detalleFinal, autor);
+  }
+
   if (membresiaCambio || fechaRenovacionCambio || eventoCambio || etiquetaCambio || paisCambio || accesoPlataformaCambio) {
     clienteFinal = await recalcularAccesos(id);
   }

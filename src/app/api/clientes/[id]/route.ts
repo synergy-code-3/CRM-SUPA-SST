@@ -43,6 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         clienteId,
         {
           nombre: body.nombre,
+          email: body.email,
           telefono: body.telefono,
           pais: body.pais,
           ciudad: body.ciudad,
