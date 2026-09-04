@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { crearAvisoAutomatico } from "@/lib/avisos";
 import { autorizadoParaCron } from "@/lib/cron-auth";
 import {
   guardarCursorSyncKajabi,
   marcarInvitacionSkoolEnviada,
   marcarMensajeBienvenidaWa,
   obtenerCursorSyncKajabi,
+  reconciliarOfertasVencidas,
   registrarTagKajabi,
   reintentarCompletadoAxis,
 } from "@/lib/db";
@@ -109,7 +111,29 @@ async function manejar(req: NextRequest) {
     console.error("Reintento de Axis falló, se reintenta en la siguiente corrida:", err);
   }
 
-  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis });
+  // Reconciliación best-effort: clientes vencidos que Kajabi ya muestra con
+  // la oferta otra vez (renovaron por un canal que no dispara el webhook de
+  // Hotmart) — ver reconciliarOfertasVencidas(). Si encontró alguno, se
+  // publica un solo aviso agrupando todos (no uno por cliente, para no
+  // saturar Avisos con la ventana emergente si un día se reactivan varios).
+  let reconciliacion: { revisados: number; reactivados: number } | null = null;
+  try {
+    const resultado = await reconciliarOfertasVencidas();
+    reconciliacion = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
+    if (resultado.reactivados.length > 0) {
+      const lista = resultado.reactivados
+        .map((r) => `• ${r.nombre} (${r.email}) — Fin de acceso: ${r.finAcceso}`)
+        .join("\n");
+      await crearAvisoAutomatico(
+        "Reactivaciones automáticas de Kajabi",
+        `Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:\n\n${lista}`
+      );
+    }
+  } catch (err) {
+    console.error("Reconciliación de ofertas vencidas falló, se reintenta en la siguiente corrida:", err);
+  }
+
+  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion });
 }
 
 export const GET = manejar;

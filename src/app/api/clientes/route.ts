@@ -8,7 +8,7 @@ import {
   type TipoEventoFiltro,
   type VigenciaFiltro,
 } from "@/lib/db";
-import { altaCompletaCliente } from "@/lib/alta-cliente";
+import { altaCompletaCliente, verificarPreAlta } from "@/lib/alta-cliente";
 
 export async function GET(req: NextRequest) {
   const permiso = await requerirPermiso("verClientes");
@@ -54,6 +54,34 @@ export async function POST(req: NextRequest) {
   if (!body?.email?.trim() || !body?.nombre?.trim()) {
     return NextResponse.json({ error: "Nombre y correo son obligatorios" }, { status: 400 });
   }
+
+  // "colision" distingue, para "Nuevo cliente", entre los tres motivos por
+  // los que un correo puede no dejarse dar de alta a ciegas — el mensaje de
+  // "error" se mantiene igual que antes ("Ya existe un cliente con ese
+  // correo") para los dos primeros casos, así el importador de CSV
+  // (ImportarClientesModal.tsx) los sigue reconociendo como "ya existe" sin
+  // cambios; "kajabi_previo" es nuevo y cae en la categoría de error normal
+  // para importaciones masivas (no se puede confirmar "Sobrescribir" fila
+  // por fila en un CSV).
+  if (!body.sobrescribir) {
+    const pre = await verificarPreAlta(body.email);
+    if (pre.tipo === "ya_activo" || pre.tipo === "ya_inactivo") {
+      return NextResponse.json(
+        { error: "Ya existe un cliente con ese correo", colision: pre.tipo, clienteId: pre.clienteId },
+        { status: 409 }
+      );
+    }
+    if (pre.tipo === "kajabi_previo") {
+      return NextResponse.json(
+        {
+          error: "Este contacto ya tenía la oferta de Kajabi otorgada de antes de este CRM",
+          colision: "kajabi_previo",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   try {
     const { cliente, avisoKajabi, avisoSkool, avisoGhl, avisoOfertaAdicional } = await altaCompletaCliente(
       {

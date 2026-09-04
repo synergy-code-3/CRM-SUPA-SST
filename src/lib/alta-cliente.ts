@@ -11,9 +11,48 @@ import {
   vincularKajabiContactId,
 } from "@/lib/db";
 import { altaEnGhl } from "@/lib/ghl";
-import { altaEnKajabi, KAJABI_TAG_MIEMBRO_DEL_CLUB, otorgarOfertaArbitraria } from "@/lib/kajabi";
+import {
+  altaEnKajabi,
+  estadoOfertaContacto,
+  KAJABI_OFFER_ID_CLUB_SINERGETICO,
+  KAJABI_TAG_MIEMBRO_DEL_CLUB,
+  otorgarOfertaArbitraria,
+} from "@/lib/kajabi";
 import { invitarASkool } from "@/lib/skool";
 import type { Cliente } from "@/lib/types";
+
+export type PreAltaResultado =
+  | { tipo: "libre" }
+  | { tipo: "ya_activo"; clienteId: string }
+  | { tipo: "ya_inactivo"; clienteId: string }
+  | { tipo: "kajabi_previo" };
+
+// Antes de intentar dar de alta a alguien desde "Nuevo cliente", revisa si
+// el correo ya trae algún estado previo que el alta normal no debería
+// pisar en silencio:
+//  - Ya es cliente del CRM (activo o inactivo) → no se intenta nada, se le
+//    avisa al admin para que vaya al perfil que ya existe.
+//  - Nunca fue cliente del CRM, pero Kajabi ya le tiene la oferta otorgada
+//    (típico: contactos que recibieron la oferta del Club por error antes
+//    de que este CRM existiera, ~250,000 casos) → se le pregunta al admin
+//    si quiere revocarla y otorgarle la nueva de todos modos
+//    ("Sobrescribir"), antes de dejar correr altaCompletaCliente().
+export async function verificarPreAlta(email: string): Promise<PreAltaResultado> {
+  const existente = await obtenerCliente(normalizarEmail(email));
+  if (existente) {
+    // Mismo criterio que el foco de "acceso a Kajabi" en Clientes
+    // (EstadoOnboarding, clientes/page.tsx): "Si" o "Renovación" y sin
+    // pausar cuenta como activo.
+    const accesoKey = existente.accesoPlataforma?.trim().toLowerCase();
+    const activo = (accesoKey === "si" || accesoKey === "renovación") && !existente.pausadoEn;
+    return activo
+      ? { tipo: "ya_activo", clienteId: existente.id }
+      : { tipo: "ya_inactivo", clienteId: existente.id };
+  }
+
+  const estado = await estadoOfertaContacto(normalizarEmail(email), KAJABI_OFFER_ID_CLUB_SINERGETICO);
+  return estado === "activa" ? { tipo: "kajabi_previo" } : { tipo: "libre" };
+}
 
 export type AltaClienteInput = {
   nombre: string;

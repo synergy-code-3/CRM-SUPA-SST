@@ -9,12 +9,22 @@ import type { Cliente } from "@/lib/types";
 const OPCIONES_PAIS = PAISES_AMERICA.map((p) => ({ valor: p.nombre, etiqueta: p.nombre, nota: p.lada }));
 const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
 
+// Cuando el correo ya tiene algún estado previo que "Nuevo cliente" no
+// debe pisar a ciegas — ver verificarPreAlta() en src/lib/alta-cliente.ts.
+type Colision =
+  | { tipo: "ya_activo"; clienteId: string }
+  | { tipo: "ya_inactivo"; clienteId: string };
+
 export function NuevoClienteModal({
   onClose,
   onCreado,
+  onVerClienteExistente,
 }: {
   onClose: () => void;
   onCreado: (cliente: Cliente) => void;
+  // Abre el perfil del cliente que ya existe (ya_activo/ya_inactivo) —
+  // mismo mecanismo que ya usa ClientesPage para abrir cualquier fila.
+  onVerClienteExistente: (id: string) => void;
 }) {
   const [form, setForm] = useState({
     nombre: "",
@@ -31,6 +41,7 @@ export function NuevoClienteModal({
   const [ofertasKajabi, setOfertasKajabi] = useState<{ valor: string; etiqueta: string }[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [colision, setColision] = useState<Colision | null>(null);
 
   useEffect(() => {
     fetch("/api/biblioteca?tipo=evento")
@@ -69,18 +80,39 @@ export function NuevoClienteModal({
     }));
   }
 
-  async function crear() {
+  async function crear(sobrescribir?: boolean) {
     setGuardando(true);
     setError(null);
+    setColision(null);
     const ofertaAdicionalTitulo = ofertasKajabi.find((o) => o.valor === form.ofertaAdicionalId)?.etiqueta ?? "";
     const res = await fetch("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, ofertaAdicionalTitulo: form.ofertaAdicionalId ? ofertaAdicionalTitulo : undefined }),
+      body: JSON.stringify({
+        ...form,
+        ofertaAdicionalTitulo: form.ofertaAdicionalId ? ofertaAdicionalTitulo : undefined,
+        sobrescribir: sobrescribir || undefined,
+      }),
     });
     const data = await res.json();
     setGuardando(false);
     if (!res.ok) {
+      if (data.colision === "ya_activo" || data.colision === "ya_inactivo") {
+        setColision({ tipo: data.colision, clienteId: data.clienteId });
+        return;
+      }
+      if (data.colision === "kajabi_previo") {
+        if (
+          window.confirm(
+            "Este contacto de Kajabi ya tenía la oferta otorgada de antes de este CRM (típico del error masivo previo). ¿Deseas revocarla y otorgarle la nueva de todos modos?"
+          )
+        ) {
+          void crear(true);
+          return;
+        }
+        setError("No se creó el cliente — se canceló al no confirmar la oferta de Kajabi.");
+        return;
+      }
       setError(data.error ?? "No se pudo crear el cliente");
       return;
     }
@@ -189,10 +221,25 @@ export function NuevoClienteModal({
             </p>
           </div>
 
+          {colision && (
+            <div className="mt-3 rounded-xl border border-warning/30 bg-warning/10 p-3">
+              <p className="text-xs text-foreground">
+                Este correo ya es cliente del CRM y está{" "}
+                <strong>{colision.tipo === "ya_activo" ? "activo" : "inactivo"}</strong> — ve a su perfil para
+                hacer cambios ahí, no se puede volver a dar de alta.
+              </p>
+              <button
+                onClick={() => onVerClienteExistente(colision.clienteId)}
+                className="ease-spring mt-2 text-xs font-medium text-primary transition hover:text-primary-deep"
+              >
+                Ver perfil →
+              </button>
+            </div>
+          )}
           {error && <p className="mt-3 text-xs text-danger">{error}</p>}
 
           <button
-            onClick={crear}
+            onClick={() => crear()}
             disabled={guardando || !form.nombre.trim() || !form.email.trim()}
             className="ease-spring mt-5 w-full rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-40"
           >

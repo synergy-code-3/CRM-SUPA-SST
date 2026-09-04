@@ -11,7 +11,7 @@ import {
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
-import { obtenerPerfilKajabi } from "./kajabi";
+import { estadoOfertaContacto, KAJABI_OFFER_ID_CLUB_SINERGETICO, obtenerPerfilKajabi } from "./kajabi";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
   Accesos,
@@ -1566,6 +1566,83 @@ export async function reintentarCompletadoAxis(): Promise<ResultadoReintentoAxis
   }
 
   return { revisados: candidatos.length, completados };
+}
+
+// Tope por corrida: cada candidato cuesta 1-2 llamadas a Kajabi
+// (estadoOfertaContacto) — con maxDuration=60s en el mismo cron que ya
+// procesa "nuevos" y el reintento de Axis, no conviene revisar cientos de
+// golpe.
+const TOPE_RECONCILIACION_OFERTA = 30;
+
+export type ResultadoReconciliacionOferta = {
+  revisados: number;
+  reactivados: { id: string; nombre: string; email: string; finAcceso: string }[];
+};
+
+// Clientes que ya existen en el CRM, están vencidos (Acceso a plataforma
+// no es "Si" ni "Renovación"), pero Kajabi ya les muestra la oferta del
+// Club otra vez — típico de quien renueva por un canal que no dispara el
+// webhook de Hotmart (ej. un enlace de checkout directo de Kajabi, como los
+// de "Enlaces de Renovación" del menú). A diferencia del botón "Renovar"
+// del CRM, esto NO se marca como "Renovación" (esa cadena dispara la regla
+// fija de boletos por país que usa ese botón — aquí el evento real del
+// cliente sigue mandando, solo se le reactiva el acceso). Se llama en cada
+// corrida del cron de Kajabi (cada ~15 min) — revisado_oferta_en es el
+// cursor de progreso: se actualiza a "ahora" en CADA candidato revisado
+// (haya encontrado algo o no), para que la cola siga avanzando en vez de
+// quedarse revisando siempre a los mismos primero.
+export async function reconciliarOfertasVencidas(): Promise<ResultadoReconciliacionOferta> {
+  const { data: candidatos, error } = await supabase
+    .from("clientes")
+    .select("id,nombre,email,fecha_inscripcion,fecha_renovacion")
+    .is("eliminado_en", null)
+    .is("pausado_en", null)
+    .or("acceso_plataforma.is.null,and(acceso_plataforma.neq.Si,acceso_plataforma.neq.Renovación)")
+    .order("revisado_oferta_en", { ascending: true, nullsFirst: true })
+    .limit(TOPE_RECONCILIACION_OFERTA);
+  if (error) throw error;
+  if (!candidatos || candidatos.length === 0) return { revisados: 0, reactivados: [] };
+
+  const reactivados: ResultadoReconciliacionOferta["reactivados"] = [];
+  for (const c of candidatos) {
+    const ahora = new Date().toISOString();
+    try {
+      const estado = await estadoOfertaContacto(c.email, KAJABI_OFFER_ID_CLUB_SINERGETICO);
+      if (estado !== "activa") {
+        await supabase.from("clientes").update({ revisado_oferta_en: ahora }).eq("id", c.id);
+        continue;
+      }
+
+      const fechaRenovacion = anclaAlRenovar(c.fecha_inscripcion, c.fecha_renovacion);
+      const { error: errUpdate } = await supabase
+        .from("clientes")
+        .update({
+          fecha_renovacion: fechaRenovacion,
+          acceso_plataforma: "Si",
+          revisado_oferta_en: ahora,
+          actualizado_en: ahora,
+        })
+        .eq("id", c.id);
+      if (errUpdate) throw errUpdate;
+
+      const fin = finAccesoCalculado(null, fechaRenovacion);
+      const finTexto = fin ? formatearFechaSkool(fin) : "—";
+      await registrarEvento(
+        c.id,
+        "EDICION_DATOS",
+        `Se le otorgó Oferta Club Sinergético — Fin de acceso: ${finTexto}`,
+        "Kajabi"
+      );
+      await recalcularAccesos(c.id);
+      reactivados.push({ id: c.id, nombre: c.nombre, email: c.email, finAcceso: finTexto });
+    } catch {
+      // Best-effort: un fallo con un candidato no debe tronar el resto — no
+      // se le actualiza revisado_oferta_en, así que vuelve a quedar
+      // primero en la cola la próxima corrida.
+    }
+  }
+
+  return { revisados: candidatos.length, reactivados };
 }
 
 // --- Teléfonos de Hotmart en espera (ver hotmart_pendientes en schema.sql) ---

@@ -745,6 +745,10 @@ function ClientesPageInner() {
             setTotal((prev) => prev + 1);
             if (cliente.telefono) void esperarConfirmacionWaEnLista(cliente.id);
           }}
+          onVerClienteExistente={(id) => {
+            setMostrarNuevo(false);
+            setSeleccionado(id);
+          }}
         />
       )}
 

@@ -5,7 +5,7 @@ type AvisoRow = {
   id: string;
   titulo: string;
   mensaje: string;
-  autor_id: string;
+  autor_id: string | null;
   autor_nombre: string;
   creado_en: string;
   editado_en: string | null;
@@ -69,6 +69,20 @@ export async function crearAviso(titulo: string, mensaje: string, autorId: strin
   return filaAAviso(data as AvisoRow, []);
 }
 
+// Aviso generado por el sistema (ej. reconciliación automática de Kajabi,
+// ver /api/cron/sincronizar-kajabi) — sin autor_id porque no hay un usuario
+// real detrás. Como cualquier otro aviso, le llega a todos los roles y
+// necesita "Enterado" para cerrarse.
+export async function crearAvisoAutomatico(titulo: string, mensaje: string): Promise<Aviso> {
+  const { data, error } = await supabase
+    .from("avisos")
+    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: null, autor_nombre: "Kajabi" })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaAAviso(data as AvisoRow, []);
+}
+
 // Editar NO toca avisos_confirmaciones a propósito — corregir un error de
 // texto no debe volver a molestar a quien ya había confirmado que se
 // enteró.
@@ -93,10 +107,14 @@ export async function eliminarAviso(id: string): Promise<void> {
 // ventana emergente. Volumen bajo (avisos internos del equipo, no miles de
 // filas), así que se filtra en JS en vez de armar un anti-join en SQL.
 export async function listarAvisosPendientes(usuarioId: string): Promise<Aviso[]> {
+  // .neq("autor_id", usuarioId) no basta sola: en SQL, NULL != x nunca da
+  // verdadero, así que un aviso generado por el sistema (autor_id null, ver
+  // crearAvisoAutomatico) quedaría invisible para todos si se usa un .neq
+  // simple — hay que incluir explícitamente el caso "sin autor".
   const { data: avisos, error } = await supabase
     .from("avisos")
     .select("*")
-    .neq("autor_id", usuarioId)
+    .or(`autor_id.is.null,autor_id.neq.${usuarioId}`)
     .order("creado_en", { ascending: true });
   if (error) throw error;
   const filas = (avisos ?? []) as AvisoRow[];

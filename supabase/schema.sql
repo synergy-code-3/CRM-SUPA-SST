@@ -452,3 +452,16 @@ create table if not exists avisos_confirmaciones (
 );
 create index if not exists idx_avisos_confirmaciones_aviso_id on avisos_confirmaciones (aviso_id);
 alter table avisos_confirmaciones enable row level security;
+
+-- Avisos generados por el sistema (ej. reconciliación automática de Kajabi,
+-- ver /api/cron/sincronizar-kajabi) no tienen un usuario real detrás — se
+-- guardan con autor_id null y autor_nombre "Kajabi" (ver
+-- crearAvisoAutomatico en src/lib/avisos.ts).
+alter table avisos alter column autor_id drop not null;
+
+-- Cursor de progreso para la reconciliación de clientes vencidos que
+-- recuperaron la oferta de Kajabi por fuera del CRM (ver
+-- /api/cron/sincronizar-kajabi) — a diferencia de actualizado_en, este
+-- campo SIEMPRE avanza en cada revisión (haya encontrado algo o no), para
+-- no quedarse revisando siempre a los mismos primero.
+alter table clientes add column if not exists revisado_oferta_en timestamptz;

@@ -265,7 +265,9 @@ export type Aviso = {
   id: string;
   titulo: string;
   mensaje: string;
-  autorId: string;
+  // null = generado por el sistema (ej. reconciliación automática de
+  // Kajabi), no por un usuario real — ver crearAvisoAutomatico en avisos.ts.
+  autorId: string | null;
   autorNombre: string;
   creadoEn: string;
   editadoEn: string | null;
