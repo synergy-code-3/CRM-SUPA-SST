@@ -973,6 +973,23 @@ export async function actualizarDatosCliente(
   if (!filaAnterior) throw new Error("Cliente no encontrado");
   const anterior = filaACliente(filaAnterior as ClienteRow);
 
+  // Se calcula antes de armar "nuevos"/detalleTextos a propósito: cuando se
+  // le agrega Black Access a alguien cuya membresía YA estaba vencida de
+  // verdad (no solo antes del corte de Synergy Unlimited), el acceso se
+  // reactiva de verdad — Acceso a plataforma pasa solo a "Si" (nunca a
+  // "Renovación": esa etiqueta dispara la regla fija de boletos por país
+  // que usa el botón "Renovar" — ver calcularAccesos, boletos.ts — y aquí
+  // el evento real del cliente sigue mandando, Black Access solo se suma
+  // encima), así el log de cambios y el resto de la función ven el valor
+  // final, no el que haya llegado del formulario.
+  const nuevaEtiqueta = cambios.etiqueta?.trim() || null;
+  const etiquetaCambio = nuevaEtiqueta !== anterior.etiqueta;
+  const seAgregaBlackAccess = etiquetaCambio && nuevaEtiqueta?.trim().toLowerCase() === "black access";
+  const finAnteriorSinAjuste = finAccesoCalculado(anterior.fechaInscripcion, anterior.fechaRenovacion);
+  const membresiaYaVencida = !finAnteriorSinAjuste || finAnteriorSinAjuste < new Date();
+  const accesoPlataformaCrudo =
+    seAgregaBlackAccess && membresiaYaVencida ? "Si" : cambios.accesoPlataforma;
+
   const nuevos: Record<string, string> = {
     nombre: cambios.nombre.trim(),
     telefono: normalizarTelefono(cambios.telefono) ?? "—",
@@ -981,7 +998,7 @@ export async function actualizarDatosCliente(
     notas: cambios.notas?.trim() || "—",
     evento: cambios.evento?.trim() || "—",
     etiqueta: cambios.etiqueta?.trim() || "—",
-    accesoPlataforma: cambios.accesoPlataforma?.trim() || "—",
+    accesoPlataforma: accesoPlataformaCrudo?.trim() || "—",
     tipoMembresia: cambios.tipoMembresia?.trim() || "—",
     vencimientoSkool: cambios.vencimientoSkool?.trim() || "—",
     invitacionSkool: cambios.invitacionSkool?.trim() || "—",
@@ -998,9 +1015,8 @@ export async function actualizarDatosCliente(
     .map((c) => `${c.label}: "${c.anterior}" → "${c.nuevo}"`);
 
   const nuevoEvento = cambios.evento?.trim() || null;
-  const nuevaEtiqueta = cambios.etiqueta?.trim() || null;
   const nuevoPais = cambios.pais?.trim() || null;
-  const nuevoAccesoPlataforma = cambios.accesoPlataforma?.trim() || null;
+  const nuevoAccesoPlataforma = accesoPlataformaCrudo?.trim() || null;
   const region = await regionParaCrearOEditar(nuevoEvento, nuevoPais);
 
   // Los cuatro alimentan calcularAccesos() directamente (evento decide
@@ -1010,7 +1026,6 @@ export async function actualizarDatosCliente(
   // cambio en cualquiera de ellos deja los boletos guardados
   // desincronizados de lo que le toca de verdad si no se recalcula.
   const eventoCambio = nuevoEvento !== anterior.evento;
-  const etiquetaCambio = nuevaEtiqueta !== anterior.etiqueta;
   const paisCambio = nuevoPais !== anterior.pais;
   const accesoPlataformaCambio = nuevoAccesoPlataforma !== anterior.accesoPlataforma;
 
@@ -1046,20 +1061,15 @@ export async function actualizarDatosCliente(
   // quedan con etiqueta_asignada_en en null a propósito).
   const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora : null) : anterior.etiquetaAsignadaEn;
 
-  // Al agregarle la etiqueta Black Access a alguien cuya membresía YA
-  // estaba vencida (no solo antes del corte de Synergy Unlimited — vencida
-  // de verdad, hoy), también se le renueva — antes solo se le ajustaba la
-  // fecha que se ve en pantalla (finAccesoConEtiqueta) sin tocar la
+  // seAgregaBlackAccess/membresiaYaVencida ya se calcularon arriba (antes de
+  // armar "nuevos", para que Acceso a plataforma reflejara el auto-reactivo
+  // desde el primer log) — aquí se reutilizan para la misma condición sobre
+  // fecha_renovacion: al agregarle la etiqueta Black Access a alguien cuya
+  // membresía YA estaba vencida de verdad (no solo antes del corte de
+  // Synergy Unlimited), también se le renueva — antes solo se le ajustaba
+  // la fecha que se ve en pantalla (finAccesoConEtiqueta) sin tocar la
   // fecha_renovacion real, dejándolo con Kajabi/Skool caducados aunque el
-  // perfil mostrara una fecha vigente. Solo aplica a este caso puntual: si
-  // ya estaba activa no se toca (anclaAlRenovar no haría nada raro ahí,
-  // pero no hay necesidad — es el admin quien decide renovar a alguien
-  // activo, no una etiqueta).
-  const etiquetaKeyNueva = nuevaEtiqueta?.trim().toLowerCase() ?? "";
-  const seAgregaBlackAccess = etiquetaCambio && etiquetaKeyNueva === "black access";
-  const finAnteriorSinAjuste = finAccesoCalculado(anterior.fechaInscripcion, anterior.fechaRenovacion);
-  const membresiaYaVencida = !finAnteriorSinAjuste || finAnteriorSinAjuste < new Date();
-
+  // perfil mostrara una fecha vigente. Si ya estaba activa no se toca.
   const finAccesoDeseadoTexto = cambios.finAccesoDeseado?.trim() || null;
   const fechaRenovacionNueva = finAccesoDeseadoTexto
     ? fechaRenovacionDesdeFinDeseado(
@@ -1200,6 +1210,10 @@ export async function aplicarSolicitudAClienteExistente(
     seAgregaBlackAccess && membresiaYaVencida
       ? anclaAlRenovar(anterior.fechaInscripcion, anterior.fechaRenovacion)
       : anterior.fechaRenovacion;
+  // Mismo caso: el acceso se reactiva de verdad — "Si", nunca "Renovación"
+  // (esa dispara la regla fija de boletos por país del botón "Renovar"; acá
+  // el evento real sigue mandando, Black Access solo se suma encima).
+  const accesoPlataformaNuevo = seAgregaBlackAccess && membresiaYaVencida ? "Si" : anterior.accesoPlataforma;
 
   const { data, error } = await supabase
     .from("clientes")
@@ -1210,6 +1224,7 @@ export async function aplicarSolicitudAClienteExistente(
       vencimiento_skool: nuevoVencimiento ? formatearFechaSkool(nuevoVencimiento) : anterior.vencimientoSkool,
       vencimiento_skool_fecha: nuevoVencimiento ? fechaSkoolADateOnly(nuevoVencimiento) : null,
       fecha_renovacion: fechaRenovacionNueva,
+      acceso_plataforma: accesoPlataformaNuevo,
       actualizado_en: ahora.toISOString(),
     })
     .eq("id", clienteId)
