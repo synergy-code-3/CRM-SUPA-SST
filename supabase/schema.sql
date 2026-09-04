@@ -465,3 +465,10 @@ alter table avisos alter column autor_id drop not null;
 -- campo SIEMPRE avanza en cada revisión (haya encontrado algo o no), para
 -- no quedarse revisando siempre a los mismos primero.
 alter table clientes add column if not exists revisado_oferta_en timestamptz;
+
+-- Avisos operativos (ej. reactivaciones automáticas de Kajabi) que solo le
+-- interesan al equipo admin — el resto de los roles ni los ve en /avisos ni
+-- les aparece la ventana emergente de "Enterado" para ellos. Los avisos
+-- normales (los que publica el equipo a mano) se quedan en false, visibles
+-- para todos como siempre.
+alter table avisos add column if not exists solo_admin boolean not null default false;

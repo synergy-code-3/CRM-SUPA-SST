@@ -83,6 +83,7 @@ export default function AvisosPage() {
                 <p className="mt-0.5 text-xs text-muted">
                   {a.autorNombre} · {new Date(a.creadoEn).toLocaleString("es-MX")}
                   {a.editadoEn && " · editado"}
+                  {a.soloAdmin && " · solo admin"}
                 </p>
               </div>
               {puedeGestionar && (

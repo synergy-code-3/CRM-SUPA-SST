@@ -8,6 +8,6 @@ export async function GET() {
   const permiso = await requerirPermiso("verAvisos");
   if (!permiso.ok) return permiso.respuesta;
 
-  const avisos = await listarAvisosPendientes(permiso.usuario.id);
+  const avisos = await listarAvisosPendientes(permiso.usuario.id, permiso.usuario.rol === "admin");
   return NextResponse.json({ avisos });
 }

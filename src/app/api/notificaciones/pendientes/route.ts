@@ -17,7 +17,7 @@ export async function GET() {
   const [solicitudes, usuarios, avisos] = await Promise.all([
     tienePermiso(usuario.rol, "revisarSolicitudes") ? contarSolicitudesPendientes() : Promise.resolve(0),
     tienePermiso(usuario.rol, "gestionarUsuarios") ? contarUsuariosPendientes() : Promise.resolve(0),
-    contarAvisosPendientes(usuario.id),
+    contarAvisosPendientes(usuario.id, usuario.rol === "admin"),
   ]);
 
   return NextResponse.json({ solicitudes, usuarios, avisos });

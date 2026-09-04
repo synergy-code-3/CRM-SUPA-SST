@@ -126,7 +126,8 @@ async function manejar(req: NextRequest) {
         .join("\n");
       await crearAvisoAutomatico(
         "Reactivaciones automáticas de Kajabi",
-        `Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:\n\n${lista}`
+        `Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:\n\n${lista}`,
+        true
       );
     }
   } catch (err) {

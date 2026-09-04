@@ -9,6 +9,7 @@ type AvisoRow = {
   autor_nombre: string;
   creado_en: string;
   editado_en: string | null;
+  solo_admin: boolean;
 };
 
 type ConfirmacionRow = {
@@ -28,15 +29,21 @@ function filaAAviso(row: AvisoRow, confirmaciones: AvisoConfirmacion[] | null): 
     creadoEn: row.creado_en,
     editadoEn: row.editado_en,
     confirmaciones,
+    soloAdmin: row.solo_admin,
   };
 }
 
 // Trae todos los avisos, más nuevo primero. Las confirmaciones (quién le
 // dio "Enterado" y cuándo) solo se traen y se mandan si paraAdmin es true —
 // para los demás roles el campo queda en null, no en una lista vacía, para
-// que quede claro en el tipo que ese dato ni siquiera llegó.
+// que quede claro en el tipo que ese dato ni siquiera llegó. Los avisos
+// "solo_admin" (ej. reactivaciones automáticas de Kajabi) ni siquiera se
+// listan para quien no es admin — no les interesa y no son suyos para
+// confirmar.
 export async function listarAvisos(paraAdmin: boolean): Promise<Aviso[]> {
-  const { data: avisos, error } = await supabase.from("avisos").select("*").order("creado_en", { ascending: false });
+  let query = supabase.from("avisos").select("*").order("creado_en", { ascending: false });
+  if (!paraAdmin) query = query.eq("solo_admin", false);
+  const { data: avisos, error } = await query;
   if (error) throw error;
   const filas = (avisos ?? []) as AvisoRow[];
   if (!paraAdmin) return filas.map((f) => filaAAviso(f, null));
@@ -71,12 +78,13 @@ export async function crearAviso(titulo: string, mensaje: string, autorId: strin
 
 // Aviso generado por el sistema (ej. reconciliación automática de Kajabi,
 // ver /api/cron/sincronizar-kajabi) — sin autor_id porque no hay un usuario
-// real detrás. Como cualquier otro aviso, le llega a todos los roles y
-// necesita "Enterado" para cerrarse.
-export async function crearAvisoAutomatico(titulo: string, mensaje: string): Promise<Aviso> {
+// real detrás. soloAdmin=true (el caso real de hoy, reactivaciones de
+// Kajabi) lo deja fuera de /avisos y de la ventana emergente para
+// coordinador/abeja — es ruido operativo que no les toca a ellos.
+export async function crearAvisoAutomatico(titulo: string, mensaje: string, soloAdmin: boolean): Promise<Aviso> {
   const { data, error } = await supabase
     .from("avisos")
-    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: null, autor_nombre: "Kajabi" })
+    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: null, autor_nombre: "Kajabi", solo_admin: soloAdmin })
     .select("*")
     .single();
   if (error) throw error;
@@ -106,16 +114,21 @@ export async function eliminarAviso(id: string): Promise<void> {
 // mismo publicó — más viejo primero, para mostrarlos en ese orden en la
 // ventana emergente. Volumen bajo (avisos internos del equipo, no miles de
 // filas), así que se filtra en JS en vez de armar un anti-join en SQL.
-export async function listarAvisosPendientes(usuarioId: string): Promise<Aviso[]> {
+// esAdmin en false deja fuera los avisos "solo_admin" (ej. reactivaciones
+// automáticas de Kajabi) — ni le cuentan para la burbuja ni le abren la
+// ventana emergente a coordinador/abeja.
+export async function listarAvisosPendientes(usuarioId: string, esAdmin: boolean): Promise<Aviso[]> {
   // .neq("autor_id", usuarioId) no basta sola: en SQL, NULL != x nunca da
   // verdadero, así que un aviso generado por el sistema (autor_id null, ver
   // crearAvisoAutomatico) quedaría invisible para todos si se usa un .neq
   // simple — hay que incluir explícitamente el caso "sin autor".
-  const { data: avisos, error } = await supabase
+  let query = supabase
     .from("avisos")
     .select("*")
     .or(`autor_id.is.null,autor_id.neq.${usuarioId}`)
     .order("creado_en", { ascending: true });
+  if (!esAdmin) query = query.eq("solo_admin", false);
+  const { data: avisos, error } = await query;
   if (error) throw error;
   const filas = (avisos ?? []) as AvisoRow[];
   if (!filas.length) return [];
@@ -151,6 +164,6 @@ export async function confirmarAviso(avisoId: string, usuarioId: string, usuario
 // a cualquier rol (todos pueden tener avisos sin confirmar), así que
 // GET /api/notificaciones/pendientes lo calcula siempre, sin gatearlo por
 // permiso.
-export async function contarAvisosPendientes(usuarioId: string): Promise<number> {
-  return (await listarAvisosPendientes(usuarioId)).length;
+export async function contarAvisosPendientes(usuarioId: string, esAdmin: boolean): Promise<number> {
+  return (await listarAvisosPendientes(usuarioId, esAdmin)).length;
 }

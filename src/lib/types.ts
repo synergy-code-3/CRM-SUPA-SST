@@ -272,4 +272,8 @@ export type Aviso = {
   creadoEn: string;
   editadoEn: string | null;
   confirmaciones: AvisoConfirmacion[] | null;
+  // true = solo admin lo ve (ej. reactivaciones automáticas de Kajabi) — el
+  // resto de los roles ni lo lista en /avisos ni les cuenta para la ventana
+  // emergente de "Enterado".
+  soloAdmin: boolean;
 };
