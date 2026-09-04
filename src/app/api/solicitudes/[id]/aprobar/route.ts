@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { altaCompletaCliente } from "@/lib/alta-cliente";
+import { aplicarSolicitudAClienteExistente, normalizarEmail, obtenerCliente } from "@/lib/db";
 import { marcarSolicitudAprobada, obtenerSolicitud } from "@/lib/solicitudes";
 import { marcarAccesoDadoVsl } from "@/lib/vsl-soporte";
 
@@ -19,19 +20,44 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     // correoAcceso es el identificador del cliente en el CRM/Kajabi/Skool;
     // correoPago queda solo como referencia en las notas, para conciliar el
     // pago si hace falta.
-    const { cliente, avisoKajabi, avisoSkool, avisoGhl } = await altaCompletaCliente(
-      {
-        nombre: solicitud.nombre,
-        email: solicitud.correoAcceso,
-        telefono: solicitud.telefono,
-        pais: solicitud.pais,
-        evento: solicitud.evento,
-        tipoMembresia: solicitud.tipoMembresia,
-        etiqueta: solicitud.etiqueta,
-        notas: `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
-      },
-      permiso.usuario.nombre
-    );
+    //
+    // Si el correo YA es cliente (típico: alguien ya activo que compra
+    // Black Access o MÁS+, no un alta nueva), altaCompletaCliente()
+    // rechazaría la solicitud de plano — en vez de eso, se le suma la
+    // etiqueta y se le extiende Skool los meses de su membresía (ver
+    // aplicarSolicitudAClienteExistente en db.ts), sin volver a tocar
+    // Kajabi/Skool/GHL: ya tiene acceso al Club, esto es un extra.
+    const existente = await obtenerCliente(normalizarEmail(solicitud.correoAcceso));
+    let cliente;
+    let avisoKajabi: string | null = null;
+    let avisoSkool: string | null = null;
+    let avisoGhl: string | null = null;
+
+    if (existente) {
+      cliente = await aplicarSolicitudAClienteExistente(
+        existente.id,
+        { etiqueta: solicitud.etiqueta, tipoMembresia: solicitud.tipoMembresia },
+        permiso.usuario.nombre
+      );
+    } else {
+      const resultado = await altaCompletaCliente(
+        {
+          nombre: solicitud.nombre,
+          email: solicitud.correoAcceso,
+          telefono: solicitud.telefono,
+          pais: solicitud.pais,
+          evento: solicitud.evento,
+          tipoMembresia: solicitud.tipoMembresia,
+          etiqueta: solicitud.etiqueta,
+          notas: `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
+        },
+        permiso.usuario.nombre
+      );
+      cliente = resultado.cliente;
+      avisoKajabi = resultado.avisoKajabi;
+      avisoSkool = resultado.avisoSkool;
+      avisoGhl = resultado.avisoGhl;
+    }
 
     const actualizada = await marcarSolicitudAprobada(id, cliente.id, permiso.usuario.nombre);
 

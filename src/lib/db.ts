@@ -1123,6 +1123,72 @@ export async function actualizarDatosCliente(
   return clienteFinal;
 }
 
+// Cuando una solicitud (ver solicitudes.ts) llega para un correo que YA es
+// cliente — típico caso: alguien que compra Black Access o MÁS+ estando ya
+// activo, no un alta nueva — altaCompletaCliente() la rechaza de plano
+// ("Ya existe un cliente con ese correo"). Esta función es el camino B para
+// ese caso: en vez de dar de alta, le suma la etiqueta que trae la
+// solicitud y le extiende el vencimiento de Skool los meses de su
+// membresía — a propósito NO toca evento/teléfono/país/nombre (esos ya los
+// tiene bien, pisarlos con lo que haya escrito el vendedor en la solicitud
+// arriesga corromper datos buenos) y no dispara Kajabi/Skool/GHL (ya tiene
+// acceso al Club, esta solicitud es un extra, no un alta).
+export async function aplicarSolicitudAClienteExistente(
+  clienteId: string,
+  cambios: { etiqueta: string | null; tipoMembresia: string | null },
+  autor: string
+): Promise<Cliente> {
+  const { data: filaAnterior, error: errLectura } = await supabase
+    .from("clientes")
+    .select("*")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!filaAnterior) throw new Error("Cliente no encontrado");
+  const anterior = filaACliente(filaAnterior as ClienteRow);
+
+  const ahora = new Date();
+  const nuevaEtiqueta = cambios.etiqueta?.trim() || null;
+  const etiquetaCambio = nuevaEtiqueta !== anterior.etiqueta;
+  const etiquetaAsignadaEnNueva = etiquetaCambio ? (nuevaEtiqueta ? ahora.toISOString() : null) : anterior.etiquetaAsignadaEn;
+
+  const nuevaMembresia = cambios.tipoMembresia?.trim() || anterior.tipoMembresia;
+
+  // Extiende Skool desde donde ya estaba vigente (no le regala menos de lo
+  // que ya tenía) o desde hoy si ya había vencido — mismo criterio que
+  // anclaAlRenovar() usa para el Club, aplicado aquí a Skool porque esta
+  // solicitud sí trae meses de Skool nuevos de verdad (a diferencia de un
+  // cambio de etiqueta suelto desde el panel, que no debe tocar Skool).
+  const vencimientoActual = parsearFechaSkool(anterior.vencimientoSkool);
+  const anclaSkool = vencimientoActual && vencimientoActual > ahora ? vencimientoActual : ahora;
+  const nuevoVencimiento = calcularVencimientoSkool(anclaSkool.toISOString(), nuevaMembresia);
+
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      etiqueta: nuevaEtiqueta,
+      etiqueta_asignada_en: etiquetaAsignadaEnNueva,
+      tipo_membresia: nuevaMembresia,
+      vencimiento_skool: nuevoVencimiento ? formatearFechaSkool(nuevoVencimiento) : anterior.vencimientoSkool,
+      vencimiento_skool_fecha: nuevoVencimiento ? fechaSkoolADateOnly(nuevoVencimiento) : null,
+      actualizado_en: ahora.toISOString(),
+    })
+    .eq("id", clienteId)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const detalle = [
+    etiquetaCambio ? `Etiqueta: "${anterior.etiqueta ?? "—"}" → "${nuevaEtiqueta ?? "—"}"` : null,
+    `Vencimiento Skool extendido por solicitud: "${anterior.vencimientoSkool ?? "—"}" → "${nuevoVencimiento ? formatearFechaSkool(nuevoVencimiento) : "—"}"`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  await registrarEvento(clienteId, "EDICION_DATOS", `${detalle} (solicitud aprobada por ${autor})`, autor);
+
+  return recalcularAccesos(clienteId);
+}
+
 const ACCESO_LABEL: Record<keyof Accesos, string> = {
   general: "General",
   vip: "VIP",
