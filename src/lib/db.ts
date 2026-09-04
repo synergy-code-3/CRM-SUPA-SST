@@ -1669,18 +1669,19 @@ export type ResultadoReconciliacionOferta = {
 // no es "Si" ni "Renovación"), pero Kajabi ya les muestra la oferta del
 // Club otra vez — típico de quien renueva por un canal que no dispara el
 // webhook de Hotmart (ej. un enlace de checkout directo de Kajabi, como los
-// de "Enlaces de Renovación" del menú). A diferencia del botón "Renovar"
-// del CRM, esto NO se marca como "Renovación" (esa cadena dispara la regla
-// fija de boletos por país que usa ese botón — aquí el evento real del
-// cliente sigue mandando, solo se le reactiva el acceso). Se llama en cada
-// corrida del cron de Kajabi (cada ~15 min) — revisado_oferta_en es el
-// cursor de progreso: se actualiza a "ahora" en CADA candidato revisado
-// (haya encontrado algo o no), para que la cola siga avanzando en vez de
-// quedarse revisando siempre a los mismos primero.
+// de "Enlaces de Renovación" del menú). Nunca se marca acceso_plataforma
+// como "Renovación" (esa cadena dispara la regla fija de boletos por país
+// que usa el botón "Renovar" — aquí, si se detecta un evento real
+// (Hotmart/Axis), se prefiere calcular por ese evento en vez de por el país;
+// ver el bloque de detección más abajo). Se llama en cada corrida del cron
+// de Kajabi (cada ~15 min) — revisado_oferta_en es el cursor de progreso:
+// se actualiza a "ahora" en CADA candidato revisado (haya encontrado algo o
+// no), para que la cola siga avanzando en vez de quedarse revisando siempre
+// a los mismos primero.
 export async function reconciliarOfertasVencidas(): Promise<ResultadoReconciliacionOferta> {
   const { data: candidatos, error } = await supabase
     .from("clientes")
-    .select("id,nombre,email,fecha_inscripcion,fecha_renovacion")
+    .select("id,nombre,email,fecha_inscripcion,fecha_renovacion,evento,tipo_membresia")
     .is("eliminado_en", null)
     .is("pausado_en", null)
     .gte("creado_en", RECONCILIACION_DESDE)
@@ -1700,26 +1701,61 @@ export async function reconciliarOfertasVencidas(): Promise<ResultadoReconciliac
         continue;
       }
 
+      // Todo el que llega aquí ya estaba vencido por definición (así se
+      // arma la consulta de candidatos) — su evento guardado puede ser de
+      // hace mucho y ya no debería mandar en el cálculo de boletos (mismo
+      // error que se corrigió a mano con ruelaas3@gmail.com). Antes de
+      // resignarse a reusar ese evento viejo, se intenta lo mismo que
+      // haría un alta nueva (registrarTagKajabi): primero compras de
+      // Hotmart en espera, luego el historial de Axis como respaldo. Si
+      // ninguno de los dos revela un evento distinto, se deja el que ya
+      // tenía — el aviso de "Reactivaciones automáticas" que se publica al
+      // final de esta función existe justo para que admin revise a mano
+      // los casos que esta detección no alcance a resolver sola.
+      let eventoDetectado: string | null = null;
+      let tipoMembresiaDetectado: string | null = null;
+      const pendientes = await tomarPendientesHotmart(c.email);
+      for (const p of pendientes) {
+        const match = detectarProductoClubSinergetico(p.producto);
+        if (!match) continue;
+        const sube = mayorMembresia(tipoMembresiaDetectado, match.tipoMembresia) !== tipoMembresiaDetectado;
+        tipoMembresiaDetectado = mayorMembresia(tipoMembresiaDetectado, match.tipoMembresia);
+        if (sube || !eventoDetectado) eventoDetectado = match.evento;
+      }
+      if (!eventoDetectado) {
+        try {
+          const historialAxis = await obtenerHistorialAxis(c.email);
+          if (historialAxis) {
+            eventoDetectado = detectarEventoEnAxis(historialAxis);
+            if (!tipoMembresiaDetectado) tipoMembresiaDetectado = detectarMembresiaEnComprasAxis(historialAxis.compras);
+          }
+        } catch {
+          // Best-effort: sin Axis, se sigue con el evento que ya tenía.
+        }
+      }
+      const eventoCambio = !!eventoDetectado && eventoDetectado !== c.evento;
+
       const fechaRenovacion = anclaAlRenovar(c.fecha_inscripcion, c.fecha_renovacion);
-      const { error: errUpdate } = await supabase
-        .from("clientes")
-        .update({
-          fecha_renovacion: fechaRenovacion,
-          acceso_plataforma: "Si",
-          revisado_oferta_en: ahora,
-          actualizado_en: ahora,
-        })
-        .eq("id", c.id);
+      const cambios: Record<string, unknown> = {
+        fecha_renovacion: fechaRenovacion,
+        acceso_plataforma: "Si",
+        revisado_oferta_en: ahora,
+        actualizado_en: ahora,
+      };
+      if (eventoCambio) {
+        cambios.evento = eventoDetectado;
+        if (tipoMembresiaDetectado) cambios.tipo_membresia = mayorMembresia(c.tipo_membresia, tipoMembresiaDetectado);
+      }
+
+      const { error: errUpdate } = await supabase.from("clientes").update(cambios).eq("id", c.id);
       if (errUpdate) throw errUpdate;
 
       const fin = finAccesoCalculado(null, fechaRenovacion);
       const finTexto = fin ? formatearFechaSkool(fin) : "—";
-      await registrarEvento(
-        c.id,
-        "EDICION_DATOS",
-        `Se le otorgó Oferta Club Sinergético — Fin de acceso: ${finTexto}`,
-        "Kajabi"
-      );
+      const detalle = eventoCambio
+        ? `Se le otorgó Oferta Club Sinergético — se detectó un evento distinto al guardado: "${c.evento ?? "—"}" → "${eventoDetectado}". Fin de acceso: ${finTexto}`
+        : `Se le otorgó Oferta Club Sinergético — Fin de acceso: ${finTexto}`;
+      await registrarEvento(c.id, "EDICION_DATOS", detalle, "Kajabi");
       await recalcularAccesos(c.id);
       reactivados.push({ id: c.id, nombre: c.nombre, email: c.email, finAcceso: finTexto });
     } catch {
