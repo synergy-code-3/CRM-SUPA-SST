@@ -1599,7 +1599,7 @@ export async function reintentarCompletadoAxis(): Promise<ResultadoReintentoAxis
 
   const { data: candidatos, error } = await supabase
     .from("clientes")
-    .select("id,telefono,evento,tipo_membresia")
+    .select("id,telefono,evento,tipo_membresia,fecha_inscripcion")
     .or("tipo_membresia.is.null,evento.is.null")
     .gte("creado_en", desde.toISOString())
     .limit(TOPE_REINTENTOS_AXIS);
@@ -1625,6 +1625,16 @@ export async function reintentarCompletadoAxis(): Promise<ResultadoReintentoAxis
         if (e) cambios.evento = e;
       }
       if (Object.keys(cambios).length === 0) continue;
+
+      // El tipo de membresía completado aquí también debe recalcular el
+      // vencimiento de Skool — sin esto, a un cliente completado por Axis
+      // se le quedaba el tipo de membresía puesto pero "Vence Skool" vacío
+      // para siempre (nadie más vuelve a tocar este campo después del alta).
+      if (cambios.tipo_membresia && c.fecha_inscripcion) {
+        const vencimiento = calcularVencimientoSkool(c.fecha_inscripcion, cambios.tipo_membresia as string);
+        cambios.vencimiento_skool = vencimiento ? formatearFechaSkool(vencimiento) : null;
+        cambios.vencimiento_skool_fecha = fechaSkoolADateOnly(vencimiento);
+      }
 
       await supabase.from("clientes").update({ ...cambios, actualizado_en: new Date().toISOString() }).eq("id", c.id);
       await registrarEvento(
