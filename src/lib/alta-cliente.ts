@@ -69,6 +69,9 @@ export type AltaClienteInput = {
   // aplicado a un cliente ya existente.
   ofertaAdicionalId?: string | null;
   ofertaAdicionalTitulo?: string | null;
+  // Nombre del vendedor que llenó la Solicitud original, si el alta viene
+  // de ahí — ver POST /api/solicitudes/[id]/aprobar.
+  solicitadoPorNombre?: string | null;
 };
 
 export type ResultadoAltaCliente = {

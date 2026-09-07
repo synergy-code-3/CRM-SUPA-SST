@@ -50,6 +50,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           tipoMembresia: solicitud.tipoMembresia,
           etiqueta: solicitud.etiqueta,
           notas: `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
+          solicitadoPorNombre: solicitud.solicitadoPorNombre,
         },
         permiso.usuario.nombre
       );

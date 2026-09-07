@@ -466,6 +466,10 @@ export async function crearCliente(input: {
   tipoMembresia?: string | null;
   etiqueta?: string | null;
   autor: string;
+  // Nombre del vendedor que llenó la Solicitud original, si el alta viene
+  // de ahí (ver POST /api/solicitudes/[id]/aprobar) — queda aparte de
+  // "autor" (quien aprobó) para que la timeline distinga a los dos.
+  solicitadoPorNombre?: string | null;
 }): Promise<Cliente> {
   const id = normalizarEmail(input.email);
   const { data: existente } = await supabase.from("clientes").select("id").eq("id", id).maybeSingle();
@@ -510,7 +514,10 @@ export async function crearCliente(input: {
     .single();
   if (error) throw error;
 
-  await registrarEvento(id, "CREACION", `Cliente creado por ${input.autor}`, input.autor);
+  const detalleCreacion = input.solicitadoPorNombre
+    ? `Cliente creado por ${input.autor} — solicitud enviada por ${input.solicitadoPorNombre}`
+    : `Cliente creado por ${input.autor}`;
+  await registrarEvento(id, "CREACION", detalleCreacion, input.autor);
   return filaACliente(data as ClienteRow);
 }
 
