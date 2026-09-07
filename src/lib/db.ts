@@ -744,6 +744,46 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
   return filaACliente(data as ClienteRow);
 }
 
+// Botón "Activar oferta" (al lado de "Renovar membresía", mismas
+// condiciones de visibilidad) — para alguien que volvió a pagar el Club
+// pero NO como una renovación (el vendedor no llenó el enlace de
+// Renovación, o el pago llegó por un canal sin webhook): se le da acceso
+// como una compra más, calculada por SU evento real (no la regla fija de
+// boletos por país que dispara "Renovación" — ver sección 4 de REGLAS-
+// BOLETOS-SYNERGY.md), y "Acceso a plataforma" queda en "Si", nunca en
+// "Renovación". No toca etiqueta ni tipo de membresía — ya los tiene bien.
+export async function activarOfertaComoCompra(id: string, autor: string): Promise<Cliente> {
+  const { data: filaActual, error: errLectura } = await supabase
+    .from("clientes")
+    .select("fecha_inscripcion,fecha_renovacion")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!filaActual) throw new Error("Cliente no encontrado");
+
+  const fechaRenovacion = anclaAlRenovar(filaActual.fecha_inscripcion, filaActual.fecha_renovacion);
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      acceso_plataforma: "Si",
+      fecha_renovacion: fechaRenovacion,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const fin = finAccesoCalculado(null, fechaRenovacion);
+  await registrarEvento(
+    id,
+    "EDICION_DATOS",
+    `Se le otorgó acceso al Club (pagó de nuevo, no es renovación) — Fin de acceso: ${fin ? formatearFechaSkool(fin) : "—"}`,
+    autor
+  );
+  return filaACliente(data as ClienteRow);
+}
+
 // Un cliente que YA existe vuelve a comprar uno de los productos del Club
 // Sinergético mapeados por Hotmart (ver detectarProductoClubSinergetico, en
 // vez de usar el botón "Renovar" del CRM) — funciona casi como una renovación:

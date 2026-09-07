@@ -53,7 +53,7 @@ import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
-import { finAccesoConEtiqueta } from "@/lib/fechas";
+import { finAccesoConEtiqueta, formatearFechaSkool } from "@/lib/fechas";
 import type { ConvertidoVsl } from "@/lib/vsl-soporte";
 import type { HistorialAxis } from "@/lib/axis";
 
@@ -159,6 +159,15 @@ function formatearCentavos(cents: number | null, currency: string | null): strin
   return currency ? `${monto} ${currency.toUpperCase()}` : monto;
 }
 
+// Mismo criterio que el resto del panel (finAcceso en Form, el aviso de
+// "actualiza Kajabi a mano"): vitalicio para MÁS+, +1 año de bono para
+// Black Access, la fecha calculada normal para cualquier otro caso.
+function textoFinAcceso(c: Cliente): string {
+  const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+  if (info.vitalicio) return "Vitalicio";
+  return info.fecha ? formatearFechaSkool(info.fecha) : "—";
+}
+
 function textoAcceso(lista: Accesos[keyof Accesos]): string {
   if (lista.length === 0) return "Sin acceso";
   return lista.map((d) => `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}`).join(" + ");
@@ -221,6 +230,8 @@ export function ClientePanel({
   const [estadoKajabi, setEstadoKajabi] = useState<EstadoKajabi>("cargando");
   const [pasoRenovar, setPasoRenovar] = useState<0 | 1 | 2>(0);
   const [renovando, setRenovando] = useState(false);
+  const [pasoActivarOferta, setPasoActivarOferta] = useState<0 | 1 | 2>(0);
+  const [activandoOferta, setActivandoOferta] = useState(false);
   const [pasoEliminar, setPasoEliminar] = useState<0 | 1 | 2>(0);
   const [eliminando, setEliminando] = useState(false);
   const [pasoEnviarWa, setPasoEnviarWa] = useState<0 | 1>(0);
@@ -655,6 +666,44 @@ export function ClientePanel({
     if (data.avisoSkool) avisos.push(`Skool: ${data.avisoSkool}`);
     if (avisos.length) {
       window.alert(`La membresía se renovó en el CRM, pero hubo problemas:\n\n${avisos.join("\n")}`);
+    }
+    setCliente(data.cliente);
+    setForm(formDeCliente(data.cliente));
+    onClienteActualizado(data.cliente);
+    setEstadoKajabi(data.avisoKajabi ? "revocada" : "activa");
+    avisarActualizarFinAccesoEnKajabi(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
+      r.json()
+    );
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  // Mismo flujo que confirmarRenovar, pero para "Activar oferta" — la
+  // persona pagó de nuevo sin que se trate como renovación (sin etiqueta,
+  // boletos calculados por su evento, no por la regla fija de país).
+  async function confirmarActivarOferta() {
+    if (!cliente || !puedeRenovar) return;
+    if (pasoActivarOferta < 2) {
+      setPasoActivarOferta((p) => (p + 1) as 0 | 1 | 2);
+      return;
+    }
+    setActivandoOferta(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/activar-oferta`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setActivandoOferta(false);
+    setPasoActivarOferta(0);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo activar la oferta");
+      return;
+    }
+    const avisos: string[] = [];
+    if (data.avisoKajabi) avisos.push(`Kajabi: ${data.avisoKajabi}`);
+    if (data.avisoSkool) avisos.push(`Skool: ${data.avisoSkool}`);
+    if (avisos.length) {
+      window.alert(`Se le dio acceso en el CRM, pero hubo problemas:\n\n${avisos.join("\n")}`);
     }
     setCliente(data.cliente);
     setForm(formDeCliente(data.cliente));
@@ -1278,6 +1327,7 @@ export function ClientePanel({
                     <dl className="mt-3.5 grid grid-cols-2 gap-3 border-t border-silver/60 pt-3.5 text-sm">
                       <CampoValor label="Membresía Skool" valor={cliente.tipoMembresia} />
                       <CampoValor label="Vence Skool" valor={cliente.vencimientoSkool} />
+                      <CampoValor label="Fecha de fin de acceso" valor={textoFinAcceso(cliente)} />
                     </dl>
                     <button
                       onClick={() => setTab("accesos")}
@@ -1573,14 +1623,23 @@ export function ClientePanel({
                           <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
                           La oferta ya no está activa en Kajabi.
                         </p>
-                        {!puedeRenovar ? null : pasoRenovar === 0 && (
-                          <button
-                            onClick={confirmarRenovar}
-                            className="ease-spring flex items-center gap-1.5 rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
-                            Renovar membresía
-                          </button>
+                        {!puedeRenovar ? null : pasoRenovar === 0 && pasoActivarOferta === 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={confirmarRenovar}
+                              className="ease-spring flex items-center gap-1.5 rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                              Renovar membresía
+                            </button>
+                            <button
+                              onClick={confirmarActivarOferta}
+                              className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                            >
+                              <ShoppingBag className="h-3.5 w-3.5" strokeWidth={1.75} />
+                              Activar oferta
+                            </button>
+                          </div>
                         )}
                         {pasoRenovar === 1 && (
                           <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
@@ -1623,6 +1682,53 @@ export function ClientePanel({
                                 className="ease-spring rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
                               >
                                 {renovando ? "Renovando…" : "Confirmar renovación"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {pasoActivarOferta === 1 && (
+                          <div className="rounded-lg border border-silver bg-surface-2 p-3">
+                            <p className="mb-2.5 text-xs text-foreground">
+                              Esto va a otorgar la oferta en Kajabi, reenviar la invitación de Skool y ajustar
+                              Fin de acceso — sin poner la etiqueta ni la regla fija de boletos de una
+                              renovación: sus boletos se calculan por su evento, y &quot;Acceso a plataforma&quot;
+                              queda en &quot;Si&quot;. Úsalo cuando volvió a pagar el Club, pero no es una
+                              renovación. ¿Confirmas?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setPasoActivarOferta(0)}
+                                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={confirmarActivarOferta}
+                                className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
+                              >
+                                Sí, continuar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {pasoActivarOferta === 2 && (
+                          <div className="rounded-lg border border-silver bg-surface-2 p-3">
+                            <p className="mb-2.5 text-xs font-medium text-foreground">
+                              Última confirmación — esta acción no se puede deshacer fácilmente.
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setPasoActivarOferta(0)}
+                                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={confirmarActivarOferta}
+                                disabled={activandoOferta}
+                                className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                              >
+                                {activandoOferta ? "Activando…" : "Confirmar activación"}
                               </button>
                             </div>
                           </div>
