@@ -11,7 +11,13 @@ import {
 import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
-import { actualizarCorreoContacto, estadoOfertaContacto, KAJABI_OFFER_ID_CLUB_SINERGETICO, obtenerPerfilKajabi } from "./kajabi";
+import {
+  actualizarCorreoContacto,
+  buscarContactoPorCorreo,
+  estadoOfertaContacto,
+  KAJABI_OFFER_ID_CLUB_SINERGETICO,
+  obtenerPerfilKajabi,
+} from "./kajabi";
 import { invitarASkool } from "./skool";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
@@ -1511,6 +1517,15 @@ export async function registrarTagKajabi(
     // un teléfono sin "+" y el link tel: del panel del cliente salía roto.
     const telefono = normalizarTelefono(telefonoCrudo);
 
+    // Se resuelve aquí (no después) porque llegar a esta rama significa que
+    // Kajabi ya confirmó que el contacto existe — sin este id vinculado
+    // desde el alta, este cliente se quedaba para siempre sin
+    // kajabi_contact_id (nadie más lo vuelve a tocar), lo que rompía
+    // después cosas como el PATCH de correo o cualquier lookup por id real
+    // de Kajabi. Best-effort: si Kajabi tarda o falla aquí, el alta sigue
+    // sin el link en vez de tronar.
+    const kajabiContactId = await buscarContactoPorCorreo(id).catch(() => null);
+
     const { data, error } = await supabase
       .from("clientes")
       .insert({
@@ -1528,6 +1543,7 @@ export async function registrarTagKajabi(
         acceso_plataforma: "Si",
         ...(eventoDetectado ? { evento: eventoDetectado } : {}),
         ...(tipoMembresiaDetectado ? { tipo_membresia: tipoMembresiaDetectado } : {}),
+        ...(kajabiContactId ? { kajabi_contact_id: kajabiContactId } : {}),
         // Default al crear — "No" hasta que alguien lo mueva a mano en el
         // desplegable de Seguimiento (Sí / No / No contestó).
         llamada: "No",
