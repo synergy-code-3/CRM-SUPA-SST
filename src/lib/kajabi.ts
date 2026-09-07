@@ -363,26 +363,39 @@ type CustomersResponse = {
   data: { attributes: { name: string; email: string; created_at: string } }[];
 };
 
+// Tope de seguridad: si hay más de esto sin procesar de golpe, algo más
+// grave está pasando (el cron llevaba mucho sin correr) — se procesa lo que
+// se alcanzó a traer y el resto se recoge en la siguiente corrida.
+const TAMANO_MAXIMO_CONSULTA = 1000;
+
 // Trae, del más viejo al más nuevo, los clientes a los que se les otorgó la
-// oferta después de `creadoDespuesDe` (ISO). Pagina hasta encontrar uno más
-// viejo que el cursor o quedarse sin páginas.
+// oferta después de `creadoDespuesDe` (ISO). Antes esto paginaba con
+// page[number] (1, 2, 3...) en peticiones separadas — pero si entre una
+// petición y la siguiente Kajabi otorgaba la oferta a alguien más (pasa
+// seguido: decenas por día), el registro que estaba justo en la frontera
+// entre dos páginas se recorría de lugar y quedaba fuera de ambas — así se
+// perdieron de forma silenciosa al menos 2 clientes reales (confirmado con
+// nellyvalenciahdz@gmail.com y luisalbfg@hotmail.com, 6-7/sep/2026). Kajabi
+// acepta page[size] hasta 1000 sin problema (confirmado a mano), así que en
+// vez de combinar varias peticiones separadas en el tiempo, se pide todo en
+// UNA sola consulta que crece de tamaño hasta cubrir al cursor — una sola
+// foto consistente de Kajabi, sin ventana para que se le cuele una nueva
+// entre petición y petición.
 export async function nuevosConOfertaDesde(
   offerId: string,
   creadoDespuesDe: string
 ): Promise<ClienteKajabiNuevo[]> {
-  const encontrados: ClienteKajabiNuevo[] = [];
-  const tamanoPagina = 50;
-  for (let pagina = 1; ; pagina++) {
+  for (let tamano = 50; ; tamano = Math.min(tamano * 4, TAMANO_MAXIMO_CONSULTA)) {
     const params = new URLSearchParams({
       "filter[site_id]": KAJABI_SITE_ID,
       "filter[has_offer_id]": offerId,
       sort: "-created_at",
-      "page[size]": String(tamanoPagina),
-      "page[number]": String(pagina),
+      "page[size]": String(tamano),
+      "page[number]": "1",
     });
     const data = (await kajabiFetch(`/customers?${params}`)) as CustomersResponse;
-    if (data.data.length === 0) break;
 
+    const encontrados: ClienteKajabiNuevo[] = [];
     let llegoAlCursor = false;
     for (const c of data.data) {
       if (c.attributes.created_at <= creadoDespuesDe) {
@@ -391,9 +404,15 @@ export async function nuevosConOfertaDesde(
       }
       encontrados.push({ email: c.attributes.email, nombre: c.attributes.name, creadoEn: c.attributes.created_at });
     }
-    if (llegoAlCursor || data.data.length < tamanoPagina) break;
+
+    // Ya llegamos al cursor (cubrimos todo lo nuevo), Kajabi devolvió menos
+    // de lo pedido (no había más que traer), o ya se llegó al tope de
+    // seguridad — cualquiera de los tres cierra el ciclo con esta única
+    // consulta.
+    if (llegoAlCursor || data.data.length < tamano || tamano >= TAMANO_MAXIMO_CONSULTA) {
+      return encontrados.reverse();
+    }
   }
-  return encontrados.reverse();
 }
 
 // --- Ofertas más allá del Club Sinergético ("Otras Ofertas" del CRM y
