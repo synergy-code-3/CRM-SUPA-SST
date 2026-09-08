@@ -54,6 +54,12 @@ export async function POST(req: NextRequest) {
   if (!nombre || !correoPago || !correoAcceso || !telefono || !evento || !tipoMembresia) {
     return NextResponse.json({ error: "Todos los campos son obligatorios" }, { status: 400 });
   }
+  // El formulario precarga la lada del país en Teléfono — si nunca se
+  // escribió el número real, queda solo la lada (ej. "+52") y GHL lo
+  // rechaza al aprobar la solicitud. Se corta aquí, no solo en el front.
+  if (telefono.replace(/\D/g, "").length < 8) {
+    return NextResponse.json({ error: "El teléfono está incompleto (falta el número, no solo la lada)" }, { status: 400 });
+  }
   if (archivos.length === 0) {
     return NextResponse.json({ error: "Adjunta al menos un comprobante de pago" }, { status: 400 });
   }

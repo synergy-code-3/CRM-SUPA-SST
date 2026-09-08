@@ -91,11 +91,17 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
   }
 
   const archivosSeleccionados = slots.filter((s) => s.archivo).length;
+  // Al elegir país se precarga la lada en Teléfono (ver onCambiarPais) — si
+  // la vendedora nunca escribe el número real, el campo queda con solo la
+  // lada (ej. "+52"), pasa como "no vacío" y GHL lo rechaza al aprobar. Con
+  // 8 dígitos de mínimo alcanza sobrado incluso con la lada más larga (3
+  // dígitos) de la lista de países.
+  const telefonoCompleto = form.telefono.replace(/\D/g, "").length >= 8;
   const camposCompletos =
     form.nombre.trim() &&
     form.correoPago.trim() &&
     form.correoAcceso.trim() &&
-    form.telefono.trim() &&
+    telefonoCompleto &&
     form.evento.trim() &&
     form.tipoMembresia.trim();
   const puedeEnviar = camposCompletos && archivosSeleccionados > 0 && !enviando;
@@ -196,6 +202,9 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                 onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
                 className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
+              {form.telefono.trim() && !telefonoCompleto && (
+                <span className="mt-1 block text-xs text-danger">Falta el número, no solo la lada</span>
+              )}
             </Campo>
             <Campo label="Tipo de membresía *">
               <ComboboxBuscador
