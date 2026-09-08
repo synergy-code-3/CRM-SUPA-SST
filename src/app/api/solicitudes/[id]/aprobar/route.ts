@@ -33,10 +33,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     let avisoSkool: string | null = null;
     let avisoGhl: string | null = null;
 
+    // Nota del vendedor (campo "Notas" del formulario de la solicitud) — se
+    // agrega a las Notas del cliente tanto si es alta nueva como si ya
+    // existía, con quién la escribió, para no perder ese contexto una vez
+    // aprobada la solicitud.
+    const notaSolicitud = solicitud.notas?.trim()
+      ? `Nota de la solicitud (${solicitud.solicitadoPorNombre}): ${solicitud.notas.trim()}`
+      : null;
+
     if (existente) {
       cliente = await aplicarSolicitudAClienteExistente(
         existente.id,
-        { etiqueta: solicitud.etiqueta, tipoMembresia: solicitud.tipoMembresia },
+        { etiqueta: solicitud.etiqueta, tipoMembresia: solicitud.tipoMembresia, notaSolicitud },
         permiso.usuario.nombre
       );
     } else {
@@ -49,7 +57,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           evento: solicitud.evento,
           tipoMembresia: solicitud.tipoMembresia,
           etiqueta: solicitud.etiqueta,
-          notas: `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
+          notas: [
+            `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
+            notaSolicitud,
+          ]
+            .filter(Boolean)
+            .join("\n"),
           solicitadoPorNombre: solicitud.solicitadoPorNombre,
         },
         permiso.usuario.nombre

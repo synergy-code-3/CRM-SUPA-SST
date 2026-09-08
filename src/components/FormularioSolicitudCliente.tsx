@@ -33,6 +33,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
     evento: "",
     tipoMembresia: "",
     etiqueta: "",
+    notas: "",
   });
   const [eventosPorTipo, setEventosPorTipo] = useState<EventosPorTipo>({ webinar: [], presencial: [], otro: [] });
   const [etiquetas, setEtiquetas] = useState<{ valor: string; etiqueta: string }[]>([]);
@@ -112,6 +113,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
       body.set("evento", form.evento);
       body.set("tipoMembresia", form.tipoMembresia);
       if (form.etiqueta) body.set("etiqueta", form.etiqueta);
+      if (form.notas) body.set("notas", form.notas);
       for (const slot of slots) {
         if (slot.archivo) body.append("comprobantes", slot.archivo);
       }
@@ -123,7 +125,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
         return;
       }
 
-      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "", etiqueta: "" });
+      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "", etiqueta: "", notas: "" });
       setCategoriaEvento(null);
       setSlots([
         { key: 0, archivo: null },
@@ -260,6 +262,16 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                 )}
               </div>
             )}
+          </Campo>
+
+          <Campo label="Notas (opcional)">
+            <textarea
+              value={form.notas}
+              onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
+              placeholder="Cualquier detalle que el admin deba saber al revisar o al ver el perfil del cliente después…"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+            />
           </Campo>
 
           <div>

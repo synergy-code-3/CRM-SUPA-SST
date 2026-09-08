@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
   const evento = String(form.get("evento") ?? "").trim();
   const tipoMembresia = String(form.get("tipoMembresia") ?? "").trim();
   const etiqueta = String(form.get("etiqueta") ?? "").trim();
+  const notas = String(form.get("notas") ?? "").trim();
   const archivos = form.getAll("comprobantes").filter((v): v is File => v instanceof File && v.size > 0);
 
   if (!nombre || !correoPago || !correoAcceso || !telefono || !evento || !tipoMembresia) {
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
       evento,
       tipoMembresia,
       etiqueta: etiqueta || null,
+      notas: notas || null,
       comprobantes: rutas,
       solicitadoPorId: permiso.usuario.id,
       solicitadoPorNombre: permiso.usuario.nombre,

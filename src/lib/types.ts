@@ -199,6 +199,9 @@ export type SolicitudCliente = {
   evento: string;
   tipoMembresia: string;
   etiqueta: string | null;
+  // Nota libre del vendedor al llenar la solicitud — se le muestra al admin
+  // que la revisa y, al aprobarla, se agrega a las Notas del cliente.
+  notas: string | null;
   comprobantes: string[]; // rutas en el bucket privado "comprobantes-pago"
   estado: EstadoSolicitud;
   solicitadoPorId: string;

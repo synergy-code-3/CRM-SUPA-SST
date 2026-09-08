@@ -255,9 +255,43 @@ export function ImportarClientesModal({
   // asumir "OK" solo porque se pidió el envío.
   async function esperarConfirmacionesWa(filas: ResultadoFila[]): Promise<void> {
     const pendientes = filas.filter((r) => r.ok && !r.avisoGhl && r.tieneTelefono && r.clienteId);
-    if (pendientes.length === 0) return;
-    await Promise.all(pendientes.map((r) => esperarUnaConfirmacionWa(r.clienteId as string)));
-    onTerminado();
+    if (pendientes.length > 0) {
+      await Promise.all(pendientes.map((r) => esperarUnaConfirmacionWa(r.clienteId as string)));
+      onTerminado();
+    }
+    // Guarda el snapshot final (ya con las confirmaciones de WhatsApp que
+    // alcanzaron a llegar) para que quede recuperable después desde
+    // Actividad — antes esta tabla solo vivía en el estado del navegador y
+    // se perdía para siempre si se cerraba el modal sin exportarla primero.
+    // Se lee el estado más reciente en vez de usar "filas" (el parámetro es
+    // la foto de antes de esperar WhatsApp, ya desactualizada a estas alturas).
+    setResultados((actual) => {
+      void guardarImportacion(actual ?? filas);
+      return actual;
+    });
+  }
+
+  async function guardarImportacion(filas: ResultadoFila[]): Promise<void> {
+    try {
+      await fetch("/api/importaciones-csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filas: filas.map((r) => ({
+            nombre: r.fila.nombre,
+            correo: r.fila.email,
+            telefono: r.fila.telefono,
+            crm: r.ok ? "Creado" : r.yaExistia ? "Ya existe en el CRM" : `Error: ${r.error ?? ""}`,
+            motivo: textoKajabi(r),
+            skool: textoSkool(r),
+            whatsapp: textoWhatsapp(r),
+          })),
+        }),
+      });
+    } catch {
+      // Best-effort: si falla, el admin todavía tiene la tabla en pantalla
+      // y puede exportarla a mano — no vale la pena interrumpir el flujo.
+    }
   }
 
   // Botón "Reintentar" para las filas que quedaron en "sin_confirmacion" —
@@ -357,13 +391,18 @@ export function ImportarClientesModal({
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-foreground/30 p-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] backdrop-blur-[2px]"
-      onClick={(e) => e.target === e.currentTarget && !procesando && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !procesando && !resultados && onClose()}
     >
       <div className="shell w-full max-w-3xl rounded-[2rem] p-2 diffused-lg animate-fade-in">
         <div className="core rounded-[calc(2rem-0.5rem)] p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">Importar clientes desde CSV</h2>
-            {!procesando && (
+            {/* Una vez que hay resultados, la única forma de cerrar es el
+                botón "Cerrar" de abajo — ni la X ni el fondo cierran, para
+                no perder la tabla de resultados por un clic accidental
+                (ya pasó una vez: se subió un CSV real y se perdió la
+                pantalla de resultados al hacer clic fuera). */}
+            {!procesando && !resultados && (
               <button
                 onClick={onClose}
                 className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"

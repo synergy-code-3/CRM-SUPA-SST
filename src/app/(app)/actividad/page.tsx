@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Calendar, Download, ChevronLeft, ChevronRight, X, ChevronDown, Check } from "lucide-react";
+import { Search, Calendar, Download, ChevronLeft, ChevronRight, X, ChevronDown, Check, FileSpreadsheet } from "lucide-react";
 import { ClientePanel } from "@/components/ClientePanel";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
+import type { ImportacionCsv } from "@/lib/importaciones-csv";
 import { TIPO_EVENTO_LABEL, TIPOS_EVENTO_FILTRABLES, type TipoEvento } from "@/lib/types";
 
 type EventoConCliente = {
@@ -40,6 +41,7 @@ export default function ActividadPage() {
   const [clienteFiltro, setClienteFiltro] = useState<{ id: string; nombre: string } | null>(null);
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [descargando, setDescargando] = useState(false);
+  const [vista, setVista] = useState<"movimientos" | "importaciones">("movimientos");
 
   // Deep link desde el perfil de un cliente ("Ver reporte completo →").
   useEffect(() => {
@@ -139,7 +141,7 @@ export default function ActividadPage() {
             {total.toLocaleString("es-MX")} movimientos registrados — historial completo para reportes.
           </p>
         </div>
-        {puedeExportar && (
+        {vista === "movimientos" && puedeExportar && (
           <button
             onClick={descargarEventos}
             disabled={descargando}
@@ -152,6 +154,33 @@ export default function ActividadPage() {
         )}
       </div>
 
+      <div className="mb-5 flex gap-2">
+        <button
+          onClick={() => setVista("movimientos")}
+          className={`ease-spring rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
+            vista === "movimientos"
+              ? "border border-primary bg-primary-dim text-primary-deep"
+              : "border border-silver bg-surface-2 text-muted hover:text-foreground"
+          }`}
+        >
+          Movimientos
+        </button>
+        <button
+          onClick={() => setVista("importaciones")}
+          className={`ease-spring rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
+            vista === "importaciones"
+              ? "border border-primary bg-primary-dim text-primary-deep"
+              : "border border-silver bg-surface-2 text-muted hover:text-foreground"
+          }`}
+        >
+          Importaciones CSV
+        </button>
+      </div>
+
+      {vista === "importaciones" ? (
+        <ImportacionesCsvTab puedeDescargar={puedeExportar} />
+      ) : (
+      <>
       <div className="relative mb-4">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
         <input
@@ -281,6 +310,8 @@ export default function ActividadPage() {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {seleccionado && (
         <ClientePanel
@@ -372,6 +403,105 @@ function MultiSelectTipo({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Historial de tablas de resultados de "Importar CSV" — cada import se
+// guarda solo (ver ImportarClientesModal.tsx) justo para poder recuperar
+// esta tabla después si alguien cierra el modal sin descargarla.
+function ImportacionesCsvTab({ puedeDescargar }: { puedeDescargar: boolean }) {
+  const [importaciones, setImportaciones] = useState<Omit<ImportacionCsv, "filas">[] | null>(null);
+  const [descargandoId, setDescargandoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/importaciones-csv")
+      .then((r) => r.json())
+      .then((data) => setImportaciones(data.importaciones ?? []))
+      .catch(() => setImportaciones([]));
+  }, []);
+
+  async function descargar(imp: Omit<ImportacionCsv, "filas">) {
+    setDescargandoId(imp.id);
+    try {
+      const res = await fetch(`/api/importaciones-csv/${imp.id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo recuperar la importación");
+        return;
+      }
+      const completa = data.importacion as ImportacionCsv;
+      const fecha = new Date(completa.creadoEn).toISOString().slice(0, 10);
+      descargarCsv(
+        `importacion-${fecha}.csv`,
+        ["Nombre", "Correo", "Teléfono", "CRM", "Motivo (si no se dio la oferta)", "Skool", "WhatsApp (GHL)"],
+        completa.filas.map((f) => [f.nombre, f.correo, f.telefono, f.crm, f.motivo, f.skool, f.whatsapp])
+      );
+    } finally {
+      setDescargandoId(null);
+    }
+  }
+
+  return (
+    <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:h-[calc(100vh-21rem)]">
+      <div className="core flex flex-1 flex-col overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
+        {importaciones === null ? (
+          <p className="p-8 text-center text-sm text-muted">Cargando importaciones…</p>
+        ) : importaciones.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted">Todavía no se ha importado ningún CSV.</p>
+        ) : (
+          <div className="flex-1 overflow-auto">
+            <table className="w-full min-w-[800px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-surface">
+                <tr className="border-b border-silver text-left text-xs font-semibold uppercase tracking-wide text-muted">
+                  <th className="whitespace-nowrap px-5 py-3">Fecha</th>
+                  <th className="whitespace-nowrap px-5 py-3">Autor</th>
+                  <th className="whitespace-nowrap px-5 py-3">Total</th>
+                  <th className="whitespace-nowrap px-5 py-3">Creados</th>
+                  <th className="whitespace-nowrap px-5 py-3">Ya en CRM</th>
+                  <th className="whitespace-nowrap px-5 py-3">Errores</th>
+                  <th className="whitespace-nowrap px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {importaciones.map((imp) => (
+                  <tr key={imp.id} className="border-b border-silver/60 last:border-0">
+                    <td className="truncate px-5 py-2.5 text-xs text-muted">
+                      {new Date(imp.creadoEn).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                    </td>
+                    <td className="truncate px-5 py-2.5 font-medium text-foreground">{imp.autor}</td>
+                    <td className="px-5 py-2.5 text-muted">{imp.total}</td>
+                    <td className="px-5 py-2.5 text-success">{imp.creados}</td>
+                    <td className="px-5 py-2.5 text-muted">{imp.yaExistian}</td>
+                    <td className="px-5 py-2.5 text-danger">{imp.errores}</td>
+                    <td className="px-5 py-2.5">
+                      {puedeDescargar && (
+                        <button
+                          onClick={() => descargar(imp)}
+                          disabled={descargandoId === imp.id}
+                          className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          {descargandoId === imp.id ? "Descargando…" : "Descargar"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ type FormEdicion = {
   evento: string;
   tipoMembresia: string;
   etiqueta: string;
+  notas: string;
 };
 
 function formEdicionDeSolicitud(s: SolicitudCliente): FormEdicion {
@@ -33,6 +34,7 @@ function formEdicionDeSolicitud(s: SolicitudCliente): FormEdicion {
     evento: s.evento,
     tipoMembresia: s.tipoMembresia,
     etiqueta: s.etiqueta ?? "",
+    notas: s.notas ?? "",
   };
 }
 
@@ -188,6 +190,12 @@ export default function SolicitudesPage() {
                         {s.evento} · {s.tipoMembresia}
                         {s.etiqueta ? ` · ${s.etiqueta}` : ""} · solicitado por {s.solicitadoPorNombre}
                       </p>
+                      {s.notas && (
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-foreground">
+                          <span className="font-medium text-muted">Nota: </span>
+                          {s.notas}
+                        </p>
+                      )}
                       {s.notaRevision && <p className="mt-1 text-xs text-muted">{s.notaRevision}</p>}
                     </div>
                     <div className="flex flex-none items-center gap-1.5">
@@ -282,6 +290,16 @@ export default function SolicitudesPage() {
                               onChange={(etiqueta) => setFormEdicion((f) => f && { ...f, etiqueta })}
                               placeholder="Seleccionar etiqueta…"
                               etiquetaVacio="— Ninguna —"
+                            />
+                          </Campo>
+                        </div>
+                        <div className="col-span-2">
+                          <Campo label="Notas">
+                            <textarea
+                              value={formEdicion.notas}
+                              onChange={(e) => setFormEdicion((f) => f && { ...f, notas: e.target.value })}
+                              rows={2}
+                              className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
                             />
                           </Campo>
                         </div>

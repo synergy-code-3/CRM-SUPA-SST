@@ -1276,7 +1276,10 @@ export async function actualizarDatosCliente(
 // acceso al Club, esta solicitud es un extra, no un alta).
 export async function aplicarSolicitudAClienteExistente(
   clienteId: string,
-  cambios: { etiqueta: string | null; tipoMembresia: string | null },
+  // notaSolicitud ya viene formateada con quién la escribió (ver
+  // POST /api/solicitudes/[id]/aprobar) — aquí solo se antepone a las notas
+  // que el cliente ya tenía, nunca las reemplaza.
+  cambios: { etiqueta: string | null; tipoMembresia: string | null; notaSolicitud?: string | null },
   autor: string
 ): Promise<Cliente> {
   const { data: filaAnterior, error: errLectura } = await supabase
@@ -1322,6 +1325,9 @@ export async function aplicarSolicitudAClienteExistente(
   // el evento real sigue mandando, Black Access solo se suma encima).
   const accesoPlataformaNuevo = seAgregaBlackAccess && membresiaYaVencida ? "Si" : anterior.accesoPlataforma;
 
+  const notaSolicitud = cambios.notaSolicitud?.trim();
+  const notasNuevas = notaSolicitud ? [anterior.notas, notaSolicitud].filter(Boolean).join("\n") : anterior.notas;
+
   const { data, error } = await supabase
     .from("clientes")
     .update({
@@ -1332,6 +1338,7 @@ export async function aplicarSolicitudAClienteExistente(
       vencimiento_skool_fecha: nuevoVencimiento ? fechaSkoolADateOnly(nuevoVencimiento) : null,
       fecha_renovacion: fechaRenovacionNueva,
       acceso_plataforma: accesoPlataformaNuevo,
+      notas: notasNuevas,
       actualizado_en: ahora.toISOString(),
     })
     .eq("id", clienteId)
@@ -1347,6 +1354,7 @@ export async function aplicarSolicitudAClienteExistente(
           finAnteriorSinAjuste ? formatearFechaSkool(finAnteriorSinAjuste) : "—"
         }" → "${formatearFechaSkool(finAccesoCalculado(null, fechaRenovacionNueva as string) as Date)}"`
       : null,
+    notaSolicitud ? "Se agregó la nota de la solicitud a Notas" : null,
   ]
     .filter(Boolean)
     .join(" · ");

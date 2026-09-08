@@ -472,3 +472,30 @@ alter table clientes add column if not exists revisado_oferta_en timestamptz;
 -- normales (los que publica el equipo a mano) se quedan en false, visibles
 -- para todos como siempre.
 alter table avisos add column if not exists solo_admin boolean not null default false;
+
+-- Snapshot de cada importación de CSV (ImportarClientesModal) — antes la
+-- tabla de resultados solo vivía en el estado del navegador: si alguien
+-- cerraba la ventana sin descargarla (pasó de verdad, un import real de 120
+-- filas se perdió porque se le dio clic fuera del cuadro), no había forma
+-- de recuperar quién se dio de alta, quién ya existía y quién falló. "filas"
+-- guarda exactamente las mismas columnas que el CSV exportado (Nombre,
+-- Correo, Teléfono, CRM, Motivo, Skool, WhatsApp) para poder reconstruir esa
+-- descarga después desde la sección de Actividad.
+create table if not exists importaciones_csv (
+  id uuid primary key default gen_random_uuid(),
+  autor text not null,
+  filas jsonb not null,
+  total integer not null,
+  creados integer not null,
+  ya_existian integer not null,
+  errores integer not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_importaciones_csv_creado_en on importaciones_csv (creado_en desc);
+alter table importaciones_csv enable row level security;
+
+-- Nota libre que el vendedor deja al llenar la Solicitud (ej. "pagó con
+-- tarjeta de su hermana", "pidió factura") — se le muestra al admin que la
+-- revisa, y al aprobarla queda también en las Notas del perfil del cliente
+-- (ver POST /api/solicitudes/[id]/aprobar).
+alter table solicitudes_cliente add column if not exists notas text;
