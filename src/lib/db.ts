@@ -1459,6 +1459,18 @@ export async function agregarNota(id: string, nota: string, autor: string): Prom
   await registrarEvento(id, "NOTA", nota.trim(), autor);
 }
 
+// Antepone texto al campo "Notas" del perfil (columna clientes.notas, la
+// que se ve en "Notas generales") sin perder lo que ya tenía — para casos
+// que no pasan por actualizarDatosCliente, como aprobar una Solicitud con
+// nota del vendedor sobre un cliente que ya existía.
+export async function agregarNotaAlPerfil(id: string, nota: string): Promise<void> {
+  const { data, error } = await supabase.from("clientes").select("notas").eq("id", id).maybeSingle();
+  if (error) throw error;
+  const notasNuevas = [data?.notas, nota].filter(Boolean).join("\n");
+  const { error: errUpdate } = await supabase.from("clientes").update({ notas: notasNuevas }).eq("id", id);
+  if (errUpdate) throw errUpdate;
+}
+
 export async function vincularKajabiContactId(id: string, kajabiContactId: string): Promise<void> {
   const { error } = await supabase.from("clientes").update({ kajabi_contact_id: kajabiContactId }).eq("id", id);
   if (error) throw error;

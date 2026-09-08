@@ -58,6 +58,14 @@ export default function SolicitudesPage() {
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [todosLosEventos, setTodosLosEventos] = useState<string[]>([]);
   const [todasLasEtiquetas, setTodasLasEtiquetas] = useState<string[]>([]);
+  // Cuando el correo de acceso ya es cliente, el back corta antes de tocar
+  // nada y pide elegir un modo (ver POST /api/solicitudes/[id]/aprobar) —
+  // este estado abre el cuadro de opciones con lo que devolvió esa primera
+  // llamada.
+  const [modoSolicitud, setModoSolicitud] = useState<{
+    id: string;
+    clienteExistente: { id: string; nombre: string; accesoPlataforma: string | null; pausadoEn: string | null };
+  } | null>(null);
 
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
@@ -114,16 +122,32 @@ export default function SolicitudesPage() {
   async function aprobar(id: string) {
     if (!confirm("¿Aprobar esta solicitud? Se creará el cliente y se dispararán Kajabi, Skool y el WhatsApp de bienvenida."))
       return;
+    await enviarAprobacion(id);
+  }
+
+  // modo va vacío en el primer intento — si el correo ya es cliente, el back
+  // corta con 409/necesitaModo sin tocar nada, y aquí se abre el cuadro de
+  // opciones (modoSolicitud) para reintentar con el modo que elija el admin.
+  async function enviarAprobacion(id: string, modo?: string) {
     setProcesando(id);
     try {
-      const res = await fetch(`/api/solicitudes/${id}/aprobar`, { method: "POST" });
+      const res = await fetch(`/api/solicitudes/${id}/aprobar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(modo ? { modo } : {}),
+      });
       const data = await res.json();
+      if (res.status === 409 && data.necesitaModo) {
+        setModoSolicitud({ id, clienteExistente: data.clienteExistente });
+        return;
+      }
       if (!res.ok) {
         alert(data.error ?? "No se pudo aprobar la solicitud");
         return;
       }
       const avisos = [data.avisoKajabi, data.avisoSkool, data.avisoGhl, data.avisoVsl].filter(Boolean);
-      if (avisos.length) alert(`Cliente creado, pero hubo problemas:\n\n${avisos.join("\n")}`);
+      if (avisos.length) alert(`Se aplicó, pero hubo problemas:\n\n${avisos.join("\n")}`);
+      setModoSolicitud(null);
       cargar();
     } finally {
       setProcesando(null);
@@ -391,6 +415,64 @@ export default function SolicitudesPage() {
           </table>
         </div>
       </div>
+
+      {modoSolicitud && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-silver bg-surface p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-foreground">Este correo ya es cliente del CRM</h3>
+            <p className="mt-1 text-sm text-muted">
+              {modoSolicitud.clienteExistente.nombre} —{" "}
+              {modoSolicitud.clienteExistente.pausadoEn ||
+              !["si", "renovación"].includes(
+                (modoSolicitud.clienteExistente.accesoPlataforma ?? "").trim().toLowerCase()
+              )
+                ? "membresía inactiva"
+                : "membresía activa"}
+              . ¿Qué quieres hacer con la solicitud?
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={() => enviarAprobacion(modoSolicitud.id, "renovacion")}
+                disabled={procesando === modoSolicitud.id}
+                className="ease-spring w-full rounded-lg bg-success/15 px-3 py-2 text-left text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
+              >
+                Renovación — igual que el botón &quot;Renovar membresía&quot;
+              </button>
+              {(solicitudes?.find((s) => s.id === modoSolicitud.id)?.etiqueta ?? "").trim().toLowerCase() ===
+                "black access" && (
+                <button
+                  onClick={() => enviarAprobacion(modoSolicitud.id, "black_access")}
+                  disabled={procesando === modoSolicitud.id}
+                  className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                >
+                  Agregar Black Access — suma un acceso Black + 3 meses de Skool a lo que ya tenía
+                </button>
+              )}
+              <button
+                onClick={() => enviarAprobacion(modoSolicitud.id, "activar")}
+                disabled={procesando === modoSolicitud.id}
+                className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+              >
+                Solo activar su membresía — igual que el botón &quot;Activar oferta&quot;
+              </button>
+              <button
+                onClick={() => enviarAprobacion(modoSolicitud.id, "sin_cambios")}
+                disabled={procesando === modoSolicitud.id}
+                className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+              >
+                Aprobar sin tocar el CRM — lo resuelvo yo a mano
+              </button>
+              <button
+                onClick={() => setModoSolicitud(null)}
+                disabled={procesando === modoSolicitud.id}
+                className="ease-spring w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

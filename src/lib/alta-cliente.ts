@@ -149,3 +149,37 @@ export async function altaCompletaCliente(input: AltaClienteInput, autor: string
   // importación, etc.), que ya sabe mostrar "OK" cuando viene en null.
   return { cliente, avisoKajabi: null, avisoSkool, avisoGhl, avisoOfertaAdicional };
 }
+
+// Segunda mitad de "Renovar membresía"/"Activar oferta" (y, desde ahí, de
+// aprobar una Solicitud eligiendo uno de esos dos modos): una vez que el
+// CRM ya cambió lo que le tocaba (fecha de renovación, acceso a
+// plataforma), esta secuencia siempre es la misma — otorgar la oferta en
+// Kajabi de verdad y reenviar la invitación de Skool. Resiliente: si Kajabi
+// o Skool fallan, el cliente se queda con el cambio del CRM de todos modos
+// (mismo criterio que altaCompletaCliente, sin ser bloqueante aquí porque
+// el acceso ya estaba dado antes — esto solo lo refresca).
+export async function otorgarAccesoKajabiYSkool(
+  cliente: Cliente
+): Promise<{ cliente: Cliente; avisoKajabi: string | null; avisoSkool: string | null }> {
+  let avisoKajabi: string | null = null;
+  try {
+    const kajabiContactId = await altaEnKajabi(cliente.nombre, cliente.email);
+    await vincularKajabiContactId(cliente.id, kajabiContactId);
+    await registrarTagKajabi(cliente.email, cliente.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
+  } catch (err) {
+    avisoKajabi = err instanceof Error ? err.message : "No se pudo otorgar el acceso en Kajabi";
+  }
+  // Fuera del try de Kajabi a propósito: el cambio de acceso/fecha ya se
+  // hizo antes de llamar esta función, sin importar si Kajabi respondió.
+  let clienteFinal = await recalcularAccesos(cliente.id);
+
+  let avisoSkool: string | null = null;
+  try {
+    await invitarASkool(clienteFinal.email);
+    clienteFinal = await marcarInvitacionSkoolEnviada(clienteFinal.id, new Date().toISOString());
+  } catch (err) {
+    avisoSkool = err instanceof Error ? err.message : "No se pudo enviar la invitación a Skool";
+  }
+
+  return { cliente: clienteFinal, avisoKajabi, avisoSkool };
+}

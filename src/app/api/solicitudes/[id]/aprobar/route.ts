@@ -1,11 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { altaCompletaCliente } from "@/lib/alta-cliente";
-import { aplicarSolicitudAClienteExistente, normalizarEmail, obtenerCliente } from "@/lib/db";
+import { altaCompletaCliente, otorgarAccesoKajabiYSkool } from "@/lib/alta-cliente";
+import {
+  activarOfertaComoCompra,
+  agregarNota,
+  agregarNotaAlPerfil,
+  aplicarSolicitudAClienteExistente,
+  normalizarEmail,
+  obtenerCliente,
+  renovarMembresia,
+} from "@/lib/db";
 import { marcarSolicitudAprobada, obtenerSolicitud } from "@/lib/solicitudes";
 import { marcarAccesoDadoVsl } from "@/lib/vsl-soporte";
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// Cuando el correo de acceso YA es cliente, no hay una única forma correcta
+// de aprobar la solicitud — depende de qué fue realmente la compra:
+//  - "renovacion": funciona exactamente como el botón "Renovar membresía"
+//    del perfil (regla fija de boletos por país, otorga la oferta en Kajabi
+//    de verdad).
+//  - "black_access": el pase Black Access es un extra que se le suma a los
+//    accesos que ya tenía (no toca Kajabi — ya tiene acceso al Club, esto
+//    es aparte), + 3 meses de Skool. No se combina con "renovacion": son
+//    dos etiquetas distintas, mutuamente excluyentes.
+//  - "activar": como el botón "Activar oferta" — se le da acceso como una
+//    compra más (boletos por su evento, no la regla fija de país), también
+//    otorgando la oferta real en Kajabi.
+//  - "sin_cambios": el admin va a resolverlo a mano por fuera de este
+//    flujo — la solicitud se marca aprobada nada más, sin tocar el cliente.
+type ModoAprobarExistente = "renovacion" | "black_access" | "activar" | "sin_cambios";
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("revisarSolicitudes");
   if (!permiso.ok) return permiso.respuesta;
 
@@ -16,37 +40,73 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Esta solicitud ya fue revisada" }, { status: 400 });
   }
 
+  const body = await req.json().catch(() => ({}));
+  const modo = body?.modo as ModoAprobarExistente | undefined;
+
   try {
     // correoAcceso es el identificador del cliente en el CRM/Kajabi/Skool;
     // correoPago queda solo como referencia en las notas, para conciliar el
     // pago si hace falta.
-    //
-    // Si el correo YA es cliente (típico: alguien ya activo que compra
-    // Black Access o MÁS+, no un alta nueva), altaCompletaCliente()
-    // rechazaría la solicitud de plano — en vez de eso, se le suma la
-    // etiqueta y se le extiende Skool los meses de su membresía (ver
-    // aplicarSolicitudAClienteExistente en db.ts), sin volver a tocar
-    // Kajabi/Skool/GHL: ya tiene acceso al Club, esto es un extra.
     const existente = await obtenerCliente(normalizarEmail(solicitud.correoAcceso));
+
+    // Si ya es cliente y el front todavía no mandó el modo, se corta aquí
+    // sin tocar nada — el front le pregunta al admin qué hacer (ver
+    // solicitudes/page.tsx) y reintenta con el modo elegido.
+    if (existente && !modo) {
+      return NextResponse.json(
+        {
+          necesitaModo: true,
+          clienteExistente: {
+            id: existente.id,
+            nombre: existente.nombre,
+            accesoPlataforma: existente.accesoPlataforma,
+            pausadoEn: existente.pausadoEn,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     let cliente;
     let avisoKajabi: string | null = null;
     let avisoSkool: string | null = null;
     let avisoGhl: string | null = null;
 
     // Nota del vendedor (campo "Notas" del formulario de la solicitud) — se
-    // agrega a las Notas del cliente tanto si es alta nueva como si ya
-    // existía, con quién la escribió, para no perder ese contexto una vez
+    // agrega a las Notas del cliente en cualquier caso que sí toque el
+    // perfil, con quién la escribió, para no perder ese contexto una vez
     // aprobada la solicitud.
     const notaSolicitud = solicitud.notas?.trim()
       ? `Nota de la solicitud (${solicitud.solicitadoPorNombre}): ${solicitud.notas.trim()}`
       : null;
 
     if (existente) {
-      cliente = await aplicarSolicitudAClienteExistente(
-        existente.id,
-        { etiqueta: solicitud.etiqueta, tipoMembresia: solicitud.tipoMembresia, notaSolicitud },
-        permiso.usuario.nombre
-      );
+      if (modo === "sin_cambios") {
+        cliente = existente;
+      } else if (modo === "black_access") {
+        cliente = await aplicarSolicitudAClienteExistente(
+          existente.id,
+          { etiqueta: "BLACK ACCESS", tipoMembresia: "3 Meses", notaSolicitud },
+          permiso.usuario.nombre
+        );
+      } else if (modo === "renovacion" || modo === "activar") {
+        const clienteActualizado =
+          modo === "renovacion"
+            ? await renovarMembresia(existente.id, permiso.usuario.nombre)
+            : await activarOfertaComoCompra(existente.id, permiso.usuario.nombre);
+        const resultado = await otorgarAccesoKajabiYSkool(clienteActualizado);
+        cliente = resultado.cliente;
+        avisoKajabi = resultado.avisoKajabi;
+        avisoSkool = resultado.avisoSkool;
+        if (notaSolicitud) await agregarNotaAlPerfil(cliente.id, notaSolicitud);
+        await agregarNota(
+          cliente.id,
+          `Solicitud aprobada por ${permiso.usuario.nombre} (enviada por ${solicitud.solicitadoPorNombre})`,
+          permiso.usuario.nombre
+        );
+      } else {
+        return NextResponse.json({ error: "Modo inválido" }, { status: 400 });
+      }
     } else {
       const resultado = await altaCompletaCliente(
         {
