@@ -4,8 +4,21 @@
 // invitación directo, sin pasar por la cola de aprobación. Verificado a
 // mano contra el endpoint real (GET da 405; POST da 200).
 export async function invitarASkool(email: string): Promise<void> {
-  const webhookUrl = process.env.SKOOL_WEBHOOK_URL;
-  if (!webhookUrl) throw new Error("Falta SKOOL_WEBHOOK_URL en las variables de entorno");
+  await invitarASkoolConWebhook(email, process.env.SKOOL_WEBHOOK_URL, "SKOOL_WEBHOOK_URL");
+}
+
+// Comunidad de Skool aparte para Certificaciones (Legendar-IA) — mismo
+// mecanismo, webhook distinto.
+export async function invitarASkoolCertificaciones(email: string): Promise<void> {
+  await invitarASkoolConWebhook(
+    email,
+    process.env.SKOOL_WEBHOOK_URL_CERTIFICACIONES,
+    "SKOOL_WEBHOOK_URL_CERTIFICACIONES"
+  );
+}
+
+async function invitarASkoolConWebhook(email: string, webhookUrl: string | undefined, nombreVar: string): Promise<void> {
+  if (!webhookUrl) throw new Error(`Falta ${nombreVar} en las variables de entorno`);
 
   const url = new URL(webhookUrl);
   url.searchParams.set("email", email);

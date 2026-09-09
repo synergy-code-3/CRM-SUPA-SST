@@ -499,3 +499,74 @@ alter table importaciones_csv enable row level security;
 -- revisa, y al aprobarla queda también en las Notas del perfil del cliente
 -- (ver POST /api/solicitudes/[id]/aprobar).
 alter table solicitudes_cliente add column if not exists notas text;
+
+-- "Certificaciones" (Legendar-IA): roster independiente de clientes (Club
+-- Sinergético y Otras Ofertas), recreado dentro de este CRM a partir del
+-- CRM aparte que llevaba estos socios. Solo la base de socios confirmados
+-- — sin el pipeline de seguimiento/leads de ese otro CRM (ver
+-- src/lib/certificaciones.ts). Un registro por persona (correo normalizado
+-- como id), mismo criterio que clientes.id.
+create table if not exists certificaciones_clientes (
+  id text primary key, -- correo normalizado (lowercase, trim)
+  nombre text not null,
+  email text,
+  telefono text,
+  telefono_busqueda text, -- últimos 10 dígitos, para encontrar por teléfono si el correo cambió
+  region text, -- MX | US | LATAM | PRES_USA | PRES_MX | BLACK
+  estado text not null default 'NUEVO', -- NUEVO | INVITACION_ENVIADA | ACTIVO | VENCIDO
+  notas text,
+  fecha_llegada timestamptz not null default now(),
+  fecha_invitacion timestamptz,
+  fecha_aceptacion timestamptz,
+  fecha_vencimiento timestamptz,
+  mensaje_bienvenida text not null default 'PENDIENTE', -- PENDIENTE | ENVIADA | INVALIDO
+  pausada boolean not null default false,
+  fecha_pausa timestamptz,
+  tags text[] not null default '{}',
+  etiquetas text[] not null default '{}', -- certificaciones asignadas (catálogo "certificacion")
+  vendedor text, -- informativo, viene de la hoja de ventas
+  monto text,
+  total_abonado numeric not null default 0,
+  fecha_primer_abono timestamptz,
+  creado_por text not null,
+  creado_por_rol text not null,
+  eliminado boolean not null default false,
+  fecha_eliminacion timestamptz,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_certificaciones_clientes_nombre_trgm on certificaciones_clientes using gin (nombre gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_email_trgm on certificaciones_clientes using gin (email gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_telefono_busqueda on certificaciones_clientes (telefono_busqueda);
+alter table certificaciones_clientes enable row level security;
+
+-- Timeline de un cliente de Certificaciones — mismo patrón que eventos_timeline.
+create table if not exists certificaciones_eventos (
+  id uuid primary key default gen_random_uuid(),
+  cliente_id text not null references certificaciones_clientes (id) on delete cascade,
+  tipo text not null,
+  nota text,
+  autor text not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_certificaciones_eventos_cliente_id on certificaciones_eventos (cliente_id, creado_en);
+alter table certificaciones_eventos enable row level security;
+
+-- Abonos parciales sobre el monto de un cliente de Certificaciones.
+create table if not exists certificaciones_abonos (
+  id uuid primary key default gen_random_uuid(),
+  cliente_id text not null references certificaciones_clientes (id) on delete cascade,
+  monto numeric not null,
+  moneda text,
+  nota text,
+  autor text not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_certificaciones_abonos_cliente_id on certificaciones_abonos (cliente_id, creado_en);
+alter table certificaciones_abonos enable row level security;
+
+-- Biblioteca gana 2 catálogos para Certificaciones (certificaciones
+-- asignables y su propio catálogo de tags, aparte del de Club) — el check
+-- de tipo, no solo el enum de TypeScript, tiene que permitirlos.
+alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
+alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
+  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones'));

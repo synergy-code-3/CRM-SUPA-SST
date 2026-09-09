@@ -1,0 +1,452 @@
+import { supabase } from "./supabase";
+import { normalizarEmail, normalizarTelefono } from "./db";
+import {
+  type AbonoCertificacion,
+  type ClienteCertificacion,
+  type EstadoCertificacion,
+  type EventoCertificacion,
+  type MensajeBienvenidaCertificacion,
+  type RegionCertificacion,
+} from "./certificaciones-tipos";
+
+// "Certificaciones" (Legendar-IA): roster independiente de clientes (Club
+// Sinergético y Otras Ofertas) — ver supabase/schema.sql
+// (certificaciones_clientes/eventos/abonos) y el plan de recreación de esta
+// sección. Solo la base de socios ya confirmados: sin el pipeline de
+// seguimiento/leads del CRM aparte del que se portó esto (sin estados
+// SEGUIMIENTO/PENDIENTE_AUTORIZACION, sin alarmas ni SLA de vendedor).
+// Tipos/constantes puros (RegionCertificacion, ClienteCertificacion, etc.)
+// viven en certificaciones-tipos.ts, NO aquí — este archivo arrastra
+// db.ts/boletos.ts (node:fs), y un componente cliente que solo necesita un
+// tipo o una constante no debe cargar eso. Re-exportados abajo por
+// conveniencia del lado del servidor.
+export type {
+  AbonoCertificacion,
+  ClienteCertificacion,
+  EstadoCertificacion,
+  EventoCertificacion,
+  MensajeBienvenidaCertificacion,
+  RegionCertificacion,
+};
+export { REGIONES_CERTIFICACION, REGION_CERTIFICACION_LABEL } from "./certificaciones-tipos";
+
+const MEMBRESIA_DIAS = 365;
+
+type ClienteCertificacionRow = {
+  id: string;
+  nombre: string;
+  email: string | null;
+  telefono: string | null;
+  telefono_busqueda: string | null;
+  region: string | null;
+  estado: string;
+  notas: string | null;
+  fecha_llegada: string;
+  fecha_invitacion: string | null;
+  fecha_aceptacion: string | null;
+  fecha_vencimiento: string | null;
+  mensaje_bienvenida: string;
+  pausada: boolean;
+  fecha_pausa: string | null;
+  tags: string[] | null;
+  etiquetas: string[] | null;
+  vendedor: string | null;
+  monto: string | null;
+  total_abonado: number;
+  fecha_primer_abono: string | null;
+  creado_por: string;
+  creado_por_rol: string;
+  eliminado: boolean;
+  fecha_eliminacion: string | null;
+  creado_en: string;
+};
+
+function filaACliente(r: ClienteCertificacionRow): ClienteCertificacion {
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    email: r.email,
+    telefono: r.telefono,
+    region: (r.region as RegionCertificacion) || null,
+    estado: r.estado as EstadoCertificacion,
+    notas: r.notas,
+    fechaLlegada: r.fecha_llegada,
+    fechaInvitacion: r.fecha_invitacion,
+    fechaAceptacion: r.fecha_aceptacion,
+    fechaVencimiento: r.fecha_vencimiento,
+    mensajeBienvenida: r.mensaje_bienvenida as MensajeBienvenidaCertificacion,
+    pausada: r.pausada,
+    fechaPausa: r.fecha_pausa,
+    tags: r.tags ?? [],
+    etiquetas: r.etiquetas ?? [],
+    vendedor: r.vendedor,
+    monto: r.monto,
+    totalAbonado: r.total_abonado ?? 0,
+    fechaPrimerAbono: r.fecha_primer_abono,
+    creadoPor: r.creado_por,
+    creadoPorRol: r.creado_por_rol,
+    eliminado: r.eliminado,
+    fechaEliminacion: r.fecha_eliminacion,
+    creadoEn: r.creado_en,
+  };
+}
+
+type EventoCertificacionRow = { id: string; tipo: string; nota: string | null; autor: string; creado_en: string };
+function filaAEvento(r: EventoCertificacionRow): EventoCertificacion {
+  return { id: r.id, tipo: r.tipo, nota: r.nota, autor: r.autor, creadoEn: r.creado_en };
+}
+
+type AbonoCertificacionRow = {
+  id: string;
+  monto: number;
+  moneda: string | null;
+  nota: string | null;
+  autor: string;
+  creado_en: string;
+};
+function filaAAbono(r: AbonoCertificacionRow): AbonoCertificacion {
+  return { id: r.id, monto: r.monto, moneda: r.moneda, nota: r.nota, autor: r.autor, creadoEn: r.creado_en };
+}
+
+// Últimos 10 dígitos de un teléfono, para reconocer al mismo cliente si el
+// correo se corrigió y ya no hace match — mismo criterio que Legendaria.
+export function ultimos10Digitos(telefono: string | null | undefined): string | null {
+  if (!telefono) return null;
+  const digitos = telefono.replace(/[^0-9]/g, "");
+  return digitos.length < 10 ? null : digitos.slice(-10);
+}
+
+function fechaVencimientoDesde(desde: Date): Date {
+  const v = new Date(desde);
+  v.setDate(v.getDate() + MEMBRESIA_DIAS);
+  return v;
+}
+
+async function registrarEventoCertificacion(
+  clienteId: string,
+  tipo: string,
+  autor: string,
+  nota?: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_eventos")
+    .insert({ cliente_id: clienteId, tipo, autor, nota: nota || null });
+  if (error) throw error;
+}
+
+export async function listarClientesCertificacion(): Promise<ClienteCertificacion[]> {
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .select("*")
+    .eq("eliminado", false)
+    .order("fecha_llegada", { ascending: false });
+  if (error) throw error;
+  return (data as ClienteCertificacionRow[]).map(filaACliente);
+}
+
+export async function listarPapeleraCertificacion(): Promise<ClienteCertificacion[]> {
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .select("*")
+    .eq("eliminado", true)
+    .order("fecha_eliminacion", { ascending: false });
+  if (error) throw error;
+  return (data as ClienteCertificacionRow[]).map(filaACliente);
+}
+
+export async function obtenerClienteCertificacion(id: string): Promise<ClienteCertificacion | null> {
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .select("*")
+    .eq("id", normalizarEmail(id))
+    .maybeSingle();
+  if (error) throw error;
+  return data ? filaACliente(data as ClienteCertificacionRow) : null;
+}
+
+export async function buscarClienteCertificacionPorCorreo(correo: string): Promise<ClienteCertificacion | null> {
+  return obtenerClienteCertificacion(correo);
+}
+
+export async function eventosCertificacion(clienteId: string): Promise<EventoCertificacion[]> {
+  const { data, error } = await supabase
+    .from("certificaciones_eventos")
+    .select("*")
+    .eq("cliente_id", clienteId)
+    .order("creado_en", { ascending: true });
+  if (error) throw error;
+  return (data as EventoCertificacionRow[]).map(filaAEvento);
+}
+
+export async function abonosCertificacion(clienteId: string): Promise<AbonoCertificacion[]> {
+  const { data, error } = await supabase
+    .from("certificaciones_abonos")
+    .select("*")
+    .eq("cliente_id", clienteId)
+    .order("creado_en", { ascending: true });
+  if (error) throw error;
+  return (data as AbonoCertificacionRow[]).map(filaAAbono);
+}
+
+export type CrearClienteCertificacionInput = {
+  nombre: string;
+  email?: string | null;
+  telefono?: string | null;
+  region?: RegionCertificacion | null;
+  notas?: string | null;
+  monto?: string | null;
+  etiquetas?: string[];
+  tags?: string[];
+  vendedor?: string | null;
+};
+
+export async function crearClienteCertificacion(
+  input: CrearClienteCertificacionInput,
+  autor: string,
+  autorRol: string
+): Promise<ClienteCertificacion> {
+  if (!input.email?.trim()) throw new Error("Falta el correo");
+  const id = normalizarEmail(input.email);
+  const fechaLlegada = new Date();
+
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .insert({
+      id,
+      nombre: input.nombre.trim(),
+      email: id,
+      telefono: normalizarTelefono(input.telefono ?? null),
+      telefono_busqueda: ultimos10Digitos(input.telefono),
+      region: input.region ?? null,
+      estado: "NUEVO",
+      notas: input.notas?.trim() || null,
+      fecha_llegada: fechaLlegada.toISOString(),
+      fecha_vencimiento: fechaVencimientoDesde(fechaLlegada).toISOString(),
+      etiquetas: input.etiquetas?.length ? Array.from(new Set(input.etiquetas)) : [],
+      tags: input.tags?.length ? Array.from(new Set(input.tags)) : [],
+      vendedor: input.vendedor?.trim() || null,
+      monto: input.monto?.trim() || null,
+      creado_por: autor,
+      creado_por_rol: autorRol,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const cliente = filaACliente(data as ClienteCertificacionRow);
+  await registrarEventoCertificacion(id, "LLEGADA", autor, "Cliente registrado en Certificaciones");
+  return cliente;
+}
+
+export type CambiosDatosCertificacion = {
+  nombre: string;
+  email?: string | null;
+  telefono?: string | null;
+  region?: RegionCertificacion | null;
+  notas?: string | null;
+  monto?: string | null;
+};
+
+export async function actualizarDatosCertificacion(
+  id: string,
+  cambios: CambiosDatosCertificacion,
+  autor: string
+): Promise<ClienteCertificacion> {
+  const anterior = await obtenerClienteCertificacion(id);
+  if (!anterior) throw new Error("Cliente no encontrado");
+
+  const telefono = normalizarTelefono(cambios.telefono ?? null);
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .update({
+      nombre: cambios.nombre.trim(),
+      email: cambios.email?.trim() || null,
+      telefono,
+      telefono_busqueda: ultimos10Digitos(cambios.telefono),
+      region: cambios.region ?? null,
+      notas: cambios.notas?.trim() || null,
+      monto: cambios.monto?.trim() || null,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const CAMPOS: { label: string; anterior: string; nuevo: string }[] = [
+    { label: "Nombre", anterior: anterior.nombre, nuevo: cambios.nombre },
+    { label: "Correo", anterior: anterior.email ?? "—", nuevo: cambios.email || "—" },
+    { label: "Teléfono", anterior: anterior.telefono ?? "—", nuevo: telefono ?? "—" },
+    { label: "Región", anterior: anterior.region ?? "—", nuevo: cambios.region ?? "—" },
+    { label: "Notas", anterior: anterior.notas ?? "—", nuevo: cambios.notas || "—" },
+    { label: "Monto", anterior: anterior.monto ?? "—", nuevo: cambios.monto || "—" },
+  ];
+  const nota = CAMPOS.filter((c) => c.anterior !== c.nuevo)
+    .map((c) => `${c.label}: "${c.anterior}" → "${c.nuevo}"`)
+    .join(" · ");
+  if (nota) await registrarEventoCertificacion(id, "EDICION", autor, nota);
+
+  return filaACliente(data as ClienteCertificacionRow);
+}
+
+export async function agregarNotaCertificacion(id: string, nota: string, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  await registrarEventoCertificacion(id, "NOTA", autor, nota.trim());
+}
+
+export async function agregarTagsCertificacion(id: string, tags: string[], autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const unicos = Array.from(new Set([...cliente.tags, ...tags.map((t) => t.trim()).filter(Boolean)]));
+  if (unicos.length === cliente.tags.length) return;
+  const { error } = await supabase.from("certificaciones_clientes").update({ tags: unicos }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "TAGS", autor, `Se agregaron tags: ${tags.join(", ")}`);
+}
+
+export async function quitarTagCertificacion(id: string, tag: string, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const restantes = cliente.tags.filter((t) => t !== tag);
+  const { error } = await supabase.from("certificaciones_clientes").update({ tags: restantes }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "TAGS", autor, `Se quitó el tag: ${tag}`);
+}
+
+export async function agregarEtiquetasCertificacion(id: string, etiquetas: string[], autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const unicas = Array.from(new Set([...cliente.etiquetas, ...etiquetas.map((e) => e.trim()).filter(Boolean)]));
+  if (unicas.length === cliente.etiquetas.length) return;
+  const { error } = await supabase.from("certificaciones_clientes").update({ etiquetas: unicas }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "ETIQUETAS", autor, `Se agregó a: ${etiquetas.join(", ")}`);
+}
+
+export async function quitarEtiquetaCertificacion(id: string, etiqueta: string, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const restantes = cliente.etiquetas.filter((e) => e !== etiqueta);
+  const { error } = await supabase.from("certificaciones_clientes").update({ etiquetas: restantes }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "ETIQUETAS", autor, `Se quitó: ${etiqueta}`);
+}
+
+export async function registrarAbonoCertificacion(
+  clienteId: string,
+  autor: string,
+  monto: number,
+  moneda: string | null,
+  nota: string | null
+): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(clienteId);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const esPrimerAbono = cliente.totalAbonado === 0;
+  const ahora = new Date().toISOString();
+
+  const { error: errAbono } = await supabase
+    .from("certificaciones_abonos")
+    .insert({ cliente_id: clienteId, monto, moneda, nota, autor });
+  if (errAbono) throw errAbono;
+
+  const { error: errUpdate } = await supabase
+    .from("certificaciones_clientes")
+    .update({
+      total_abonado: cliente.totalAbonado + monto,
+      ...(esPrimerAbono ? { fecha_primer_abono: ahora } : {}),
+    })
+    .eq("id", clienteId);
+  if (errUpdate) throw errUpdate;
+
+  await registrarEventoCertificacion(
+    clienteId,
+    "ABONO",
+    autor,
+    `Abono de ${monto}${moneda ? ` ${moneda}` : ""}${nota ? ` — ${nota}` : ""}`
+  );
+}
+
+export async function enviarInvitacionCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ estado: "INVITACION_ENVIADA", fecha_invitacion: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "INVITACION_ENVIADA", autor, "Invitación enviada al cliente");
+}
+
+export async function marcarInvitacionAceptadaCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ estado: "ACTIVO", fecha_aceptacion: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "INVITACION_ACEPTADA", autor, "El cliente aceptó la invitación");
+}
+
+export async function pausarMembresiaCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ pausada: true, fecha_pausa: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "PAUSA", autor, "Se pausó el temporizador de la membresía");
+}
+
+export async function reanudarMembresiaCertificacion(id: string, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  if (!cliente.fechaVencimiento || !cliente.fechaPausa) throw new Error("Este cliente no está pausado");
+
+  const msPausada = Date.now() - new Date(cliente.fechaPausa).getTime();
+  const nuevoVencimiento = new Date(new Date(cliente.fechaVencimiento).getTime() + msPausada);
+
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ pausada: false, fecha_pausa: null, fecha_vencimiento: nuevoVencimiento.toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "REANUDACION", autor, "Se reanudó el temporizador de la membresía");
+}
+
+export async function renovarMembresiaCertificacion(id: string, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const base = cliente.fechaVencimiento ? new Date(cliente.fechaVencimiento) : new Date();
+  const nuevoVencimiento = fechaVencimientoDesde(base);
+
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ estado: "ACTIVO", fecha_vencimiento: nuevoVencimiento.toISOString(), pausada: false, fecha_pausa: null })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(
+    id,
+    "RENOVACION",
+    autor,
+    `Membresía renovada por 1 año más — nuevo vencimiento: ${nuevoVencimiento.toLocaleDateString("es-MX")}`
+  );
+}
+
+export async function eliminarClienteCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ eliminado: true, fecha_eliminacion: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "PAPELERA", autor, "Cliente enviado a la papelera");
+}
+
+export async function restaurarClienteCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ eliminado: false, fecha_eliminacion: null })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "RESTAURACION_PAPELERA", autor, "Cliente restaurado desde la papelera");
+}
+
+export async function eliminarClienteCertificacionPermanente(id: string): Promise<void> {
+  const { error } = await supabase.from("certificaciones_clientes").delete().eq("id", id);
+  if (error) throw error;
+}

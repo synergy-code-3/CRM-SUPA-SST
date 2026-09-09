@@ -2,7 +2,7 @@ import { supabase } from "./supabase";
 
 // Catálogos administrables desde "Biblioteca": las opciones de los
 // desplegables con buscador (Evento, Etiqueta, Tag) en toda la app.
-export type TipoCatalogo = "evento" | "etiqueta" | "tag";
+export type TipoCatalogo = "evento" | "etiqueta" | "tag" | "tag_certificaciones" | "certificacion";
 
 export async function listarCatalogo(tipo: TipoCatalogo): Promise<string[]> {
   const { data, error } = await supabase

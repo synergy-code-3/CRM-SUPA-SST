@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X, PartyPopper, Tag, Tags } from "lucide-react";
+import { Plus, X, PartyPopper, Tag, Tags, Award, Hash } from "lucide-react";
 import type { TipoCatalogo } from "@/lib/catalogo";
 
 const SECCIONES: { tipo: TipoCatalogo; titulo: string; descripcion: string; icon: typeof Tag }[] = [
@@ -22,6 +22,18 @@ const SECCIONES: { tipo: TipoCatalogo; titulo: string; descripcion: string; icon
     titulo: "Tags",
     descripcion: "Opciones de Tags, asignables desde el panel de cada cliente.",
     icon: Tags,
+  },
+  {
+    tipo: "certificacion",
+    titulo: "Certificaciones",
+    descripcion: "Certificaciones asignables desde el panel de un cliente de Certificaciones.",
+    icon: Award,
+  },
+  {
+    tipo: "tag_certificaciones",
+    titulo: "Tags de Certificaciones",
+    descripcion: "Opciones de Tags para clientes de Certificaciones — catálogo aparte del de Club.",
+    icon: Hash,
   },
 ];
 

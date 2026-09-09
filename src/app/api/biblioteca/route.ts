@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { agregarOpcionCatalogo, eliminarOpcionCatalogo, listarCatalogo, type TipoCatalogo } from "@/lib/catalogo";
 
-const TIPOS: TipoCatalogo[] = ["evento", "etiqueta", "tag"];
+const TIPOS: TipoCatalogo[] = ["evento", "etiqueta", "tag", "certificacion", "tag_certificaciones"];
 
 function tipoValido(tipo: string | null): tipo is TipoCatalogo {
   return !!tipo && (TIPOS as string[]).includes(tipo);

@@ -33,6 +33,10 @@ export const PERMISOS = {
   otorgarOferta: ["admin"], // Club: "Agregar oferta" en el panel + oferta opcional en la alta
   verAvisos: ["admin", "coordinador", "abeja"],
   gestionarAvisos: ["admin"], // crear, editar, borrar avisos
+  verCertificaciones: ["admin", "coordinador", "abeja"],
+  actualizarCertificaciones: ["admin", "coordinador"], // botón "Actualizar" (sync desde la hoja de ventas)
+  agregarNotaCertificaciones: ["admin", "coordinador"],
+  gestionarCertificaciones: ["admin"], // crear, editar datos, pausar/renovar, papelera
 } as const satisfies Record<string, readonly Rol[]>;
 
 export type Accion = keyof typeof PERMISOS;

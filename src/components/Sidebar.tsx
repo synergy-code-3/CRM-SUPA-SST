@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, ChevronDown, ChevronsUpDown } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -18,13 +18,15 @@ import { MiPerfilModal } from "./MiPerfilModal";
 // en src/lib/permisos.ts (verDashboard/verBiblioteca/verEliminados).
 // contador: qué clave de useConteosPendientes() mostrar como burbuja junto
 // al label — solo Solicitudes y Usuarios lo tienen.
-const NAV: {
+type ItemNav = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   permiso: Accion;
   contador?: "solicitudes" | "usuarios" | "avisos";
-}[] = [
+};
+
+const NAV_CLUB: ItemNav[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, permiso: "verDashboard" },
   { href: "/clientes", label: "Clientes Club Sinergético", icon: Users, permiso: "verClientes" },
   { href: "/otras-ofertas", label: "Otras Ofertas", icon: Gift, permiso: "verOtrasOfertas" },
@@ -34,6 +36,13 @@ const NAV: {
   { href: "/eliminados", label: "Eliminados", icon: Trash2, permiso: "verEliminados" },
   { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
   { href: "/avisos", label: "Avisos", icon: Megaphone, permiso: "verAvisos", contador: "avisos" },
+];
+
+// Sección "Certificaciones" (Legendar-IA) — workspace aparte, se cambia con
+// el switcher del logo (ver Marca()/Sidebar()). Todavía chica a propósito:
+// crece según haga falta, igual que NAV_CLUB.
+const NAV_CERTIFICACIONES: ItemNav[] = [
+  { href: "/certificaciones", label: "Clientes", icon: Users, permiso: "verCertificaciones" },
 ];
 
 type Conteos = { solicitudes: number; usuarios: number; avisos: number };
@@ -92,14 +101,30 @@ const ROL_LABEL: Record<Rol, string> = {
   abeja: "Abeja",
 };
 
-function Marca() {
+// enCertificaciones: qué workspace mostrar (logo+nombre, derivado de la URL
+// en Sidebar() — nunca estado propio, así no se puede desincronizar).
+// puedeCambiar: si el usuario tiene verCertificaciones — sin eso, ni se
+// muestra el botón del switcher.
+function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean; puedeCambiar: boolean }) {
   return (
     <div className="flex items-center gap-3 px-2">
       <Image src="/icons/icon-192.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
-      <div>
-        <p className="text-sm font-semibold text-foreground">CRM CS</p>
-        <p className="text-xs text-muted">Club Sinergético</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">
+          {enCertificaciones ? "Certificaciones" : "CRM CS"}
+        </p>
+        <p className="truncate text-xs text-muted">{enCertificaciones ? "Legendar-IA" : "Club Sinergético"}</p>
       </div>
+      {puedeCambiar && (
+        <Link
+          href={enCertificaciones ? "/" : "/certificaciones"}
+          aria-label={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
+          title={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
+          className="ease-spring flex h-8 w-8 flex-none items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
+        >
+          <ChevronsUpDown className="h-4 w-4" strokeWidth={1.75} />
+        </Link>
+      )}
     </div>
   );
 }
@@ -341,14 +366,22 @@ export function Sidebar() {
   }, [usuario]);
 
   if (!usuario) return null;
-  const items = NAV.filter((item) => tienePermiso(usuario.rol, item.permiso));
+  // Deriva el workspace de la URL en vez de guardar estado aparte — así no
+  // hay forma de que el switcher y la página realmente mostrada se
+  // desincronicen, y es deep-linkable (entrar directo a /certificaciones/x
+  // ya muestra el workspace correcto sin un clic de más).
+  const enCertificaciones = pathname.startsWith("/certificaciones");
+  const items = (enCertificaciones ? NAV_CERTIFICACIONES : NAV_CLUB).filter((item) =>
+    tienePermiso(usuario.rol, item.permiso)
+  );
+  const puedeCambiarWorkspace = tienePermiso(usuario.rol, "verCertificaciones");
 
   return (
     <>
       {/* Sidebar fijo — solo md+ (tablet/escritorio). */}
       <aside className="hidden h-screen w-64 flex-none flex-col border-r border-silver/70 bg-surface px-4 py-6 md:flex">
         <div className="mb-8">
-          <Marca />
+          <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {items.map(({ href, label, icon: Icon, contador }) => {
@@ -390,7 +423,7 @@ export function Sidebar() {
             />
           )}
         </button>
-        <Marca />
+        <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
         <span className="w-9" aria-hidden="true" />
       </header>
 
@@ -399,7 +432,7 @@ export function Sidebar() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setAbierto(false)} aria-hidden="true" />
           <div className="animate-slide-in-left relative flex h-full w-72 max-w-[82%] flex-col bg-surface px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
-              <Marca />
+              <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
               <button
                 onClick={() => setAbierto(false)}
                 aria-label="Cerrar menú"
