@@ -39,26 +39,56 @@ async function usuarioSyncId(): Promise<string> {
   return data.id as string;
 }
 
-// Adivina el evento/país a partir del código de país del teléfono — VSL no
-// manda ninguno de los dos. Los 3 eventos ("VSL MX/USA/LATAM") se agregan
-// una sola vez al catálogo de Biblioteca (no aquí). El admin puede
-// corregirlo antes de aprobar si adivinó mal (ver editarSolicitud).
-function inferirEventoYPais(telefono: string | null): { evento: string; pais: string | null } {
+// Adivina el evento/país a partir del código de país del teléfono — se usa
+// solo como respaldo cuando VSL no reporta monto/moneda (ventas manuales,
+// "sin registrar"). El admin puede corregirlo antes de aprobar si adivinó
+// mal (ver editarSolicitud). Los 3 eventos ("VSL MX/USA/LATAM") ya están en
+// el catálogo de Biblioteca y en Asignacion de boletos.csv (1/2/3 VIP MX +
+// 1/2/3 VIP US para 3/6/12 meses, igual sin importar la región).
+function inferirEventoYPaisDesdeTelefono(telefono: string | null): { evento: string; pais: string | null } {
   const limpio = (telefono ?? "").replace(/[^\d+]/g, "");
   if (limpio.startsWith("+52")) return { evento: "VSL MX", pais: "México" };
   if (limpio.startsWith("+1")) return { evento: "VSL USA", pais: "Estados Unidos" };
   return { evento: "VSL LATAM", pais: null };
 }
 
+// Tabla de precios que mandó el director de VSL (monto + moneda → región +
+// duración de membresía) — mucho más confiable que adivinar por el código
+// de país del teléfono, porque viene directo de lo que Stripe cobró.
+const PRECIOS_VSL: { moneda: string; monto: number; evento: string; pais: string | null; tipoMembresia: string }[] = [
+  { moneda: "usd", monto: 997, evento: "VSL USA", pais: "Estados Unidos", tipoMembresia: "3 Meses" },
+  { moneda: "usd", monto: 1299, evento: "VSL USA", pais: "Estados Unidos", tipoMembresia: "6 Meses" },
+  { moneda: "usd", monto: 1499, evento: "VSL USA", pais: "Estados Unidos", tipoMembresia: "12 Meses" },
+  { moneda: "mxn", monto: 9997, evento: "VSL MX", pais: "México", tipoMembresia: "3 Meses" },
+  { moneda: "mxn", monto: 12997, evento: "VSL MX", pais: "México", tipoMembresia: "6 Meses" },
+  { moneda: "mxn", monto: 14997, evento: "VSL MX", pais: "México", tipoMembresia: "12 Meses" },
+  { moneda: "usd", monto: 599, evento: "VSL LATAM", pais: null, tipoMembresia: "3 Meses" },
+  { moneda: "usd", monto: 799, evento: "VSL LATAM", pais: null, tipoMembresia: "6 Meses" },
+  { moneda: "usd", monto: 999, evento: "VSL LATAM", pais: null, tipoMembresia: "12 Meses" },
+];
+
 const TIPO_MEMBRESIA_DEFAULT = "12 Meses";
 
-function notaParaRevisor(c: ConvertidoVsl): string {
+function detectarDesdeMontoYMoneda(
+  monto: number | null,
+  moneda: string | null
+): { evento: string; pais: string | null; tipoMembresia: string } | null {
+  if (monto == null || !moneda) return null;
+  const monedaKey = moneda.trim().toLowerCase();
+  const montoRedondeado = Math.round(monto);
+  return PRECIOS_VSL.find((p) => p.moneda === monedaKey && p.monto === montoRedondeado) ?? null;
+}
+
+function notaParaRevisor(c: ConvertidoVsl, tipoMembresiaDetectada: boolean): string {
   const partes = [
     `Detectado automático desde VSL — producto: "${c.producto}"`,
     c.vendedor ? `vendedor: ${c.vendedor}` : null,
     c.monto != null ? `monto: ${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
     `fuente: ${c.fuenteVenta}`,
     c.fechaVenta ? `vendido el ${new Date(c.fechaVenta).toLocaleDateString("es-MX")}` : null,
+    !tipoMembresiaDetectada
+      ? "⚠ No se pudo detectar la región/duración por monto — verificar evento y tipo de membresía antes de aprobar"
+      : null,
   ].filter(Boolean);
   return partes.join(" · ") + (c.notas ? `\nNotas de VSL: ${c.notas}` : "");
 }
@@ -112,7 +142,9 @@ export async function sincronizarSolicitudesVsl(): Promise<ResultadoSincronizarV
       }
 
       const solicitudId = randomUUID();
-      const { evento, pais } = inferirEventoYPais(c.telefono);
+      const detectado = detectarDesdeMontoYMoneda(c.monto, c.moneda);
+      const { evento, pais } = detectado ?? inferirEventoYPaisDesdeTelefono(c.telefono);
+      const tipoMembresia = detectado?.tipoMembresia ?? TIPO_MEMBRESIA_DEFAULT;
       const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
       await crearSolicitud({
@@ -123,7 +155,7 @@ export async function sincronizarSolicitudesVsl(): Promise<ResultadoSincronizarV
         telefono: c.telefono ?? "",
         pais,
         evento,
-        tipoMembresia: TIPO_MEMBRESIA_DEFAULT,
+        tipoMembresia,
         comprobantes,
         solicitadoPorId: await usuarioSyncId(),
         solicitadoPorNombre: NOMBRE_USUARIO_SYNC,
@@ -131,7 +163,10 @@ export async function sincronizarSolicitudesVsl(): Promise<ResultadoSincronizarV
       });
       // La nota queda en la solicitud vía un segundo update — crearSolicitud
       // no acepta notaRevision porque normalmente no aplica hasta revisar.
-      await supabase.from("solicitudes_cliente").update({ nota_revision: notaParaRevisor(c) }).eq("id", solicitudId);
+      await supabase
+        .from("solicitudes_cliente")
+        .update({ nota_revision: notaParaRevisor(c, detectado != null) })
+        .eq("id", solicitudId);
 
       resultado.creadas++;
     } catch {
