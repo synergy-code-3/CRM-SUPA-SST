@@ -11,7 +11,12 @@ import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 
 const OPCIONES_REGION = REGIONES_CERTIFICACION.map((r) => ({ valor: r, etiqueta: REGION_CERTIFICACION_LABEL[r] }));
 
-type Respuesta = { cliente: ClienteCertificacion; eventos: EventoCertificacion[]; abonos: AbonoCertificacion[] };
+type Respuesta = {
+  cliente: ClienteCertificacion;
+  eventos: EventoCertificacion[];
+  abonos: AbonoCertificacion[];
+  estadoClub: "activo" | "inactivo" | null;
+};
 
 export default function PerfilCertificacionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
@@ -160,7 +165,7 @@ export default function PerfilCertificacionPage({ params }: { params: Promise<{ 
   }
 
   if (!datos) return <p className="text-sm text-muted">Cargando…</p>;
-  const { cliente, eventos, abonos } = datos;
+  const { cliente, eventos, abonos, estadoClub } = datos;
 
   return (
     <div className="space-y-6">
@@ -175,6 +180,15 @@ export default function PerfilCertificacionPage({ params }: { params: Promise<{ 
               {cliente.region ? REGION_CERTIFICACION_LABEL[cliente.region] : "Sin región"} · {cliente.estado}
               {cliente.pausada ? " · Pausada" : ""}
             </p>
+            {estadoClub && (
+              <span
+                className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  estadoClub === "activo" ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
+                }`}
+              >
+                Miembro del Club — {estadoClub === "activo" ? "Activo" : "Inactivo"}
+              </span>
+            )}
           </div>
           {puedeGestionar && (
             <div className="flex flex-wrap gap-2">

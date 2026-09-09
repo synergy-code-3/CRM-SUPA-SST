@@ -314,6 +314,16 @@ export async function obtenerCliente(id: string): Promise<Cliente | null> {
   return data ? filaACliente(data as ClienteRow) : null;
 }
 
+// Mismo criterio ya usado en varios lados sueltos (verificarPreAlta en
+// alta-cliente.ts, el foco de Kajabi en Clientes, el cuadro de "modo" al
+// aprobar una Solicitud sobre un cliente existente): "Si" o "Renovación" en
+// acceso_plataforma, y sin pausar. Centralizado aquí para el cruce con
+// Certificaciones (ver /api/clientes/[id] y /api/certificaciones/[id]).
+export function clienteClubActivo(cliente: { accesoPlataforma: string | null; pausadoEn: string | null }): boolean {
+  const accesoKey = cliente.accesoPlataforma?.trim().toLowerCase();
+  return (accesoKey === "si" || accesoKey === "renovación") && !cliente.pausadoEn;
+}
+
 export async function listarEventos(clienteId: string): Promise<EventoTimeline[]> {
   const { data, error } = await supabase
     .from("eventos_timeline")

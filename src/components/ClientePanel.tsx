@@ -43,6 +43,7 @@ import {
   ShoppingBag,
   ExternalLink,
   Undo2,
+  Award,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -202,6 +203,9 @@ export function ClientePanel({
   const puedeRevocarAcceso = !!usuario && tienePermiso(usuario.rol, "revocarAccesoCliente");
   const puedeVerActividad = !!usuario && tienePermiso(usuario.rol, "verActividad");
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  // Cruce informativo con Certificaciones (roster aparte, ver
+  // /api/clientes/[id]) — si este correo también es socio de Legendar-IA.
+  const [esMiembroLegendaria, setEsMiembroLegendaria] = useState(false);
   const [eventos, setEventos] = useState<EventoTimeline[]>([]);
   const [cargando, setCargando] = useState(true);
   const [tab, setTab] = useState<Tab>("resumen");
@@ -336,6 +340,7 @@ export function ClientePanel({
     setErrorHistorialAxis(null);
     setIntentadoHistorialAxis(false);
     setOfertasClub([]);
+    setEsMiembroLegendaria(false);
     setMostrarAgregarOferta(false);
     setOfertaElegida("");
     setConfirmandoRevocarId(null);
@@ -361,6 +366,7 @@ export function ClientePanel({
         ]);
         if (cancelado) return;
         setCliente(clienteRes.cliente);
+        setEsMiembroLegendaria(!!clienteRes.esMiembroLegendaria);
         setEventos(eventosRes.eventos ?? []);
         setOfertasClub(ofertasRes.ofertas ?? []);
         setForm(formDeCliente(clienteRes.cliente));
@@ -1146,6 +1152,15 @@ export function ClientePanel({
                     {cliente.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
+                    {esMiembroLegendaria && (
+                      <span
+                        title="También es socio de Certificaciones (Legendar-IA)"
+                        className="flex items-center gap-1 rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm"
+                      >
+                        <Award className="h-2.5 w-2.5" strokeWidth={2} />
+                        LEGENDAR-IA
+                      </span>
+                    )}
                     {cliente.tags.map((tag) => (
                       <span
                         key={tag}

@@ -168,6 +168,20 @@ export async function buscarClienteCertificacionPorCorreo(correo: string): Promi
   return obtenerClienteCertificacion(correo);
 }
 
+// Para el cruce con el perfil de Club Sinergético (ver /api/clientes/[id])
+// — nada más si el correo también es socio de Certificaciones, sin traer
+// el registro completo.
+export async function existeClienteCertificacion(correo: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .select("id")
+    .eq("id", normalizarEmail(correo))
+    .eq("eliminado", false)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
 export async function eventosCertificacion(clienteId: string): Promise<EventoCertificacion[]> {
   const { data, error } = await supabase
     .from("certificaciones_eventos")

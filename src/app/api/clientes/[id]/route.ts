@@ -7,6 +7,7 @@ import {
   establecerMensajeBienvenidaWa,
   obtenerCliente,
 } from "@/lib/db";
+import { existeClienteCertificacion } from "@/lib/certificaciones";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +17,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const cliente = await obtenerCliente(decodeURIComponent(id));
   if (!cliente) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-  return NextResponse.json({ cliente });
+
+  // Cruce informativo con Certificaciones (roster aparte) — si el correo de
+  // este cliente también es socio de Legendar-IA, el panel le muestra un
+  // tag fijo. Best-effort: si falla, el panel sigue abriendo con el resto
+  // de los datos, solo sin el tag.
+  const esMiembroLegendaria = await existeClienteCertificacion(cliente.email || cliente.id).catch(() => false);
+
+  return NextResponse.json({ cliente, esMiembroLegendaria });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

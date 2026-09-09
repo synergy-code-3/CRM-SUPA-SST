@@ -6,6 +6,7 @@ import {
   eventosCertificacion,
   obtenerClienteCertificacion,
 } from "@/lib/certificaciones";
+import { clienteClubActivo, obtenerCliente } from "@/lib/db";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("verCertificaciones");
@@ -20,7 +21,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     eventosCertificacion(clienteId),
     abonosCertificacion(clienteId),
   ]);
-  return NextResponse.json({ cliente, eventos, abonos });
+
+  // Cruce informativo con Club Sinergético (roster aparte) — si el correo
+  // también es cliente del Club, se le muestra si está activo o inactivo.
+  // null = no es cliente del Club en absoluto (no se muestra nada en ese
+  // caso). Best-effort: si falla, el perfil sigue abriendo sin este dato.
+  const clienteClub = await obtenerCliente(cliente.email || cliente.id).catch(() => null);
+  const estadoClub: "activo" | "inactivo" | null = clienteClub ? (clienteClubActivo(clienteClub) ? "activo" : "inactivo") : null;
+
+  return NextResponse.json({ cliente, eventos, abonos, estadoClub });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
