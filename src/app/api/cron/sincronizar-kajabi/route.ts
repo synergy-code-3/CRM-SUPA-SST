@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { crearAvisoAutomatico } from "@/lib/avisos";
 import { autorizadoParaCron } from "@/lib/cron-auth";
 import {
+  correosSinClienteAun,
   guardarCursorSyncKajabi,
   marcarInvitacionSkoolEnviada,
   marcarMensajeBienvenidaWa,
+  normalizarEmail,
   obtenerCursorSyncKajabi,
   reconciliarOfertasVencidas,
   registrarTagKajabi,
@@ -21,6 +23,45 @@ export const maxDuration = 60;
 // Hotmart (que suele llegar casi al instante, pero no está garantizado) a
 // dejarlo listo en hotmart_pendientes antes de que se le busque.
 const RETRASO_MINIMO_MS = 60_000;
+
+// Ventana del barrido de seguridad de abajo (ver comentario ahí) — acotada
+// a propósito: hay ~250,000 contactos históricos con esta oferta por el
+// error masivo de antes del CRM, así que no se puede barrer todo cada vez.
+const VENTANA_BARRIDO_DIAS = 7;
+
+// Da de alta (o solo tagea si ya existe) un contacto que Kajabi confirma
+// con la oferta — mismo trato que un alta manual: Skool + GHL solo si es
+// de verdad nuevo. Compartido por el barrido normal (por cursor) y el
+// barrido de seguridad (por ventana fija, ver abajo).
+async function procesarAltaKajabi(c: { email: string; nombre: string }): Promise<boolean> {
+  const { cliente, esNuevo } = await registrarTagKajabi(c.email, c.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
+
+  // Compras que Kajabi detecta solo (típicamente vía su integración con
+  // Hotmart) no pasaban por el alta normal del CRM, así que nunca recibían
+  // la invitación de Skool ni el WhatsApp de bienvenida. Un cliente nuevo
+  // aquí merece el mismo trato que uno dado de alta a mano.
+  if (esNuevo) {
+    try {
+      await invitarASkool(cliente.email);
+      await marcarInvitacionSkoolEnviada(cliente.id);
+    } catch {
+      // Best-effort: no bloquea el resto de la sincronización.
+    }
+
+    if (cliente.telefono) {
+      // "Enviado" nunca se escribe aquí — solo el webhook de confirmación
+      // real (/api/webhooks/ghl-bienvenida-wa) lo hace, cuando GHL avisa
+      // que WhatsApp de verdad lo entregó.
+      try {
+        await altaEnGhl(cliente.nombre, cliente.email, cliente.telefono);
+      } catch {
+        // Best-effort: no bloquea el resto de la sincronización.
+      }
+      await marcarMensajeBienvenidaWa(cliente.id, "Pendiente");
+    }
+  }
+  return esNuevo;
+}
 
 // Reemplaza al webhook nativo de Kajabi (sin permiso disponible para esta
 // cuenta): se consulta activamente quién tiene la oferta otorgada desde la
@@ -55,32 +96,7 @@ async function manejar(req: NextRequest) {
   let ultimoProcesado: string | null = null;
   for (const c of nuevos) {
     try {
-      const { cliente, esNuevo } = await registrarTagKajabi(c.email, c.nombre, KAJABI_TAG_MIEMBRO_DEL_CLUB);
-
-      // Compras que Kajabi detecta solo (típicamente vía su integración con
-      // Hotmart) no pasaban por el alta normal del CRM, así que nunca
-      // recibían la invitación de Skool ni el WhatsApp de bienvenida. Un
-      // cliente nuevo aquí merece el mismo trato que uno dado de alta a mano.
-      if (esNuevo) {
-        try {
-          await invitarASkool(cliente.email);
-          await marcarInvitacionSkoolEnviada(cliente.id);
-        } catch {
-          // Best-effort: no bloquea el resto de la sincronización.
-        }
-
-        if (cliente.telefono) {
-          // "Enviado" nunca se escribe aquí — solo el webhook de confirmación
-          // real (/api/webhooks/ghl-bienvenida-wa) lo hace, cuando GHL avisa
-          // que WhatsApp de verdad lo entregó.
-          try {
-            await altaEnGhl(cliente.nombre, cliente.email, cliente.telefono);
-          } catch {
-            // Best-effort: no bloquea el resto de la sincronización.
-          }
-          await marcarMensajeBienvenidaWa(cliente.id, "Pendiente");
-        }
-      }
+      await procesarAltaKajabi(c);
       procesados++;
       ultimoProcesado = c.creadoEn;
     } catch (err) {
@@ -134,7 +150,53 @@ async function manejar(req: NextRequest) {
     console.error("Reconciliación de ofertas vencidas falló, se reintenta en la siguiente corrida:", err);
   }
 
-  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion });
+  // Barrido de seguridad best-effort: el cursor de arriba avanza según la
+  // fecha de CREACIÓN del contacto en Kajabi, pero la oferta a veces se le
+  // otorga horas o días después de creado (confirmado con
+  // naturabeauty30@gmail.com, 8-9/sep/2026: contacto creado, oferta
+  // otorgada ~9h más tarde, para entonces el cursor ya había avanzado más
+  // allá de su fecha de creación por otros contactos más rápidos) — esos
+  // quedan saltados para siempre, porque nunca vuelven a aparecer
+  // "después del cursor". Este barrido no usa cursor: siempre re-revisa
+  // una ventana fija de los últimos VENTANA_BARRIDO_DIAS días buscando a
+  // quien tenga la oferta y siga sin cliente en el CRM — procesarAltaKajabi
+  // es idempotente, así que revisar de más a los que el barrido normal ya
+  // atrapó en esta misma corrida no hace daño, solo es un poco redundante.
+  let barrido: { revisados: number; procesados: number } | null = null;
+  try {
+    const desdeBarrido = new Date(ahora - VENTANA_BARRIDO_DIAS * 24 * 60 * 60 * 1000).toISOString();
+    const enVentana = await nuevosConOfertaDesde(KAJABI_OFFER_ID_CLUB_SINERGETICO, desdeBarrido);
+    // Evita reprocesar en la misma corrida a quien ya atrapó el barrido
+    // normal de arriba (no sería incorrecto, procesarAltaKajabi es
+    // idempotente, pero sí desperdicia llamadas a Kajabi/Supabase de más en
+    // cada corrida, no solo en el caso raro que este barrido existe para
+    // cubrir).
+    const yaVistos = new Set(nuevos.map((c) => c.email));
+    const candidatos = enVentana.filter(
+      (c) => !yaVistos.has(c.email) && ahora - new Date(c.creadoEn).getTime() >= RETRASO_MINIMO_MS
+    );
+    // La ventana de 7 días trae cientos de contactos (la mayoría ya
+    // procesados en corridas anteriores) — llamar registrarTagKajabi por
+    // cada uno (una consulta a Supabase por correo) tardaba varios minutos
+    // y se pasaba del límite de 60s del cron en Vercel. Un solo filtro por
+    // lote descarta a los que ya son clientes antes de tocar el camino caro
+    // — solo quedan los realmente nuevos, que son pocos.
+    const sinCliente = await correosSinClienteAun(candidatos.map((c) => c.email));
+    const listosParaProcesar = candidatos.filter((c) => sinCliente.has(normalizarEmail(c.email)));
+    let procesadosBarrido = 0;
+    for (const c of listosParaProcesar) {
+      try {
+        if (await procesarAltaKajabi(c)) procesadosBarrido++;
+      } catch (err) {
+        console.error(`Barrido de altas recientes: falló ${c.email}, se reintenta en la siguiente corrida:`, err);
+      }
+    }
+    barrido = { revisados: listosParaProcesar.length, procesados: procesadosBarrido };
+  } catch (err) {
+    console.error("Barrido de altas recientes falló, se reintenta en la siguiente corrida:", err);
+  }
+
+  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion, barrido });
 }
 
 export const GET = manejar;

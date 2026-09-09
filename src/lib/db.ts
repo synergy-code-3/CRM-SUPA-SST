@@ -1476,6 +1476,28 @@ export async function vincularKajabiContactId(id: string, kajabiContactId: strin
   if (error) throw error;
 }
 
+// Filtro barato para no llamar registrarTagKajabi (una consulta a Supabase
+// cada uno) sobre cientos de correos que casi seguro ya son clientes — una
+// sola consulta por lote en vez de una por correo. Devuelve el subconjunto
+// de `correos` que NO tiene fila en `clientes` todavía (ni por id ni por
+// email, mismo criterio de alias que registrarTagKajabi).
+export async function correosSinClienteAun(correos: string[]): Promise<Set<string>> {
+  if (correos.length === 0) return new Set();
+  const normalizados = Array.from(new Set(correos.map((c) => normalizarEmail(c))));
+
+  const [porId, porEmail] = await Promise.all([
+    supabase.from("clientes").select("id").in("id", normalizados),
+    supabase.from("clientes").select("email").in("email", normalizados),
+  ]);
+  if (porId.error) throw porId.error;
+  if (porEmail.error) throw porEmail.error;
+
+  const conocidos = new Set<string>();
+  for (const fila of porId.data ?? []) conocidos.add(normalizarEmail(fila.id));
+  for (const fila of porEmail.data ?? []) if (fila.email) conocidos.add(normalizarEmail(fila.email));
+  return new Set(normalizados.filter((c) => !conocidos.has(c)));
+}
+
 export type ResultadoRegistrarTagKajabi = { cliente: Cliente; esNuevo: boolean };
 
 // Registra en la timeline que a un cliente se le asignó un tag de Kajabi.
