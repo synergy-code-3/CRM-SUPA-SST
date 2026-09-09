@@ -66,6 +66,9 @@ export default function SolicitudesPage() {
     id: string;
     clienteExistente: { id: string; nombre: string; accesoPlataforma: string | null; pausadoEn: string | null };
   } | null>(null);
+  // Cuadro de solo lectura con los datos capturados en el formulario —
+  // no es el perfil del cliente, solo lo que mandó la vendedora.
+  const [verSolicitud, setVerSolicitud] = useState<SolicitudConUrls | null>(null);
 
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
@@ -397,7 +400,11 @@ export default function SolicitudesPage() {
             </thead>
             <tbody>
               {listaTabla.map((s) => (
-                <tr key={s.id} className="border-t border-silver/60">
+                <tr
+                  key={s.id}
+                  onClick={() => setVerSolicitud(s)}
+                  className="ease-spring cursor-pointer border-t border-silver/60 transition hover:bg-surface-2"
+                >
                   <td className="px-4 py-3 font-medium text-foreground">{s.nombre}</td>
                   <td className="px-4 py-3 text-muted">{s.correoAcceso}</td>
                   <td className="px-4 py-3">
@@ -473,6 +480,99 @@ export default function SolicitudesPage() {
           </div>
         </div>
       )}
+
+      {verSolicitud && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setVerSolicitud(null)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-silver bg-surface p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">{verSolicitud.nombre}</h3>
+                <p className="text-xs text-muted">Solicitado por {verSolicitud.solicitadoPorNombre}</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[verSolicitud.estado]}`}>
+                {ESTADO_LABEL[verSolicitud.estado]}
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <DatoSolicitud label="Correo de acceso" valor={verSolicitud.correoAcceso} />
+              <DatoSolicitud label="Correo de pago" valor={verSolicitud.correoPago} />
+              <DatoSolicitud label="Teléfono" valor={verSolicitud.telefono} />
+              <DatoSolicitud label="País" valor={verSolicitud.pais} />
+              <DatoSolicitud label="Evento" valor={verSolicitud.evento} />
+              <DatoSolicitud label="Tipo de membresía" valor={verSolicitud.tipoMembresia} />
+              <DatoSolicitud label="Etiqueta" valor={verSolicitud.etiqueta} />
+              <DatoSolicitud label="Enviada" valor={new Date(verSolicitud.creadoEn).toLocaleString("es-MX")} />
+              {verSolicitud.revisadoPor && (
+                <DatoSolicitud
+                  label="Revisada por"
+                  valor={`${verSolicitud.revisadoPor}${verSolicitud.revisadoEn ? " — " + new Date(verSolicitud.revisadoEn).toLocaleString("es-MX") : ""}`}
+                />
+              )}
+            </div>
+
+            {verSolicitud.notas && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-medium text-muted">Nota de la vendedora</p>
+                <p className="whitespace-pre-wrap rounded-lg bg-surface-2 p-2.5 text-xs text-foreground">
+                  {verSolicitud.notas}
+                </p>
+              </div>
+            )}
+
+            {verSolicitud.notaRevision && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-medium text-muted">Nota de revisión</p>
+                <p className="whitespace-pre-wrap rounded-lg bg-surface-2 p-2.5 text-xs text-foreground">
+                  {verSolicitud.notaRevision}
+                </p>
+              </div>
+            )}
+
+            {verSolicitud.comprobantesUrl.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-medium text-muted">Comprobantes</p>
+                <div className="flex flex-wrap gap-2">
+                  {verSolicitud.comprobantesUrl.map((url, i) => (
+                    <a
+                      key={url}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ease-spring flex items-center gap-1 rounded-lg border border-silver px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                    >
+                      Comprobante {i + 1}
+                      <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setVerSolicitud(null)}
+              className="ease-spring mt-4 w-full rounded-lg border border-silver px-3 py-2 text-xs font-medium text-foreground transition hover:bg-surface-2"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DatoSolicitud({ label, valor }: { label: string; valor: string | null | undefined }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="text-foreground">{valor?.trim() ? valor : "—"}</p>
     </div>
   );
 }
