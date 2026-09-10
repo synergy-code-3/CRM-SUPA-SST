@@ -139,6 +139,20 @@ export type ResultadoSincronizarVsl = {
   errores: number;
 };
 
+// Un mismo lead puede haber quedado con una solicitud pendiente en el Club
+// (ruteo viejo, antes de esVentaDeCertificacion) y, en una corrida
+// posterior ya con el ruteo nuevo, procesarse otra vez y crear OTRA
+// solicitud en Certificaciones — cada rama solo revisaba su propia tabla,
+// nunca la otra. Pasó de verdad con antonellaluzo@gmail.com (10-sep-2026).
+// Se revisan ambas tablas antes de crear cualquier solicitud nueva.
+async function yaExisteSolicitudVsl(leadId: string): Promise<boolean> {
+  const [enClub, enCertificacion] = await Promise.all([
+    obtenerSolicitudPorLeadVsl(leadId),
+    obtenerSolicitudCertificacionPorLeadVsl(leadId),
+  ]);
+  return !!enClub || !!enCertificacion;
+}
+
 export async function sincronizarSolicitudesVsl(): Promise<ResultadoSincronizarVsl> {
   const convertidos = await listarTodosConvertidosVsl();
   const resultado: ResultadoSincronizarVsl = { creadas: 0, yaEranClientes: 0, saltadas: 0, errores: 0 };
@@ -174,8 +188,7 @@ async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSinc
     return;
   }
 
-  const yaExiste = await obtenerSolicitudPorLeadVsl(c.leadId);
-  if (yaExiste) {
+  if (await yaExisteSolicitudVsl(c.leadId)) {
     resultado.saltadas++;
     return;
   }
@@ -224,8 +237,7 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
     return;
   }
 
-  const yaExiste = await obtenerSolicitudCertificacionPorLeadVsl(c.leadId);
-  if (yaExiste) {
+  if (await yaExisteSolicitudVsl(c.leadId)) {
     resultado.saltadas++;
     return;
   }
