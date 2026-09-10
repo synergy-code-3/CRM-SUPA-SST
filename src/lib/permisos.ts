@@ -37,6 +37,8 @@ export const PERMISOS = {
   actualizarCertificaciones: ["admin", "coordinador"], // botón "Actualizar" (sync desde la hoja de ventas)
   agregarNotaCertificaciones: ["admin", "coordinador"],
   gestionarCertificaciones: ["admin"], // crear, editar datos, pausar/renovar, papelera
+  solicitarCertificacion: ["admin", "coordinador", "abeja"], // igual criterio que solicitarCliente
+  revisarSolicitudesCertificacion: ["admin"], // igual criterio que revisarSolicitudes
 } as const satisfies Record<string, readonly Rol[]>;
 
 export type Accion = keyof typeof PERMISOS;

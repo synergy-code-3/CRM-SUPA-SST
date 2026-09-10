@@ -570,3 +570,34 @@ alter table certificaciones_abonos enable row level security;
 alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
 alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
   check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones'));
+
+-- Solicitudes de alta para Certificaciones — mismo patrón que
+-- solicitudes_cliente (Club), pero sin la separación correo de pago/acceso
+-- (Certificaciones solo tiene un correo) ni evento (usa region en su
+-- lugar). Alimentada por el mismo formulario que ya usa Club (una abeja
+-- llena + comprobante, admin revisa) y por la sincronización de VSL
+-- (leads que compraron "Certificación LEGENDAR·IA" en vez de "Club
+-- Sinergético" — ver src/lib/sincronizar-vsl.ts).
+create table if not exists solicitudes_certificacion (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  correo text not null,
+  telefono text not null,
+  region text,
+  monto text,
+  etiqueta text, -- certificación del catálogo "certificacion", opcional
+  notas text,
+  comprobantes text[] not null default '{}',
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'aprobada', 'rechazada')),
+  solicitado_por_id uuid not null references usuarios (id),
+  solicitado_por_nombre text not null,
+  nota_revision text,
+  revisado_por text,
+  revisado_en timestamptz,
+  cliente_id text references certificaciones_clientes (id),
+  lead_id_vsl text unique,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_solicitudes_certificacion_estado on solicitudes_certificacion (estado, creado_en desc);
+create index if not exists idx_solicitudes_certificacion_solicitado_por on solicitudes_certificacion (solicitado_por_id);
+alter table solicitudes_certificacion enable row level security;

@@ -23,7 +23,7 @@ type ItemNav = {
   label: string;
   icon: typeof LayoutDashboard;
   permiso: Accion;
-  contador?: "solicitudes" | "usuarios" | "avisos";
+  contador?: "solicitudes" | "solicitudesCertificacion" | "usuarios" | "avisos";
 };
 
 const NAV_CLUB: ItemNav[] = [
@@ -43,9 +43,16 @@ const NAV_CLUB: ItemNav[] = [
 // crece según haga falta, igual que NAV_CLUB.
 const NAV_CERTIFICACIONES: ItemNav[] = [
   { href: "/certificaciones", label: "Clientes", icon: Users, permiso: "verCertificaciones" },
+  {
+    href: "/certificaciones/solicitudes",
+    label: "Solicitudes",
+    icon: FileCheck2,
+    permiso: "solicitarCertificacion",
+    contador: "solicitudesCertificacion",
+  },
 ];
 
-type Conteos = { solicitudes: number; usuarios: number; avisos: number };
+type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
 
 // Antes 60s — se sentía nada "en tiempo real" (un admin viendo la pantalla
 // no veía la burbuja aparecer hasta un minuto después de que alguien se
@@ -59,7 +66,7 @@ const INTERVALO_CONTEOS_MS = 10 * 1000;
 // confirmar (la ruta ya calcula 0 en solicitudes/usuarios para quien no
 // tiene permiso, así que no se gasta nada de más).
 function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
-  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, usuarios: 0, avisos: 0 });
+  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, solicitudesCertificacion: 0, usuarios: 0, avisos: 0 });
 
   useEffect(() => {
     if (!usuario) return;
@@ -70,7 +77,13 @@ function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
         const res = await fetch("/api/notificaciones/pendientes");
         if (!res.ok || cancelado) return;
         const data = await res.json();
-        if (!cancelado) setConteos({ solicitudes: data.solicitudes ?? 0, usuarios: data.usuarios ?? 0, avisos: data.avisos ?? 0 });
+        if (!cancelado)
+          setConteos({
+            solicitudes: data.solicitudes ?? 0,
+            solicitudesCertificacion: data.solicitudesCertificacion ?? 0,
+            usuarios: data.usuarios ?? 0,
+            avisos: data.avisos ?? 0,
+          });
       } catch {
         // Sin conteo esta vez — se reintenta solo en el próximo intervalo.
       }

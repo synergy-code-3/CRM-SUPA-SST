@@ -90,3 +90,29 @@ export type ResultadoSincronizacionCertificacion = {
   cambiosPendientes: CambioPendienteCertificacion[];
   nuevosPendientes: NuevoClientePendienteCertificacion[];
 };
+
+// Solicitud de alta para Certificaciones — mismo concepto que
+// SolicitudCliente (types.ts) del Club, pero con un solo correo (sin la
+// separación pago/acceso, que aquí no aplica) y region en vez de evento.
+export type EstadoSolicitudCertificacion = "pendiente" | "aprobada" | "rechazada";
+
+export type SolicitudCertificacion = {
+  id: string;
+  nombre: string;
+  correo: string;
+  telefono: string;
+  region: RegionCertificacion | null;
+  monto: string | null;
+  etiqueta: string | null;
+  notas: string | null;
+  comprobantes: string[];
+  estado: EstadoSolicitudCertificacion;
+  solicitadoPorId: string;
+  solicitadoPorNombre: string;
+  notaRevision: string | null;
+  revisadoPor: string | null;
+  revisadoEn: string | null;
+  clienteId: string | null;
+  leadIdVsl: string | null;
+  creadoEn: string;
+};

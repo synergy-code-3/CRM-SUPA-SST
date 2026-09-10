@@ -3,6 +3,9 @@ import { supabase } from "./supabase";
 import { hashPassword } from "./auth";
 import { obtenerCliente } from "./db";
 import { crearSolicitud, obtenerSolicitudPorLeadVsl } from "./solicitudes";
+import { obtenerClienteCertificacion } from "./certificaciones";
+import { crearSolicitudCertificacion, obtenerSolicitudCertificacionPorLeadVsl } from "./solicitudes-certificacion";
+import type { RegionCertificacion } from "./certificaciones-tipos";
 import { subirComprobante } from "./storage";
 import { listarTodosConvertidosVsl, marcarAccesoDadoVsl, type ConvertidoVsl } from "./vsl-soporte";
 
@@ -50,6 +53,28 @@ function inferirEventoYPaisDesdeTelefono(telefono: string | null): { evento: str
   if (limpio.startsWith("+52")) return { evento: "VSL MX", pais: "México" };
   if (limpio.startsWith("+1")) return { evento: "VSL USA", pais: "Estados Unidos" };
   return { evento: "VSL LATAM", pais: null };
+}
+
+// VSL vende tanto Club Sinergético como Certificaciones (Legendar-IA) por el
+// mismo endpoint — el campo "producto" es la única señal, y son solo estas
+// dos cadenas reales confirmadas contra la API en vivo ("Club Sinergético" /
+// "Certificación LEGENDAR·IA"). Cualquier otra cosa (o null) cae a Club por
+// default, mismo comportamiento que ya existía antes de esta distinción.
+function esVentaDeCertificacion(producto: string | null | undefined): boolean {
+  return /legendar/i.test(producto ?? "");
+}
+
+// Mismo respaldo que inferirEventoYPaisDesdeTelefono, pero devolviendo una
+// región de Certificaciones en vez de un evento del Club — no hay tabla de
+// precios equivalente a PRECIOS_VSL para Certificaciones todavía (las 3
+// ventas reales vistas hasta ahora vienen sin monto/moneda, "sin
+// registrar"), así que aquí solo se adivina por teléfono; el admin
+// confirma región/monto al revisar.
+function inferirRegionCertificacionDesdeTelefono(telefono: string | null): RegionCertificacion {
+  const limpio = (telefono ?? "").replace(/[^\d+]/g, "");
+  if (limpio.startsWith("+52")) return "MX";
+  if (limpio.startsWith("+1")) return "US";
+  return "LATAM";
 }
 
 // Tabla de precios que mandó el director de VSL (monto + moneda → región +
@@ -125,54 +150,115 @@ export async function sincronizarSolicitudesVsl(): Promise<ResultadoSincronizarV
     }
 
     try {
-      // Si el correo ya es cliente aquí (alta manual, u otra vía), no hace
-      // falta pasar por Solicitudes — solo se le avisa a VSL que ya tiene
-      // acceso, para que deje de aparecer como pendiente de su lado.
-      const clienteExistente = await obtenerCliente(c.email.trim().toLowerCase());
-      if (clienteExistente) {
-        await marcarAccesoDadoVsl(c.leadId);
-        resultado.yaEranClientes++;
-        continue;
+      if (esVentaDeCertificacion(c.producto)) {
+        await procesarConversionCertificacion(c, resultado);
+      } else {
+        await procesarConversionClub(c, resultado);
       }
-
-      const yaExiste = await obtenerSolicitudPorLeadVsl(c.leadId);
-      if (yaExiste) {
-        resultado.saltadas++;
-        continue;
-      }
-
-      const solicitudId = randomUUID();
-      const detectado = detectarDesdeMontoYMoneda(c.monto, c.moneda);
-      const { evento, pais } = detectado ?? inferirEventoYPaisDesdeTelefono(c.telefono);
-      const tipoMembresia = detectado?.tipoMembresia ?? TIPO_MEMBRESIA_DEFAULT;
-      const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
-
-      await crearSolicitud({
-        id: solicitudId,
-        nombre: c.nombre,
-        correoPago: c.email,
-        correoAcceso: c.email,
-        telefono: c.telefono ?? "",
-        pais,
-        evento,
-        tipoMembresia,
-        comprobantes,
-        solicitadoPorId: await usuarioSyncId(),
-        solicitadoPorNombre: NOMBRE_USUARIO_SYNC,
-        leadIdVsl: c.leadId,
-      });
-      // La nota queda en la solicitud vía un segundo update — crearSolicitud
-      // no acepta notaRevision porque normalmente no aplica hasta revisar.
-      await supabase
-        .from("solicitudes_cliente")
-        .update({ nota_revision: notaParaRevisor(c, detectado != null) })
-        .eq("id", solicitudId);
-
-      resultado.creadas++;
     } catch {
       resultado.errores++;
     }
   }
 
   return resultado;
+}
+
+async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSincronizarVsl): Promise<void> {
+  // Si el correo ya es cliente aquí (alta manual, u otra vía), no hace
+  // falta pasar por Solicitudes — solo se le avisa a VSL que ya tiene
+  // acceso, para que deje de aparecer como pendiente de su lado.
+  const clienteExistente = await obtenerCliente(c.email.trim().toLowerCase());
+  if (clienteExistente) {
+    await marcarAccesoDadoVsl(c.leadId);
+    resultado.yaEranClientes++;
+    return;
+  }
+
+  const yaExiste = await obtenerSolicitudPorLeadVsl(c.leadId);
+  if (yaExiste) {
+    resultado.saltadas++;
+    return;
+  }
+
+  const solicitudId = randomUUID();
+  const detectado = detectarDesdeMontoYMoneda(c.monto, c.moneda);
+  const { evento, pais } = detectado ?? inferirEventoYPaisDesdeTelefono(c.telefono);
+  const tipoMembresia = detectado?.tipoMembresia ?? TIPO_MEMBRESIA_DEFAULT;
+  const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
+
+  await crearSolicitud({
+    id: solicitudId,
+    nombre: c.nombre,
+    correoPago: c.email,
+    correoAcceso: c.email,
+    telefono: c.telefono ?? "",
+    pais,
+    evento,
+    tipoMembresia,
+    comprobantes,
+    solicitadoPorId: await usuarioSyncId(),
+    solicitadoPorNombre: NOMBRE_USUARIO_SYNC,
+    leadIdVsl: c.leadId,
+  });
+  // La nota queda en la solicitud vía un segundo update — crearSolicitud no
+  // acepta notaRevision porque normalmente no aplica hasta revisar.
+  await supabase
+    .from("solicitudes_cliente")
+    .update({ nota_revision: notaParaRevisor(c, detectado != null) })
+    .eq("id", solicitudId);
+
+  resultado.creadas++;
+}
+
+// Mismo flujo que procesarConversionClub, pero hacia Certificaciones —
+// VSL también vende "Certificación LEGENDAR·IA", y esas conversiones deben
+// caer en las Solicitudes de Certificaciones, no en las del Club (ver
+// esVentaDeCertificacion). No hay tabla de precios confiable todavía para
+// Certificaciones (ver inferirRegionCertificacionDesdeTelefono), así que la
+// nota deja explícito que hace falta confirmar región/monto a mano.
+async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: ResultadoSincronizarVsl): Promise<void> {
+  const clienteExistente = await obtenerClienteCertificacion(c.email.trim().toLowerCase());
+  if (clienteExistente) {
+    await marcarAccesoDadoVsl(c.leadId);
+    resultado.yaEranClientes++;
+    return;
+  }
+
+  const yaExiste = await obtenerSolicitudCertificacionPorLeadVsl(c.leadId);
+  if (yaExiste) {
+    resultado.saltadas++;
+    return;
+  }
+
+  const solicitudId = randomUUID();
+  const region = inferirRegionCertificacionDesdeTelefono(c.telefono);
+  const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
+
+  const nota = [
+    `Detectado automático desde VSL — producto: "${c.producto}"`,
+    c.vendedor ? `vendedor: ${c.vendedor}` : null,
+    c.monto != null ? `monto: ${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
+    `fuente: ${c.fuenteVenta}`,
+    c.fechaVenta ? `vendido el ${new Date(c.fechaVenta).toLocaleDateString("es-MX")}` : null,
+    "⚠ Región adivinada por el código de país del teléfono — verificar antes de aprobar",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  await crearSolicitudCertificacion({
+    id: solicitudId,
+    nombre: c.nombre,
+    correo: c.email,
+    telefono: c.telefono ?? "",
+    region,
+    monto: c.monto != null ? `${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
+    notas: c.notas || null,
+    comprobantes,
+    solicitadoPorId: await usuarioSyncId(),
+    solicitadoPorNombre: NOMBRE_USUARIO_SYNC,
+    leadIdVsl: c.leadId,
+  });
+  await supabase.from("solicitudes_certificacion").update({ nota_revision: nota }).eq("id", solicitudId);
+
+  resultado.creadas++;
 }

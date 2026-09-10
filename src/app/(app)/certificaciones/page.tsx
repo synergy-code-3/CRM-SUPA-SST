@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import type {
@@ -38,6 +38,11 @@ export default function CertificacionesPage() {
   const [busqueda, setBusqueda] = useState("");
   const [sincronizando, setSincronizando] = useState(false);
   const [resultadoSync, setResultadoSync] = useState<ResultadoSincronizacionCertificacion | null>(null);
+  const [filtroEstado, setFiltroEstado] = useState<string[]>([]);
+  const [filtroRegion, setFiltroRegion] = useState<string[]>([]);
+  const [filtroTags, setFiltroTags] = useState<string[]>([]);
+  const [filtroEtiquetas, setFiltroEtiquetas] = useState<string[]>([]);
+  const [filtroVendedor, setFiltroVendedor] = useState<string[]>([]);
 
   const puedeGestionar = usuario ? tienePermiso(usuario.rol, "gestionarCertificaciones") : false;
   const puedeActualizar = usuario ? tienePermiso(usuario.rol, "actualizarCertificaciones") : false;
@@ -53,14 +58,52 @@ export default function CertificacionesPage() {
     cargar();
   }, []);
 
+  // Opciones de cada MultiSelect, derivadas de los clientes ya cargados —
+  // no hace falta un catálogo aparte (mismo dato con el que ya se filtra).
+  const opciones = useMemo(() => {
+    const lista = clientes ?? [];
+    const regiones = new Set<string>();
+    const tags = new Set<string>();
+    const etiquetas = new Set<string>();
+    const vendedores = new Set<string>();
+    for (const c of lista) {
+      if (c.region) regiones.add(REGION_CERTIFICACION_LABEL[c.region]);
+      c.tags.forEach((t) => tags.add(t));
+      c.etiquetas.forEach((e) => etiquetas.add(e));
+      if (c.vendedor) vendedores.add(c.vendedor);
+    }
+    const ordenar = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b));
+    return { regiones: ordenar(regiones), tags: ordenar(tags), etiquetas: ordenar(etiquetas), vendedores: ordenar(vendedores) };
+  }, [clientes]);
+
+  const hayFiltrosActivos =
+    filtroEstado.length > 0 ||
+    filtroRegion.length > 0 ||
+    filtroTags.length > 0 ||
+    filtroEtiquetas.length > 0 ||
+    filtroVendedor.length > 0;
+
+  function limpiarFiltros() {
+    setFiltroEstado([]);
+    setFiltroRegion([]);
+    setFiltroTags([]);
+    setFiltroEtiquetas([]);
+    setFiltroVendedor([]);
+  }
+
   const filtrados = useMemo(() => {
     if (!clientes) return [];
     const q = busqueda.trim().toLowerCase();
-    if (!q) return clientes;
-    return clientes.filter(
-      (c) => c.nombre.toLowerCase().includes(q) || (c.email ?? "").toLowerCase().includes(q)
-    );
-  }, [clientes, busqueda]);
+    return clientes.filter((c) => {
+      if (q && !c.nombre.toLowerCase().includes(q) && !(c.email ?? "").toLowerCase().includes(q)) return false;
+      if (filtroEstado.length > 0 && !filtroEstado.includes(ESTADO_LABEL[estadoReal(c)])) return false;
+      if (filtroRegion.length > 0 && (!c.region || !filtroRegion.includes(REGION_CERTIFICACION_LABEL[c.region]))) return false;
+      if (filtroTags.length > 0 && !c.tags.some((t) => filtroTags.includes(t))) return false;
+      if (filtroEtiquetas.length > 0 && !c.etiquetas.some((e) => filtroEtiquetas.includes(e))) return false;
+      if (filtroVendedor.length > 0 && !(c.vendedor && filtroVendedor.includes(c.vendedor))) return false;
+      return true;
+    });
+  }, [clientes, busqueda, filtroEstado, filtroRegion, filtroTags, filtroEtiquetas, filtroVendedor]);
 
   async function abrirSincronizar() {
     setSincronizando(true);
@@ -125,6 +168,55 @@ export default function CertificacionesPage() {
           className="w-full rounded-lg border border-silver bg-surface-2 py-1.5 pl-9 pr-3 text-sm outline-none ring-primary/30 focus:ring-2"
         />
       </div>
+
+      <div className="shell rounded-[1.5rem] p-2 diffused">
+        <div className="core flex flex-wrap items-center gap-2 rounded-[calc(1.5rem-0.5rem)] p-3.5">
+          <MultiSelect
+            label="estados"
+            todasLabel="Todos los estados"
+            opciones={Object.values(ESTADO_LABEL)}
+            seleccion={filtroEstado}
+            onChange={setFiltroEstado}
+          />
+          <MultiSelect
+            label="regiones"
+            todasLabel="Todas las regiones"
+            opciones={opciones.regiones}
+            seleccion={filtroRegion}
+            onChange={setFiltroRegion}
+          />
+          <MultiSelect
+            label="certificaciones"
+            todasLabel="Todas las certificaciones"
+            opciones={opciones.etiquetas}
+            seleccion={filtroEtiquetas}
+            onChange={setFiltroEtiquetas}
+          />
+          <MultiSelect label="tags" todasLabel="Todos los tags" opciones={opciones.tags} seleccion={filtroTags} onChange={setFiltroTags} />
+          <MultiSelect
+            label="vendedores"
+            todasLabel="Todos los vendedores"
+            opciones={opciones.vendedores}
+            seleccion={filtroVendedor}
+            onChange={setFiltroVendedor}
+          />
+          {hayFiltrosActivos && (
+            <button
+              onClick={limpiarFiltros}
+              className="ease-spring ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-danger/10 hover:text-danger"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {clientes !== null && (
+        <p className="text-xs text-muted">
+          {filtrados.length} de {clientes.length} clientes
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-silver">
         <table className="w-full text-sm">
@@ -352,6 +444,118 @@ function RevisionSincronizacion({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Mismo componente/patrón que MultiSelect en /clientes (Club) — copiado en
+// vez de compartido a propósito, mientras esta sección sigue chica y con
+// sus propias opciones (regiones/tags/etiquetas propios de Certificaciones).
+function MultiSelect({
+  label,
+  todasLabel,
+  opciones,
+  seleccion,
+  onChange,
+}: {
+  label: string;
+  todasLabel: string;
+  opciones: string[];
+  seleccion: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickFuera(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false);
+    }
+    document.addEventListener("mousedown", onClickFuera);
+    return () => document.removeEventListener("mousedown", onClickFuera);
+  }, []);
+
+  useEffect(() => {
+    if (!abierto) setBusqueda("");
+  }, [abierto]);
+
+  function toggle(op: string) {
+    onChange(seleccion.includes(op) ? seleccion.filter((s) => s !== op) : [...seleccion, op]);
+  }
+
+  const opcionesFiltradas = busqueda.trim()
+    ? opciones.filter((op) => op.toLowerCase().includes(busqueda.trim().toLowerCase()))
+    : opciones;
+
+  const texto = seleccion.length === 0 ? todasLabel : seleccion.length === 1 ? seleccion[0] : `${seleccion.length} ${label}`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setAbierto((a) => !a)}
+        className={`ease-spring flex max-w-[180px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+          seleccion.length > 0
+            ? "border-primary bg-primary-dim text-primary-deep"
+            : "border-silver bg-surface-2 text-muted hover:border-silver-deep hover:text-foreground"
+        }`}
+      >
+        <span className="truncate">{texto}</span>
+        <ChevronDown className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+      </button>
+
+      {abierto && (
+        <div className="animate-fade-in-fast absolute left-0 top-[calc(100%+6px)] z-20 w-64 rounded-xl border border-silver bg-surface p-1.5 shadow-xl">
+          {opciones.length > 5 && (
+            <div className="relative mb-1.5">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+              <input
+                autoFocus
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder={`Buscar ${label}…`}
+                className="w-full rounded-lg border border-silver bg-surface-2 py-1.5 pl-8 pr-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          )}
+          <div className="max-h-56 overflow-y-auto">
+            {seleccion.length > 0 && (
+              <button
+                onClick={() => onChange([])}
+                className="ease-spring mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-danger transition hover:bg-danger/10"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+                Limpiar selección
+              </button>
+            )}
+            {opcionesFiltradas.length === 0 ? (
+              <p className="px-2.5 py-2 text-xs text-muted">{opciones.length === 0 ? "Sin opciones disponibles." : "Sin resultados."}</p>
+            ) : (
+              opcionesFiltradas.map((op) => {
+                const activo = seleccion.includes(op);
+                return (
+                  <button
+                    key={op}
+                    onClick={() => toggle(op)}
+                    className={`ease-spring flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                      activo ? "bg-primary-dim text-primary-deep font-medium" : "text-foreground hover:bg-surface-2"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-4 w-4 flex-none items-center justify-center rounded border ${
+                        activo ? "border-primary bg-primary text-white" : "border-silver"
+                      }`}
+                    >
+                      {activo && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                    <span className="truncate">{op}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
