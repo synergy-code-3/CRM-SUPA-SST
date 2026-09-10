@@ -6,6 +6,7 @@ import Image from "next/image";
 import { KeyRound, Plus, Search, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import type { Rol } from "@/lib/permisos";
+import { FotoAmpliada } from "@/components/FotoAmpliada";
 
 type Usuario = {
   id: string;
@@ -319,6 +320,7 @@ function PerfilUsuarioDetalle({
   onCambiarRol: (rol: Rol) => void;
 }) {
   const pendiente = esPendienteDeAprobar(usuario);
+  const [fotoAmpliada, setFotoAmpliada] = useState(false);
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
@@ -337,7 +339,17 @@ function PerfilUsuarioDetalle({
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <Avatar usuario={usuario} tamano={20} />
+            {usuario.foto_url ? (
+              <button
+                onClick={() => setFotoAmpliada(true)}
+                title="Ver foto en grande"
+                className="ease-spring rounded-full transition hover:opacity-80"
+              >
+                <Avatar usuario={usuario} tamano={20} />
+              </button>
+            ) : (
+              <Avatar usuario={usuario} tamano={20} />
+            )}
             {pendiente && (
               <p className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning">
                 Pendiente de aprobar
@@ -412,6 +424,10 @@ function PerfilUsuarioDetalle({
           )}
         </div>
       </div>
+
+      {fotoAmpliada && usuario.foto_url && (
+        <FotoAmpliada url={usuario.foto_url} alt={usuario.nombre} onClose={() => setFotoAmpliada(false)} />
+      )}
     </div>
   );
 }

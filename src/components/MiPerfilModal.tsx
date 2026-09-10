@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone } from "lucide-react";
+import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone, Expand } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { useTema, type Tema } from "@/lib/theme-context";
 import type { Rol } from "@/lib/permisos";
+import { FotoAmpliada } from "./FotoAmpliada";
 
 const OPCIONES_TEMA: { valor: Tema; label: string; icon: typeof Sun }[] = [
   { valor: "light", label: "Claro", icon: Sun },
@@ -31,6 +32,7 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
   // teléfono guardado.
   const [telefonos, setTelefonos] = useState<string[]>(usuario?.telefonos.length ? usuario.telefonos : [""]);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [fotoAmpliada, setFotoAmpliada] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
@@ -108,24 +110,36 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              disabled={subiendoFoto}
-              className="ease-spring group relative h-20 w-20 overflow-hidden rounded-full border border-silver bg-surface-2 transition disabled:opacity-60"
-              title="Cambiar foto"
-            >
-              {usuario.fotoUrl ? (
-                <Image src={usuario.fotoUrl} alt="Foto de perfil" width={80} height={80} unoptimized className="h-full w-full object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-muted">
-                  <UserRound className="h-8 w-8" strokeWidth={1.5} />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                disabled={subiendoFoto}
+                className="ease-spring group relative h-20 w-20 overflow-hidden rounded-full border border-silver bg-surface-2 transition disabled:opacity-60"
+                title="Cambiar foto"
+              >
+                {usuario.fotoUrl ? (
+                  <Image src={usuario.fotoUrl} alt="Foto de perfil" width={80} height={80} unoptimized className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-muted">
+                    <UserRound className="h-8 w-8" strokeWidth={1.5} />
+                  </span>
+                )}
+                <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 text-white opacity-0 transition group-hover:bg-foreground/40 group-hover:opacity-100">
+                  <Camera className="h-5 w-5" strokeWidth={1.75} />
                 </span>
+              </button>
+              {usuario.fotoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setFotoAmpliada(true)}
+                  title="Ver foto en grande"
+                  className="ease-spring absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-silver bg-surface text-muted shadow-sm transition hover:text-foreground"
+                >
+                  <Expand className="h-3 w-3" strokeWidth={2} />
+                </button>
               )}
-              <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 text-white opacity-0 transition group-hover:bg-foreground/40 group-hover:opacity-100">
-                <Camera className="h-5 w-5" strokeWidth={1.75} />
-              </span>
-            </button>
+            </div>
             <input
               ref={inputRef}
               type="file"
@@ -229,6 +243,10 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      {fotoAmpliada && usuario.fotoUrl && (
+        <FotoAmpliada url={usuario.fotoUrl} alt={usuario.nombre} onClose={() => setFotoAmpliada(false)} />
+      )}
     </div>
   );
 }
