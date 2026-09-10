@@ -1245,9 +1245,27 @@ export async function actualizarDatosCliente(
   // ahí, lo hace manual con el botón "Enviar" que ya existe.
   const advertenciasEmail: string[] = [];
   if (emailCambio) {
-    if (clienteFinal.kajabiContactId) {
+    // Si todavía no hay kajabi_contact_id vinculado (ej. clientes del CSV
+    // histórico que nunca se reconciliaron), no hay que rendirse de una vez
+    // — se busca el contacto real en Kajabi por el correo VIEJO antes de
+    // seguir. Sin este paso, el correo se actualizaba en el CRM pero nunca
+    // en Kajabi (en silencio, sin aviso), y una acción posterior sobre ese
+    // cliente (Renovar/Activar oferta) terminaba creando un contacto
+    // duplicado en Kajabi al buscar por el correo nuevo y no encontrar al
+    // real — pasó de verdad con aletatponcee@hotmail.com → laxmiifloores@
+    // gmail.com (9-sep-2026), corregido a mano esa vez.
+    let kajabiContactId = clienteFinal.kajabiContactId;
+    if (!kajabiContactId) {
+      kajabiContactId = await buscarContactoPorCorreo(anterior.email).catch(() => null);
+      if (kajabiContactId) {
+        await vincularKajabiContactId(id, kajabiContactId);
+        clienteFinal = { ...clienteFinal, kajabiContactId };
+      }
+    }
+
+    if (kajabiContactId) {
       try {
-        await actualizarCorreoContacto(clienteFinal.kajabiContactId, nuevoEmail);
+        await actualizarCorreoContacto(kajabiContactId, nuevoEmail);
       } catch (err) {
         advertenciasEmail.push(
           `No se pudo actualizar el correo en Kajabi: ${err instanceof Error ? err.message : "error desconocido"}`
