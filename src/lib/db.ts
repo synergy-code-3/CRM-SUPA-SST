@@ -212,7 +212,15 @@ function aplicarFiltrosClientes<
   },
 >(query: Q, opciones?: FiltrosClientes): Q {
   const ahora = new Date().toISOString();
-  const vigencia = opciones?.vigencia ?? "actuales";
+  // "actuales" era el default hasta ahora, pero no hay ningún control en la
+  // interfaz que exponga este filtro — se aplicaba siempre, en silencio.
+  // Eso ocultaba de la lista a clientes con fecha_inscripcion futura por
+  // razones legítimas del CSV histórico (el sheet viejo le sumaba 1 año a
+  // esa fecha en cada renovación en vez de usar un campo aparte — ver
+  // finAccesoCalculado en fechas.ts), no solo pre-registros de verdad.
+  // "todos" no oculta a nadie por default; "futuros"/"actuales" se quedan
+  // disponibles si algún día se conecta un control real en la UI.
+  const vigencia = opciones?.vigencia ?? "todos";
 
   for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email", "telefono"])) query = query.or(clausula);
 
