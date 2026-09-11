@@ -98,7 +98,7 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
-        <div className="core rounded-[calc(2rem-0.5rem)] p-6">
+        <div className="core max-h-[90vh] overflow-y-auto rounded-[calc(2rem-0.5rem)] p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">Mi perfil</h2>
             <button
@@ -171,7 +171,12 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <span className="mb-1 block text-xs font-medium text-muted">Teléfono(s)</span>
-              <div className="space-y-2">
+              {/* Alto máximo + scroll interno — antes esta lista crecía sin
+                  límite y, con varios números, empujaba el botón de
+                  "Guardar" fuera de la pantalla (le pasaba a las abejas que
+                  usan muchos teléfonos). El botón de "Agregar" se queda
+                  fuera de esta cajita, siempre visible. */}
+              <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
                 {telefonos.map((t, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <input
