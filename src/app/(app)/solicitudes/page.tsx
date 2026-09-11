@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Check, ExternalLink, Pencil, Sparkles, X } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
-import type { EstadoSolicitud, SolicitudCliente } from "@/lib/types";
+import type { Cliente, EstadoSolicitud, SolicitudCliente } from "@/lib/types";
 import { FormularioSolicitudCliente } from "@/components/FormularioSolicitudCliente";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 
@@ -66,6 +67,9 @@ export default function SolicitudesPage() {
     id: string;
     clienteExistente: { id: string; nombre: string; accesoPlataforma: string | null; pausadoEn: string | null };
   } | null>(null);
+  // Perfil completo del cliente que ya existe, para mostrarlo a un lado de
+  // las opciones — así se decide sin tener que abrir su perfil aparte.
+  const [perfilExistente, setPerfilExistente] = useState<Cliente | null>(null);
   // Cuadro de solo lectura con los datos capturados en el formulario —
   // no es el perfil del cliente, solo lo que mandó la vendedora.
   const [verSolicitud, setVerSolicitud] = useState<SolicitudConUrls | null>(null);
@@ -82,6 +86,25 @@ export default function SolicitudesPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    if (!modoSolicitud) {
+      setPerfilExistente(null);
+      return;
+    }
+    let cancelado = false;
+    fetch(`/api/clientes/${encodeURIComponent(modoSolicitud.clienteExistente.id)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelado) setPerfilExistente(data.cliente ?? null);
+      })
+      .catch(() => {
+        if (!cancelado) setPerfilExistente(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [modoSolicitud]);
 
   useEffect(() => {
     if (!puedeRevisar) return;
@@ -425,58 +448,62 @@ export default function SolicitudesPage() {
 
       {modoSolicitud && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-silver bg-surface p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-foreground">Este correo ya es cliente del CRM</h3>
-            <p className="mt-1 text-sm text-muted">
-              {modoSolicitud.clienteExistente.nombre} —{" "}
-              {modoSolicitud.clienteExistente.pausadoEn ||
-              !["si", "renovación"].includes(
-                (modoSolicitud.clienteExistente.accesoPlataforma ?? "").trim().toLowerCase()
-              )
-                ? "membresía inactiva"
-                : "membresía activa"}
-              . ¿Qué quieres hacer con la solicitud?
-            </p>
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => enviarAprobacion(modoSolicitud.id, "renovacion")}
-                disabled={procesando === modoSolicitud.id}
-                className="ease-spring w-full rounded-lg bg-success/15 px-3 py-2 text-left text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
-              >
-                Renovación — igual que el botón &quot;Renovar membresía&quot;
-              </button>
-              {(solicitudes?.find((s) => s.id === modoSolicitud.id)?.etiqueta ?? "").trim().toLowerCase() ===
-                "black access" && (
+          <div className="grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="max-h-[85vh] overflow-y-auto rounded-2xl border border-silver bg-surface p-5 shadow-xl">
+              <h3 className="text-sm font-semibold text-foreground">Este correo ya es cliente del CRM</h3>
+              <p className="mt-1 text-sm text-muted">
+                {modoSolicitud.clienteExistente.nombre} —{" "}
+                {modoSolicitud.clienteExistente.pausadoEn ||
+                !["si", "renovación"].includes(
+                  (modoSolicitud.clienteExistente.accesoPlataforma ?? "").trim().toLowerCase()
+                )
+                  ? "membresía inactiva"
+                  : "membresía activa"}
+                . ¿Qué quieres hacer con la solicitud?
+              </p>
+              <div className="mt-4 space-y-2">
                 <button
-                  onClick={() => enviarAprobacion(modoSolicitud.id, "black_access")}
+                  onClick={() => enviarAprobacion(modoSolicitud.id, "renovacion")}
+                  disabled={procesando === modoSolicitud.id}
+                  className="ease-spring w-full rounded-lg bg-success/15 px-3 py-2 text-left text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
+                >
+                  Renovación — igual que el botón &quot;Renovar membresía&quot;
+                </button>
+                {(solicitudes?.find((s) => s.id === modoSolicitud.id)?.etiqueta ?? "").trim().toLowerCase() ===
+                  "black access" && (
+                  <button
+                    onClick={() => enviarAprobacion(modoSolicitud.id, "black_access")}
+                    disabled={procesando === modoSolicitud.id}
+                    className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                  >
+                    Agregar Black Access — suma un acceso Black + 3 meses de Skool a lo que ya tenía
+                  </button>
+                )}
+                <button
+                  onClick={() => enviarAprobacion(modoSolicitud.id, "activar")}
                   disabled={procesando === modoSolicitud.id}
                   className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
                 >
-                  Agregar Black Access — suma un acceso Black + 3 meses de Skool a lo que ya tenía
+                  Solo activar su membresía — igual que el botón &quot;Activar oferta&quot;
                 </button>
-              )}
-              <button
-                onClick={() => enviarAprobacion(modoSolicitud.id, "activar")}
-                disabled={procesando === modoSolicitud.id}
-                className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
-              >
-                Solo activar su membresía — igual que el botón &quot;Activar oferta&quot;
-              </button>
-              <button
-                onClick={() => enviarAprobacion(modoSolicitud.id, "sin_cambios")}
-                disabled={procesando === modoSolicitud.id}
-                className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
-              >
-                Aprobar sin tocar el CRM — lo resuelvo yo a mano
-              </button>
-              <button
-                onClick={() => setModoSolicitud(null)}
-                disabled={procesando === modoSolicitud.id}
-                className="ease-spring w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-40"
-              >
-                Cancelar
-              </button>
+                <button
+                  onClick={() => enviarAprobacion(modoSolicitud.id, "sin_cambios")}
+                  disabled={procesando === modoSolicitud.id}
+                  className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                >
+                  Aprobar sin tocar el CRM — lo resuelvo yo a mano
+                </button>
+                <button
+                  onClick={() => setModoSolicitud(null)}
+                  disabled={procesando === modoSolicitud.id}
+                  className="ease-spring w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
+
+            <PerfilExistenteResumen cliente={perfilExistente} />
           </div>
         </div>
       )}
@@ -564,6 +591,82 @@ export default function SolicitudesPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Perfil del cliente que ya existe, a un lado del cuadro de decisión de
+// modoSolicitud — para que el admin no tenga que abrir el perfil aparte
+// (en otra pestaña/ventana) para decidir qué opción tomar.
+function PerfilExistenteResumen({ cliente }: { cliente: Cliente | null }) {
+  if (!cliente) {
+    return (
+      <div className="flex max-h-[85vh] items-center justify-center rounded-2xl border border-silver bg-surface p-5 shadow-xl">
+        <p className="text-sm text-muted">Cargando perfil…</p>
+      </div>
+    );
+  }
+
+  const chips = [
+    ...cliente.accesos.general.map((a) => `${a.cantidad} General${a.variante ? ` ${a.variante}` : ""}`),
+    ...cliente.accesos.vip.map((a) => `${a.cantidad} VIP${a.variante ? ` ${a.variante}` : ""}`),
+    ...cliente.accesos.black.map((a) => `${a.cantidad} Black`),
+  ];
+
+  return (
+    <div className="max-h-[85vh] overflow-y-auto rounded-2xl border border-silver bg-surface p-5 shadow-xl">
+      <h3 className="text-sm font-semibold text-foreground">Perfil actual</h3>
+      <p className="text-xs text-muted">{cliente.nombre}</p>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
+        <DatoSolicitud label="Correo" valor={cliente.email} />
+        <DatoSolicitud label="Teléfono" valor={cliente.telefono} />
+        <DatoSolicitud label="País" valor={cliente.pais} />
+        <DatoSolicitud label="Evento" valor={cliente.evento} />
+        <DatoSolicitud label="Tipo de membresía" valor={cliente.tipoMembresia} />
+        <DatoSolicitud label="Etiqueta" valor={cliente.etiqueta} />
+        <DatoSolicitud label="Acceso a plataforma" valor={cliente.accesoPlataforma} />
+        <DatoSolicitud label="Pausado" valor={cliente.pausadoEn ? new Date(cliente.pausadoEn).toLocaleDateString("es-MX") : null} />
+        <DatoSolicitud
+          label="Fecha de inscripción"
+          valor={cliente.fechaInscripcion ? new Date(cliente.fechaInscripcion).toLocaleDateString("es-MX") : null}
+        />
+        <DatoSolicitud
+          label="Fecha de renovación"
+          valor={cliente.fechaRenovacion ? new Date(cliente.fechaRenovacion).toLocaleDateString("es-MX") : null}
+        />
+      </div>
+
+      <div className="mt-3">
+        <p className="text-xs font-medium text-muted">Boletos actuales</p>
+        {chips.length === 0 ? (
+          <p className="text-xs text-foreground">Ninguno</p>
+        ) : (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {chips.map((c) => (
+              <span key={c} className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {cliente.notas && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-muted">Notas</p>
+          <p className="whitespace-pre-wrap rounded-lg bg-surface-2 p-2.5 text-xs text-foreground">{cliente.notas}</p>
+        </div>
+      )}
+
+      <Link
+        href="/clientes"
+        target="_blank"
+        className="ease-spring mt-4 flex items-center justify-center gap-1.5 rounded-lg border border-silver px-3 py-2 text-xs font-medium text-foreground transition hover:bg-surface-2"
+      >
+        Buscarlo en Clientes (pestaña nueva)
+        <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+      </Link>
     </div>
   );
 }
