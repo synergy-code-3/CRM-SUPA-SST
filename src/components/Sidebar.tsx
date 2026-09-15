@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -311,12 +311,29 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
     }
   }
 
+  // urgente = ventana emergente en tonos rojo (ej. "correo inválido" en una
+  // solicitud, ver marcarSolicitudCorreoInvalido en solicitudes.ts) — el
+  // resto del comportamiento (cola, confirmar "Enterado") no cambia.
+  const urgente = aviso.urgente;
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground/40 p-6 backdrop-blur-[2px]">
-      <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
+    <div
+      className={`fixed inset-0 z-[80] flex items-center justify-center p-6 backdrop-blur-[2px] ${
+        urgente ? "bg-danger/20" : "bg-foreground/40"
+      }`}
+    >
+      <div
+        className={`shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in ${
+          urgente ? "ring-2 ring-danger/60" : ""
+        }`}
+      >
         <div className="core rounded-[calc(2rem-0.5rem)] p-6">
-          <div className="mb-3 flex items-center gap-2 text-primary">
-            <Megaphone className="h-5 w-5 flex-none" strokeWidth={1.75} />
+          <div className={`mb-3 flex items-center gap-2 ${urgente ? "text-danger" : "text-primary"}`}>
+            {urgente ? (
+              <AlertTriangle className="h-5 w-5 flex-none" strokeWidth={1.75} />
+            ) : (
+              <Megaphone className="h-5 w-5 flex-none" strokeWidth={1.75} />
+            )}
             <h2 className="text-base font-semibold text-foreground">{aviso.titulo}</h2>
           </div>
           <p className="mb-2 text-xs text-muted">
@@ -324,7 +341,11 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
           </p>
           <p className="mb-5 whitespace-pre-wrap text-sm text-foreground">{aviso.mensaje}</p>
 
-          <label className="ease-spring mb-4 flex items-center gap-2 rounded-xl border border-silver bg-surface-2 px-3 py-2.5 text-sm font-medium text-foreground">
+          <label
+            className={`ease-spring mb-4 flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium text-foreground ${
+              urgente ? "border-danger/40 bg-danger/10" : "border-silver bg-surface-2"
+            }`}
+          >
             <input
               type="checkbox"
               checked={enterado}
@@ -338,7 +359,9 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
           {enterado && (
             <button
               onClick={onCerrar}
-              className="ease-spring w-full rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
+              className={`ease-spring w-full rounded-xl px-4 py-2.5 text-sm font-medium text-white transition ${
+                urgente ? "bg-danger hover:bg-danger/90" : "brand-plate"
+              }`}
             >
               Cerrar
             </button>

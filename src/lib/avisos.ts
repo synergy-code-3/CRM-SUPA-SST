@@ -10,6 +10,8 @@ type AvisoRow = {
   creado_en: string;
   editado_en: string | null;
   solo_admin: boolean;
+  destinatario_id: string | null;
+  urgente: boolean;
 };
 
 type ConfirmacionRow = {
@@ -30,6 +32,8 @@ function filaAAviso(row: AvisoRow, confirmaciones: AvisoConfirmacion[] | null): 
     editadoEn: row.editado_en,
     confirmaciones,
     soloAdmin: row.solo_admin,
+    destinatarioId: row.destinatario_id,
+    urgente: row.urgente,
   };
 }
 
@@ -66,10 +70,27 @@ export async function listarAvisos(paraAdmin: boolean): Promise<Aviso[]> {
   return filas.map((f) => filaAAviso(f, porAviso.get(f.id) ?? []));
 }
 
-export async function crearAviso(titulo: string, mensaje: string, autorId: string, autorNombre: string): Promise<Aviso> {
+// destinatarioId/urgente opcionales: ver comentario en el tipo Aviso
+// (types.ts) — un aviso dirigido solo le llega a esa persona, ignorando
+// soloAdmin, y opcionalmente se muestra en tonos rojo/urgente (ej. "correo
+// inválido" en una solicitud, ver marcarSolicitudCorreoInvalido).
+export async function crearAviso(
+  titulo: string,
+  mensaje: string,
+  autorId: string,
+  autorNombre: string,
+  opciones?: { destinatarioId?: string | null; urgente?: boolean }
+): Promise<Aviso> {
   const { data, error } = await supabase
     .from("avisos")
-    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: autorId, autor_nombre: autorNombre })
+    .insert({
+      titulo: titulo.trim(),
+      mensaje: mensaje.trim(),
+      autor_id: autorId,
+      autor_nombre: autorNombre,
+      destinatario_id: opciones?.destinatarioId ?? null,
+      urgente: opciones?.urgente ?? false,
+    })
     .select("*")
     .single();
   if (error) throw error;
@@ -122,12 +143,18 @@ export async function listarAvisosPendientes(usuarioId: string, esAdmin: boolean
   // verdadero, así que un aviso generado por el sistema (autor_id null, ver
   // crearAvisoAutomatico) quedaría invisible para todos si se usa un .neq
   // simple — hay que incluir explícitamente el caso "sin autor".
-  let query = supabase
+  //
+  // Un aviso con destinatario_id le llega SOLO a ese usuario (ignora
+  // soloAdmin y el filtro de autor de abajo) — el resto sigue el
+  // comportamiento normal de transmisión por rol (destinatario_id is null).
+  const dirigidoAMi = `destinatario_id.eq.${usuarioId}`;
+  const broadcast = [`destinatario_id.is.null`, `or(autor_id.is.null,autor_id.neq.${usuarioId})`];
+  if (!esAdmin) broadcast.push(`solo_admin.eq.false`);
+  const query = supabase
     .from("avisos")
     .select("*")
-    .or(`autor_id.is.null,autor_id.neq.${usuarioId}`)
+    .or(`${dirigidoAMi},and(${broadcast.join(",")})`)
     .order("creado_en", { ascending: true });
-  if (!esAdmin) query = query.eq("solo_admin", false);
   const { data: avisos, error } = await query;
   if (error) throw error;
   const filas = (avisos ?? []) as AvisoRow[];

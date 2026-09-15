@@ -6,7 +6,7 @@ import { crearSolicitud, listarSolicitudes } from "@/lib/solicitudes";
 import { subirComprobante, urlFirmadaComprobante } from "@/lib/storage";
 import type { EstadoSolicitud } from "@/lib/types";
 
-const ESTADOS_VALIDOS: EstadoSolicitud[] = ["pendiente", "aprobada", "rechazada"];
+const ESTADOS_VALIDOS: EstadoSolicitud[] = ["pendiente", "aprobada", "rechazada", "correo_invalido"];
 
 export async function GET(req: NextRequest) {
   const permiso = await requerirPermiso("solicitarCliente");

@@ -1,3 +1,4 @@
+import { crearAviso } from "@/lib/avisos";
 import { supabase } from "@/lib/supabase";
 import type { EstadoSolicitud, SolicitudCliente } from "@/lib/types";
 
@@ -162,6 +163,19 @@ export async function contarSolicitudesPendientes(): Promise<number> {
   return count ?? 0;
 }
 
+// Misma burbuja de "Solicitudes", pero para quien NO revisa (abeja/
+// coordinador): cuántas de SUS PROPIAS solicitudes están marcadas "correo
+// inválido" y todavía no corrige/reenvía — ver GET /api/notificaciones/pendientes.
+export async function contarSolicitudesInvalidasPropias(usuarioId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("solicitudes_cliente")
+    .select("id", { count: "exact", head: true })
+    .eq("estado", "correo_invalido")
+    .eq("solicitado_por_id", usuarioId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function obtenerSolicitud(id: string): Promise<SolicitudCliente | null> {
   const { data, error } = await supabase.from("solicitudes_cliente").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
@@ -202,6 +216,97 @@ export async function marcarSolicitudRechazada(
       revisado_en: new Date().toISOString(),
     })
     .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaASolicitud(data as SolicitudRow);
+}
+
+// Rechazo específico y reversible: el correo capturado está mal. A
+// diferencia de marcarSolicitudRechazada (que cierra la solicitud), esta
+// además le manda al vendedor que la creó un aviso dirigido (ventana
+// emergente en rojo, ver AvisoPendienteModal) para que la corrija desde
+// "Solicitudes inválidas" — ver reenviarSolicitudInvalida abajo, que la
+// regresa a "pendiente".
+export async function marcarSolicitudCorreoInvalido(
+  id: string,
+  nota: string,
+  revisor: { id: string; nombre: string }
+): Promise<SolicitudCliente> {
+  const { data, error } = await supabase
+    .from("solicitudes_cliente")
+    .update({
+      estado: "correo_invalido",
+      nota_revision: nota,
+      revisado_por: revisor.nombre,
+      revisado_en: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  const solicitud = filaASolicitud(data as SolicitudRow);
+
+  await crearAviso(
+    "Correo inválido en tu solicitud",
+    `La solicitud de ${solicitud.nombre} tiene un correo inválido: "${nota}". Corrígelo desde Solicitudes → "Solicitudes inválidas".`,
+    revisor.id,
+    revisor.nombre,
+    { destinatarioId: solicitud.solicitadoPorId, urgente: true }
+  );
+
+  return solicitud;
+}
+
+// El vendedor corrige su propia solicitud marcada "correo_invalido" y la
+// reenvía a revisión — vuelve a "pendiente" y se limpia la nota del admin
+// (ya no aplica, es una solicitud nueva desde el punto de vista de la
+// revisión). Ownership estricto: solo el vendedor que la creó puede
+// reenviarla, y solo si sigue en "correo_invalido" (si un admin ya la
+// rechazó de verdad o la aprobó por otro lado, no se puede "reabrir").
+export async function reenviarSolicitudInvalida(
+  id: string,
+  usuarioId: string,
+  cambios: {
+    nombre?: string;
+    correoPago?: string;
+    correoAcceso?: string;
+    telefono?: string;
+    pais?: string | null;
+    evento?: string;
+    tipoMembresia?: string;
+    etiqueta?: string | null;
+    notas?: string | null;
+  }
+): Promise<SolicitudCliente> {
+  const actual = await obtenerSolicitud(id);
+  if (!actual) throw new Error("Solicitud no encontrada");
+  if (actual.solicitadoPorId !== usuarioId) throw new Error("Esta solicitud no te pertenece");
+  if (actual.estado !== "correo_invalido") throw new Error("Esta solicitud no está marcada como correo inválido");
+
+  const patch: Record<string, string | null> = {};
+  if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim();
+  if (cambios.correoPago !== undefined) patch.correo_pago = cambios.correoPago.trim().toLowerCase();
+  if (cambios.correoAcceso !== undefined) patch.correo_acceso = cambios.correoAcceso.trim().toLowerCase();
+  if (cambios.telefono !== undefined) patch.telefono = cambios.telefono.trim();
+  if (cambios.pais !== undefined) patch.pais = cambios.pais?.trim() || null;
+  if (cambios.evento !== undefined) patch.evento = cambios.evento.trim();
+  if (cambios.tipoMembresia !== undefined) patch.tipo_membresia = cambios.tipoMembresia.trim();
+  if (cambios.etiqueta !== undefined) patch.etiqueta = cambios.etiqueta?.trim() || null;
+  if (cambios.notas !== undefined) patch.notas = cambios.notas?.trim() || null;
+
+  const { data, error } = await supabase
+    .from("solicitudes_cliente")
+    .update({
+      ...patch,
+      estado: "pendiente",
+      nota_revision: null,
+      revisado_por: null,
+      revisado_en: null,
+    })
+    .eq("id", id)
+    .eq("solicitado_por_id", usuarioId)
+    .eq("estado", "correo_invalido")
     .select("*")
     .single();
   if (error) throw error;

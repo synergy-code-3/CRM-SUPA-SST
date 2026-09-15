@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { obtenerUsuarioActual } from "@/lib/auth";
 import { contarAvisosPendientes } from "@/lib/avisos";
 import { tienePermiso } from "@/lib/permisos";
-import { contarSolicitudesPendientes } from "@/lib/solicitudes";
+import { contarSolicitudesInvalidasPropias, contarSolicitudesPendientes } from "@/lib/solicitudes";
 import { contarSolicitudesCertificacionPendientes } from "@/lib/solicitudes-certificacion";
 import { supabase } from "@/lib/supabase";
 
@@ -16,7 +16,12 @@ export async function GET() {
   if (!usuario) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const [solicitudes, solicitudesCertificacion, usuarios, avisos] = await Promise.all([
-    tienePermiso(usuario.rol, "revisarSolicitudes") ? contarSolicitudesPendientes() : Promise.resolve(0),
+    // Para quien revisa, la burbuja cuenta pendientes de TODOS; para quien
+    // no, cuenta sus propias solicitudes marcadas "correo inválido" (algo
+    // que sí le toca a él resolver en esta misma página).
+    tienePermiso(usuario.rol, "revisarSolicitudes")
+      ? contarSolicitudesPendientes()
+      : contarSolicitudesInvalidasPropias(usuario.id),
     tienePermiso(usuario.rol, "revisarSolicitudesCertificacion")
       ? contarSolicitudesCertificacionPendientes()
       : Promise.resolve(0),

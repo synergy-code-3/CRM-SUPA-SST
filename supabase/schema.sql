@@ -601,3 +601,24 @@ create table if not exists solicitudes_certificacion (
 create index if not exists idx_solicitudes_certificacion_estado on solicitudes_certificacion (estado, creado_en desc);
 create index if not exists idx_solicitudes_certificacion_solicitado_por on solicitudes_certificacion (solicitado_por_id);
 alter table solicitudes_certificacion enable row level security;
+
+-- Nuevo estado para solicitudes del Club con correo inválido detectado por
+-- un admin (ver marcarSolicitudCorreoInvalido en solicitudes.ts) — el
+-- vendedor la corrige y reenvía desde "/solicitudes" (sección "Solicitudes
+-- inválidas") → vuelve a 'pendiente'. Solo aplica a solicitudes_cliente
+-- (Club), no a solicitudes_certificacion.
+alter table solicitudes_cliente drop constraint if exists solicitudes_cliente_estado_check;
+alter table solicitudes_cliente add constraint solicitudes_cliente_estado_check
+  check (estado in ('pendiente', 'aprobada', 'rechazada', 'correo_invalido'));
+
+-- Aviso dirigido a un solo usuario (ej. "tu solicitud tiene correo
+-- inválido") en vez de transmitido a todos/admins — null mantiene el
+-- comportamiento actual (broadcast por rol vía solo_admin). Un aviso con
+-- destinatario_id IGNORA solo_admin: se le muestra solo a esa persona (ver
+-- listarAvisosPendientes en avisos.ts).
+alter table avisos add column if not exists destinatario_id uuid references usuarios (id) on delete cascade;
+
+-- Estilo del popup: true = ventana emergente en tonos rojo/urgente (ver
+-- AvisoPendienteModal en Sidebar.tsx). false = estilo neutro actual, sin
+-- cambios de comportamiento para los avisos existentes.
+alter table avisos add column if not exists urgente boolean not null default false;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, ExternalLink, Pencil, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Pencil, Sparkles, X } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import type { Cliente, EstadoSolicitud, SolicitudCliente } from "@/lib/types";
@@ -43,11 +43,13 @@ const ESTADO_ESTILO: Record<EstadoSolicitud, string> = {
   pendiente: "bg-warning/15 text-warning",
   aprobada: "bg-success/15 text-success",
   rechazada: "bg-danger/15 text-danger",
+  correo_invalido: "bg-danger/20 text-danger ring-1 ring-danger/40",
 };
 const ESTADO_LABEL: Record<EstadoSolicitud, string> = {
   pendiente: "Pendiente",
   aprobada: "Aprobada",
   rechazada: "Rechazada",
+  correo_invalido: "Correo inválido",
 };
 
 export default function SolicitudesPage() {
@@ -57,6 +59,12 @@ export default function SolicitudesPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [formEdicion, setFormEdicion] = useState<FormEdicion | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  // Reenvío de una solicitud propia marcada "correo inválido" — mismo patrón
+  // que editandoId/formEdicion de arriba, pero por PATCH .../reenviar (la
+  // regresa a "pendiente") en vez de .../[id] (edición admin pre-revisión).
+  const [reenviandoId, setReenviandoId] = useState<string | null>(null);
+  const [formReenvio, setFormReenvio] = useState<FormEdicion | null>(null);
+  const [guardandoReenvio, setGuardandoReenvio] = useState(false);
   const [todosLosEventos, setTodosLosEventos] = useState<string[]>([]);
   const [todasLasEtiquetas, setTodasLasEtiquetas] = useState<string[]>([]);
   // Cuando el correo de acceso ya es cliente, el back corta antes de tocar
@@ -106,8 +114,11 @@ export default function SolicitudesPage() {
     };
   }, [modoSolicitud]);
 
+  // Sin gatear por puedeRevisar: un vendedor también necesita estas opciones
+  // para reenviar su propia solicitud marcada "correo inválido" (mismo
+  // combobox de Evento/Etiqueta que usa el admin) — ambos endpoints ya
+  // están gateados por el permiso compartido "solicitarCliente".
   useEffect(() => {
-    if (!puedeRevisar) return;
     fetch("/api/eventos-synergy")
       .then((r) => r.json())
       .then((data) => setTodosLosEventos([...(data.presencial ?? []), ...(data.webinar ?? []), ...(data.otro ?? [])]))
@@ -116,7 +127,7 @@ export default function SolicitudesPage() {
       .then((r) => r.json())
       .then((data) => setTodasLasEtiquetas(data.opciones ?? []))
       .catch(() => {});
-  }, [puedeRevisar]);
+  }, []);
 
   function abrirEdicion(s: SolicitudCliente) {
     setEditandoId(s.id);
@@ -200,12 +211,67 @@ export default function SolicitudesPage() {
     }
   }
 
+  // A diferencia de rechazar() la nota aquí es obligatoria — es el mensaje
+  // que le llega al vendedor en la ventana emergente roja, así que no puede
+  // quedar vacío.
+  async function correoInvalido(id: string) {
+    const nota = prompt("¿Qué está mal con el correo? (se le muestra al vendedor)") ?? "";
+    if (!nota.trim()) return;
+    setProcesando(id);
+    try {
+      const res = await fetch(`/api/solicitudes/${id}/correo-invalido`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nota }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo marcar el correo como inválido");
+        return;
+      }
+      cargar();
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  function abrirReenvio(s: SolicitudCliente) {
+    setReenviandoId(s.id);
+    setFormReenvio(formEdicionDeSolicitud(s));
+  }
+
+  async function guardarReenvio(id: string) {
+    if (!formReenvio) return;
+    setGuardandoReenvio(true);
+    try {
+      const res = await fetch(`/api/solicitudes/${id}/reenviar`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formReenvio),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo reenviar la solicitud");
+        return;
+      }
+      setReenviandoId(null);
+      setFormReenvio(null);
+      cargar();
+    } finally {
+      setGuardandoReenvio(false);
+    }
+  }
+
   if (!usuario) return null;
 
   // El GET ya filtra en el servidor: si puede revisar, trae las de todos;
   // si no, solo las propias.
   const pendientesDeTodos = solicitudes?.filter((s) => s.estado === "pendiente") ?? [];
   const listaTabla = solicitudes ?? [];
+  // Solo relevante para el vendedor (el GET ya le filtra "solo las propias")
+  // — sus solicitudes que un admin marcó con correo inválido y todavía no
+  // corrige/reenvía.
+  const misInvalidas = !puedeRevisar ? listaTabla.filter((s) => s.estado === "correo_invalido") : [];
 
   return (
     <div className="space-y-6">
@@ -238,7 +304,13 @@ export default function SolicitudesPage() {
                       </p>
                       <p className="text-xs text-muted">
                         {s.evento} · {s.tipoMembresia}
-                        {s.etiqueta ? ` · ${s.etiqueta}` : ""} · solicitado por {s.solicitadoPorNombre}
+                        {s.etiqueta ? ` · ${s.etiqueta}` : ""} · solicitado por {s.solicitadoPorNombre} ·{" "}
+                        {new Date(s.creadoEn).toLocaleString("es-MX", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
                       {s.notas && (
                         <p className="mt-1 whitespace-pre-wrap text-xs text-foreground">
@@ -392,6 +464,15 @@ export default function SolicitudesPage() {
                         Editar
                       </button>
                       <button
+                        onClick={() => correoInvalido(s.id)}
+                        disabled={procesando === s.id}
+                        title="Devolver al vendedor para que corrija el correo"
+                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Correo inválido
+                      </button>
+                      <button
                         onClick={() => rechazar(s.id)}
                         disabled={procesando === s.id}
                         className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
@@ -400,6 +481,146 @@ export default function SolicitudesPage() {
                         Rechazar
                       </button>
                     </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {misInvalidas.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-danger">
+            <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
+            Solicitudes inválidas ({misInvalidas.length})
+          </h2>
+          <div className="space-y-3">
+            {misInvalidas.map((s) => (
+              <div key={s.id} className="shell rounded-2xl p-2 diffused">
+                <div className="core space-y-3 rounded-[calc(1rem-0.5rem)] border border-danger/30 bg-danger/[0.03] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-foreground">{s.nombre}</p>
+                      <p className="text-xs text-muted">
+                        Acceso: {s.correoAcceso} · Pago: {s.correoPago} · {s.telefono}
+                      </p>
+                      <p className="text-xs text-muted">
+                        Enviada:{" "}
+                        {new Date(s.creadoEn).toLocaleString("es-MX", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[s.estado]}`}>
+                      {ESTADO_LABEL[s.estado]}
+                    </span>
+                  </div>
+
+                  {s.notaRevision && (
+                    <p className="rounded-lg bg-danger/10 p-2.5 text-xs text-danger">
+                      <span className="font-medium">Por qué: </span>
+                      {s.notaRevision}
+                    </p>
+                  )}
+
+                  {reenviandoId === s.id && formReenvio ? (
+                    <div className="space-y-2.5 rounded-lg border border-primary/30 bg-primary-dim/40 p-3">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <Campo label="Nombre">
+                          <input
+                            value={formReenvio.nombre}
+                            onChange={(e) => setFormReenvio((f) => f && { ...f, nombre: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Teléfono">
+                          <input
+                            value={formReenvio.telefono}
+                            onChange={(e) => setFormReenvio((f) => f && { ...f, telefono: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Correo de acceso">
+                          <input
+                            value={formReenvio.correoAcceso}
+                            onChange={(e) => setFormReenvio((f) => f && { ...f, correoAcceso: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Correo de pago">
+                          <input
+                            value={formReenvio.correoPago}
+                            onChange={(e) => setFormReenvio((f) => f && { ...f, correoPago: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="País">
+                          <input
+                            value={formReenvio.pais}
+                            onChange={(e) => setFormReenvio((f) => f && { ...f, pais: e.target.value })}
+                            className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                          />
+                        </Campo>
+                        <Campo label="Tipo de membresía">
+                          <ComboboxBuscador
+                            opciones={OPCIONES_MEMBRESIA}
+                            valor={formReenvio.tipoMembresia}
+                            onChange={(tipoMembresia) => setFormReenvio((f) => f && { ...f, tipoMembresia })}
+                            placeholder="Seleccionar…"
+                          />
+                        </Campo>
+                        <div className="col-span-2">
+                          <Campo label="Evento">
+                            <ComboboxBuscador
+                              opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
+                              valor={formReenvio.evento}
+                              onChange={(evento) => setFormReenvio((f) => f && { ...f, evento })}
+                              placeholder="Seleccionar evento…"
+                            />
+                          </Campo>
+                        </div>
+                        <div className="col-span-2">
+                          <Campo label="Notas">
+                            <textarea
+                              value={formReenvio.notas}
+                              onChange={(e) => setFormReenvio((f) => f && { ...f, notas: e.target.value })}
+                              rows={2}
+                              className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                            />
+                          </Campo>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setReenviandoId(null);
+                            setFormReenvio(null);
+                          }}
+                          className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => guardarReenvio(s.id)}
+                          disabled={guardandoReenvio}
+                          className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                        >
+                          {guardandoReenvio ? "Enviando…" : "Reenviar a revisión"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => abrirReenvio(s)}
+                      className="ease-spring flex items-center justify-center gap-1.5 rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      Corregir y reenviar
+                    </button>
                   )}
                 </div>
               </div>
@@ -434,7 +655,7 @@ export default function SolicitudesPage() {
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[s.estado]}`}>
                       {ESTADO_LABEL[s.estado]}
                     </span>
-                    {s.estado === "rechazada" && s.notaRevision && (
+                    {(s.estado === "rechazada" || s.estado === "correo_invalido") && s.notaRevision && (
                       <p className="mt-1 text-xs text-muted">{s.notaRevision}</p>
                     )}
                   </td>
