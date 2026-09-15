@@ -22,9 +22,14 @@ const ROL_LABEL: Record<Rol, string> = {
 
 // Perfil autogestionado: cada usuario edita su propio teléfono y foto desde
 // aquí (nombre/correo/rol siguen siendo exclusivos de Usuarios, admin). Se
-// abre al hacer clic en la tarjeta de cuenta del sidebar, y automáticamente
-// una vez al iniciar sesión si falta algo (ver Sidebar.tsx).
-export function MiPerfilModal({ onClose }: { onClose: () => void }) {
+// abre al hacer clic en la tarjeta de cuenta del sidebar.
+//
+// bloqueante=true: modo del gate obligatorio (ver PerfilObligatorio.tsx) —
+// sin botón de cerrar ni clic afuera para descartar, porque en ese caso no
+// hay nada detrás a lo que volver (AppLayout no monta el Sidebar hasta que
+// el perfil quede completo). El usuario solo puede completar su perfil o
+// cerrar sesión.
+export function MiPerfilModal({ onClose, bloqueante = false }: { onClose: () => void; bloqueante?: boolean }) {
   const { usuario, refrescar, cerrarSesion } = useSesion();
   const { tema, setTema } = useTema();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,19 +100,28 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => !bloqueante && e.target === e.currentTarget && onClose()}
     >
       <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
         <div className="core max-h-[90vh] overflow-y-auto rounded-[calc(2rem-0.5rem)] p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">Mi perfil</h2>
-            <button
-              onClick={onClose}
-              className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"
-            >
-              <X className="h-4.5 w-4.5" strokeWidth={1.75} />
-            </button>
+            {!bloqueante && (
+              <button
+                onClick={onClose}
+                className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"
+              >
+                <X className="h-4.5 w-4.5" strokeWidth={1.75} />
+              </button>
+            )}
           </div>
+
+          {bloqueante && (
+            <p className="-mt-2 mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-xs text-danger">
+              Ya agotaste tus sesiones sin completar tu perfil — necesito que subas tu foto y confirmes tu teléfono
+              para seguir usando el CRM.
+            </p>
+          )}
 
           <div className="flex flex-col items-center gap-2">
             <div className="relative">
@@ -170,7 +184,8 @@ export function MiPerfilModal({ onClose }: { onClose: () => void }) {
               </p>
             </div>
             <div>
-              <span className="mb-1 block text-xs font-medium text-muted">Teléfono(s)</span>
+              <span className="block text-xs font-medium text-muted">Teléfono(s)</span>
+              <span className="mb-1 block text-[11px] text-muted/80">Todos los números que usas para trabajar</span>
               {/* Alto máximo + scroll interno — antes esta lista crecía sin
                   límite y, con varios números, empujaba el botón de
                   "Guardar" fuera de la pantalla (le pasaba a las abejas que

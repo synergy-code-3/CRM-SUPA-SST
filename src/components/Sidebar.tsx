@@ -10,6 +10,7 @@ import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
+import { perfilIncompleto } from "@/lib/perfil";
 import { MiPerfilModal } from "./MiPerfilModal";
 
 // Item "Dashboard"/"Biblioteca"/"Eliminados" quedan solo para admin — el
@@ -140,12 +141,6 @@ function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean
       )}
     </div>
   );
-}
-
-// Falta teléfono o foto — mismo criterio que usa Sidebar() para decidir si
-// se abre el perfil solo al iniciar sesión.
-function perfilIncompleto(usuario: UsuarioSesion): boolean {
-  return usuario.telefonos.length === 0 || !usuario.fotoUrl;
 }
 
 // Ya no cierra sesión directo — abre "Mi perfil" (editable: teléfono, foto),
@@ -372,8 +367,6 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
   );
 }
 
-const PERFIL_MOSTRADO_KEY = "perfilIncompletoMostrado";
-
 export function Sidebar() {
   const pathname = usePathname();
   const { usuario } = useSesion();
@@ -389,17 +382,6 @@ export function Sidebar() {
   useEffect(() => {
     setAbierto(false);
   }, [pathname]);
-
-  // Al iniciar sesión, si falta teléfono o foto, se abre "Mi perfil" una
-  // sola vez por sesión de navegador (se puede cerrar sin llenarlo y seguir
-  // usando el CRM normal — el punto en el avatar se queda hasta
-  // completarlo). Aplica igual a usuarios nuevos que a los que ya existían.
-  useEffect(() => {
-    if (!usuario || !perfilIncompleto(usuario)) return;
-    if (sessionStorage.getItem(PERFIL_MOSTRADO_KEY)) return;
-    sessionStorage.setItem(PERFIL_MOSTRADO_KEY, "1");
-    setMostrarPerfil(true);
-  }, [usuario]);
 
   if (!usuario) return null;
   // Deriva el workspace de la URL en vez de guardar estado aparte — así no

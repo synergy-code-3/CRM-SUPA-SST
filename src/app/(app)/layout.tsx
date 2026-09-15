@@ -4,8 +4,10 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { AccesoPendiente } from "@/components/AccesoPendiente";
+import { PerfilObligatorio } from "@/components/PerfilObligatorio";
 import { FiltrosMovilProvider } from "@/lib/filtros-movil-context";
 import { useSesion } from "@/lib/session-context";
+import { perfilIncompleto } from "@/lib/perfil";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useSesion();
@@ -30,6 +32,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Cuenta pendiente de aprobación: ni Sidebar ni el contenido de la
   // página se montan — solo la pantalla de "acceso pendiente".
   if (!usuario.activo) return <AccesoPendiente />;
+
+  // Perfil incompleto (falta teléfono y/o foto): tampoco se monta el CRM —
+  // ver PerfilObligatorio.tsx y perfilIncompleto() (lib/perfil.ts). Va
+  // después del chequeo de activo: una cuenta todavía no aprobada por un
+  // admin debe ver "acceso pendiente" primero, no esto.
+  if (perfilIncompleto(usuario)) return <PerfilObligatorio />;
 
   return (
     <FiltrosMovilProvider>
