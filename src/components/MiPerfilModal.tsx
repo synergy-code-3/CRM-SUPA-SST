@@ -20,6 +20,16 @@ const ROL_LABEL: Record<Rol, string> = {
   abeja: "Abeja",
 };
 
+// Mismo límite que valida /api/perfil/avatar (storage.ts) — se revisa aquí
+// TAMBIÉN antes de subir para no mandar el archivo completo cuando ya se
+// sabe que el server lo va a rechazar. Fotos de celular sin comprimir
+// suelen pasar de esto fácil, y una foto así de pesada puede además chocar
+// con el límite de tamaño de petición de la plataforma (Vercel) ANTES de
+// llegar a nuestro código — ahí la respuesta ni siquiera es JSON, por eso
+// el try/catch de abajo es necesario (sin él, "Subiendo…" se quedaba
+// pegado para siempre sin avisar nada).
+const TAMANO_MAXIMO_AVATAR_BYTES = 4 * 1024 * 1024;
+
 // Perfil autogestionado: cada usuario edita su propio teléfono y foto desde
 // aquí (nombre/correo/rol siguen siendo exclusivos de Usuarios, admin). Se
 // abre al hacer clic en la tarjeta de cuenta del sidebar.
@@ -46,19 +56,38 @@ export function MiPerfilModal({ onClose, bloqueante = false }: { onClose: () => 
 
   async function onCambiarFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
+    // Se limpia de inmediato para poder volver a elegir el mismo archivo si
+    // hay que reintentar (si no, un segundo intento con la misma foto no
+    // dispara onChange porque el input no "cambió").
+    e.target.value = "";
     if (!archivo) return;
-    setSubiendoFoto(true);
-    setError(null);
-    const body = new FormData();
-    body.set("archivo", archivo);
-    const res = await fetch("/api/perfil/avatar", { method: "POST", body });
-    const data = await res.json();
-    setSubiendoFoto(false);
-    if (!res.ok) {
-      setError(data.error ?? "No se pudo subir la imagen");
+
+    if (archivo.size > TAMANO_MAXIMO_AVATAR_BYTES) {
+      setError("La imagen pesa más de 4 MB — comprime la foto o toma una nueva con menos resolución");
       return;
     }
-    await refrescar();
+
+    setSubiendoFoto(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.set("archivo", archivo);
+      const res = await fetch("/api/perfil/avatar", { method: "POST", body });
+      // Una petición rechazada antes de llegar a nuestro código (ej. límite
+      // de tamaño de la plataforma) no siempre responde JSON — sin este
+      // catch, res.json() tronaba sin avisar y "Subiendo…" se quedaba
+      // pegado para siempre.
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? "No se pudo subir la imagen — puede que pese demasiado, intenta con una más ligera");
+        return;
+      }
+      await refrescar();
+    } catch {
+      setError("No se pudo subir la imagen — revisa tu conexión e intenta de nuevo");
+    } finally {
+      setSubiendoFoto(false);
+    }
   }
 
   function cambiarTelefono(i: number, valor: string) {
