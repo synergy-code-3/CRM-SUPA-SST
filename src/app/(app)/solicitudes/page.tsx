@@ -81,6 +81,7 @@ export default function SolicitudesPage() {
   // Cuadro de solo lectura con los datos capturados en el formulario —
   // no es el perfil del cliente, solo lo que mandó la vendedora.
   const [verSolicitud, setVerSolicitud] = useState<SolicitudConUrls | null>(null);
+  const [cargandoComprobantes, setCargandoComprobantes] = useState(false);
 
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
@@ -90,6 +91,26 @@ export default function SolicitudesPage() {
     const data = await res.json();
     setSolicitudes(data.solicitudes);
   }, []);
+
+  // El GET de la lista solo trae comprobantesUrl ya firmadas para
+  // pendiente/correo_invalido (las que se muestran inline en las tarjetas) —
+  // para el resto (aprobada/rechazada) llega vacío a propósito, para no
+  // firmar cientos de URLs de solicitudes ya resueltas en cada carga de la
+  // página (era la causa de que la lista tardara muchísimo o ni cargara).
+  // Aquí se piden frescas solo para la que se abre en el modal.
+  async function abrirVerSolicitud(s: SolicitudConUrls) {
+    setVerSolicitud(s);
+    if (s.comprobantes.length === 0 || s.comprobantesUrl.length > 0) return;
+    setCargandoComprobantes(true);
+    try {
+      const res = await fetch(`/api/solicitudes/${s.id}/comprobantes`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setVerSolicitud((actual) => (actual && actual.id === s.id ? { ...actual, comprobantesUrl: data.comprobantesUrl ?? [] } : actual));
+    } finally {
+      setCargandoComprobantes(false);
+    }
+  }
 
   useEffect(() => {
     cargar();
@@ -646,7 +667,7 @@ export default function SolicitudesPage() {
               {listaTabla.map((s) => (
                 <tr
                   key={s.id}
-                  onClick={() => setVerSolicitud(s)}
+                  onClick={() => abrirVerSolicitud(s)}
                   className="ease-spring cursor-pointer border-t border-silver/60 transition hover:bg-surface-2"
                 >
                   <td className="px-4 py-3 font-medium text-foreground">{s.nombre}</td>
@@ -783,23 +804,27 @@ export default function SolicitudesPage() {
               </div>
             )}
 
-            {verSolicitud.comprobantesUrl.length > 0 && (
+            {verSolicitud.comprobantes.length > 0 && (
               <div className="mt-3">
                 <p className="mb-1 text-xs font-medium text-muted">Comprobantes</p>
-                <div className="flex flex-wrap gap-2">
-                  {verSolicitud.comprobantesUrl.map((url, i) => (
-                    <a
-                      key={url}
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ease-spring flex items-center gap-1 rounded-lg border border-silver px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
-                    >
-                      Comprobante {i + 1}
-                      <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
-                    </a>
-                  ))}
-                </div>
+                {cargandoComprobantes && verSolicitud.comprobantesUrl.length === 0 ? (
+                  <p className="text-xs text-muted">Cargando…</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {verSolicitud.comprobantesUrl.map((url, i) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ease-spring flex items-center gap-1 rounded-lg border border-silver px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                      >
+                        Comprobante {i + 1}
+                        <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
