@@ -41,6 +41,8 @@ export type ClienteRow = {
   eliminado_en: string | null;
   pausado_en: string | null;
   fin_acceso_al_pausar: string | null;
+  guarda_acceso_su27: boolean;
+  guarda_acceso_su27_en: string | null;
   creado_en: string;
   actualizado_en: string;
 };
@@ -99,6 +101,8 @@ export function filaACliente(r: ClienteRow): Cliente {
     eliminadoEn: r.eliminado_en,
     pausadoEn: r.pausado_en,
     finAccesoAlPausar: r.fin_acceso_al_pausar,
+    guardaAccesoSu27: r.guarda_acceso_su27,
+    guardaAccesoSu27En: r.guarda_acceso_su27_en,
     creadoEn: r.creado_en,
     actualizadoEn: r.actualizado_en,
   };

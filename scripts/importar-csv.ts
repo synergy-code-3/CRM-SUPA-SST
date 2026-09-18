@@ -125,6 +125,8 @@ async function main() {
       eliminadoEn: existente?.eliminadoEn ?? null,
       pausadoEn: existente?.pausadoEn ?? null,
       finAccesoAlPausar: existente?.finAccesoAlPausar ?? null,
+      guardaAccesoSu27: existente?.guardaAccesoSu27 ?? false,
+      guardaAccesoSu27En: existente?.guardaAccesoSu27En ?? null,
       creadoEn: existente?.creadoEn ?? ahora,
       actualizadoEn: ahora,
     };

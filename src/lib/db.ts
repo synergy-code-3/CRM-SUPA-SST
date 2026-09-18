@@ -131,6 +131,10 @@ export type FiltrosClientes = {
   vencidosAntesDe?: string;
   vigencia?: VigenciaFiltro;
   proceso?: ProcesoFiltro;
+  // true = solo clientes con guarda_acceso_su27 (pestaña "Guardan acceso
+  // SU27" de Otras Ofertas, ver /api/clientes?guardaSu27=1). No tiene
+  // sentido combinarlo con false, así que es un simple flag on/off.
+  guardaAccesoSu27?: boolean;
   limite?: number;
   pagina?: number;
 };
@@ -228,6 +232,11 @@ function aplicarFiltrosClientes<
   if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
 
   if (opciones?.region && opciones.region !== "todos") query = query.eq("region", opciones.region);
+
+  // "true" (string) en vez del booleano: el helper .eq de este genérico solo
+  // acepta string, pero Supabase-js igual arma la misma URL (?columna=eq.true)
+  // sin importar si el valor JS es "true" o true — ver comentario del tipo Q.
+  if (opciones?.guardaAccesoSu27) query = query.eq("guarda_acceso_su27", "true");
 
   if (opciones?.eventos?.length) query = query.in("evento", opciones.eventos);
   // .ilike (no .in) porque las opciones vienen normalizadas ("3 Meses") pero
@@ -635,13 +644,15 @@ export async function actualizarTelefonoCliente(id: string, telefono: string): P
 // no toca nada — accesosEditadoManual queda como una traba hasta que se
 // libere a propósito (ver liberarAccesosEditadoManual), para que un
 // recálculo automático (o el job masivo) no borre esa corrección sin
-// avisar.
+// avisar. Mismo criterio para guardaAccesoSu27: mientras el cliente esté
+// reservando su acceso para Synergy Unlimited 2027, ni un recálculo
+// automático debe tocarle los accesos — ver activarGuardaAccesoSu27 abajo.
 export async function recalcularAccesos(id: string): Promise<Cliente> {
   const { data: fila, error: errLectura } = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
   if (errLectura) throw errLectura;
   if (!fila) throw new Error("Cliente no encontrado");
   const cliente = filaACliente(fila as ClienteRow);
-  if (cliente.accesosEditadoManual) return cliente;
+  if (cliente.accesosEditadoManual || cliente.guardaAccesoSu27) return cliente;
 
   const inventario = await cargarInventarioBoletos();
   const { accesos, sinInformacion } = calcularAccesos(
@@ -1429,7 +1440,11 @@ export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, auto
     .maybeSingle();
   if (errLectura) throw errLectura;
   if (!fila) throw new Error("Cliente no encontrado");
-  const anterior = filaACliente(fila as ClienteRow).accesos;
+  const clienteActual = filaACliente(fila as ClienteRow);
+  if (clienteActual.guardaAccesoSu27) {
+    throw new Error("Accesos congelados: este cliente está guardando su acceso para Synergy Unlimited 2027.");
+  }
+  const anterior = clienteActual.accesos;
 
   const normalizado = (Object.keys(nuevosAccesos) as (keyof Accesos)[]).reduce((acc, nivel) => {
     acc[nivel] = nuevosAccesos[nivel]
@@ -1457,6 +1472,61 @@ export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, auto
   if (cambios.length) {
     await registrarEvento(id, "EDICION_ACCESOS", `Accesos — ${cambios.join(" · ")}`, autor);
   }
+  return filaACliente(data as ClienteRow);
+}
+
+// Marca que el cliente está guardando su acceso a Synergy Unlimited 2027 en
+// vez de usar el calculado este año — congela sus accesos (recalcularAccesos
+// y actualizarAccesos arriba respetan esta bandera) hasta que se le quite a
+// propósito con quitarGuardaAccesoSu27. Mismo shape que pausarMembresia.
+export async function activarGuardaAccesoSu27(id: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+  const cliente = filaACliente(fila as ClienteRow);
+  if (cliente.guardaAccesoSu27) throw new Error("Este cliente ya está guardando su acceso para SU27");
+
+  const ahora = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({ guarda_acceso_su27: true, guarda_acceso_su27_en: ahora, actualizado_en: ahora })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(id, "SU27_ACTIVADO", `Guardó su acceso para Synergy Unlimited 2027 (${autor})`, autor);
+  return filaACliente(data as ClienteRow);
+}
+
+// Quita la reserva de SU27 — sus accesos vuelven a poder editarse a mano y a
+// recalcularse solos con la próxima edición de evento/membresía. Se llama
+// tanto desde el perfil del cliente (Clientes del Club) como desde el mini
+// perfil de la pestaña "Guardan acceso SU27" en Otras Ofertas.
+export async function quitarGuardaAccesoSu27(id: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+  const cliente = filaACliente(fila as ClienteRow);
+  if (!cliente.guardaAccesoSu27) throw new Error("Este cliente no está guardando su acceso para SU27");
+
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({ guarda_acceso_su27: false, guarda_acceso_su27_en: null, actualizado_en: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(id, "SU27_DESACTIVADO", `Quitó la reserva de acceso SU27 (${autor})`, autor);
   return filaACliente(data as ClienteRow);
 }
 

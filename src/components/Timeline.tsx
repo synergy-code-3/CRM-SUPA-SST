@@ -17,6 +17,8 @@ import {
   XCircle,
   Ban,
   ShoppingCart,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { TIPO_EVENTO_LABEL, type EventoTimeline, type TipoEvento } from "@/lib/types";
 
@@ -41,6 +43,8 @@ const ICONS: Record<TipoEvento, typeof UserPlus> = {
   OFERTA_OTORGADA: Gift,
   OFERTA_REVOCADA: XCircle,
   COMPRA_HOTMART: ShoppingCart,
+  SU27_ACTIVADO: Lock,
+  SU27_DESACTIVADO: Unlock,
 };
 
 const LABEL = TIPO_EVENTO_LABEL;

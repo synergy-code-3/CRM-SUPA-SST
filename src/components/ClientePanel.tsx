@@ -44,6 +44,7 @@ import {
   ExternalLink,
   Undo2,
   Award,
+  Lock,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -248,6 +249,13 @@ export function ClientePanel({
   const [reanudando, setReanudando] = useState(false);
   const [pasoRevocarAcceso, setPasoRevocarAcceso] = useState<0 | 1>(0);
   const [revocandoAcceso, setRevocandoAcceso] = useState(false);
+  // Reserva de acceso SU27 (congela accesos, ver AccesoBadge/AccesosSynergy
+  // más abajo) — vive en un pill del header, sin espacio para el panel de
+  // confirmación de 2 pasos que usa Pausar/Reanudar, así que usa
+  // window.confirm() en su lugar (mismo criterio que "Rechazar" en
+  // Solicitudes).
+  const [guardandoSu27, setGuardandoSu27] = useState(false);
+  const [quitandoSu27, setQuitandoSu27] = useState(false);
   const [perfilKajabi, setPerfilKajabi] = useState<PerfilKajabi | null>(null);
   const [cargandoPerfilKajabi, setCargandoPerfilKajabi] = useState(false);
   const [errorPerfilKajabi, setErrorPerfilKajabi] = useState<string | null>(null);
@@ -787,6 +795,50 @@ export function ClientePanel({
     setEventos(eventosRes.eventos ?? []);
   }
 
+  async function confirmarGuardarSu27() {
+    if (!cliente || !puedeEditarAccesos) return;
+    if (
+      !window.confirm(
+        "¿Guardar el acceso de este cliente para Synergy Unlimited 2027? Esto congela sus accesos (no se van a poder editar ni recalcular solos) hasta que se lo quites."
+      )
+    ) {
+      return;
+    }
+    setGuardandoSu27(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/guardar-su27`, { method: "POST" });
+    const data = await res.json();
+    setGuardandoSu27(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo guardar el acceso para SU27");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) => r.json());
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  async function confirmarQuitarSu27() {
+    if (!cliente || !puedeEditarAccesos) return;
+    if (!window.confirm("¿Quitar la reserva de SU27? Sus accesos vuelven a poder editarse y recalcularse solos.")) {
+      return;
+    }
+    setQuitandoSu27(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/quitar-su27`, { method: "POST" });
+    const data = await res.json();
+    setQuitandoSu27(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo quitar la reserva de SU27");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) => r.json());
+    setEventos(eventosRes.eventos ?? []);
+  }
+
   async function confirmarRevocarAcceso() {
     if (!cliente || !puedeRevocarAcceso) return;
     if (pasoRevocarAcceso < 1) {
@@ -1260,6 +1312,28 @@ export function ClientePanel({
                 )}
                 {!puedeEditar ? null : !editando ? (
                   <div className="ml-auto flex items-center gap-2">
+                    {puedeEditarAccesos &&
+                      (cliente.guardaAccesoSu27 ? (
+                        <button
+                          onClick={confirmarQuitarSu27}
+                          disabled={quitandoSu27}
+                          title="Sus accesos están congelados — clic para quitar la reserva"
+                          className="ease-spring flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/20 px-2.5 py-1.5 text-xs font-medium text-warning backdrop-blur-sm transition hover:bg-warning/30 disabled:opacity-50"
+                        >
+                          <Lock className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          {quitandoSu27 ? "Quitando…" : "Guardando SU27 — Quitar"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={confirmarGuardarSu27}
+                          disabled={guardandoSu27}
+                          title="Congela sus accesos y lo reserva para Synergy Unlimited 2027"
+                          className="ease-spring flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/35 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/55 disabled:opacity-50"
+                        >
+                          <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          {guardandoSu27 ? "Guardando…" : "Guardar para SU27"}
+                        </button>
+                      ))}
                     {ultimoCambioDatos && (
                       <button
                         onClick={deshacerUltimoCambio}
@@ -1329,15 +1403,34 @@ export function ClientePanel({
               {tab === "resumen" && (
                 <div className="space-y-5">
                   <Tarjeta titulo="Accesos y membresías">
+                    {cliente.guardaAccesoSu27 && (
+                      <p className="mb-3 flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                        <Lock className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+                        Accesos congelados — guardados para Synergy Unlimited 2027.
+                      </p>
+                    )}
                     <div className="grid grid-cols-3 gap-1.5">
                       <AccesoBadge
                         icon={ShieldCheck}
                         label="General"
                         detalle={cliente.accesos.general}
                         tono="primary"
+                        congelado={cliente.guardaAccesoSu27}
                       />
-                      <AccesoBadge icon={Crown} label="VIP" detalle={cliente.accesos.vip} tono="warning" />
-                      <AccesoBadge icon={Gem} label="Black" detalle={cliente.accesos.black} tono="black" />
+                      <AccesoBadge
+                        icon={Crown}
+                        label="VIP"
+                        detalle={cliente.accesos.vip}
+                        tono="warning"
+                        congelado={cliente.guardaAccesoSu27}
+                      />
+                      <AccesoBadge
+                        icon={Gem}
+                        label="Black"
+                        detalle={cliente.accesos.black}
+                        tono="black"
+                        congelado={cliente.guardaAccesoSu27}
+                      />
                     </div>
                     <dl className="mt-3.5 grid grid-cols-2 gap-3 border-t border-silver/60 pt-3.5 text-sm">
                       <CampoValor label="Membresía Skool" valor={cliente.tipoMembresia} />
@@ -1348,7 +1441,11 @@ export function ClientePanel({
                       onClick={() => setTab("accesos")}
                       className="ease-spring mt-2.5 text-xs font-medium text-primary transition hover:text-primary-deep"
                     >
-                      {puedeEditarAccesos ? "Editar accesos →" : "Ver accesos →"}
+                      {cliente.guardaAccesoSu27
+                        ? "Ver accesos (congelados) →"
+                        : puedeEditarAccesos
+                          ? "Editar accesos →"
+                          : "Ver accesos →"}
                     </button>
                   </Tarjeta>
 
@@ -1893,7 +1990,14 @@ export function ClientePanel({
                   </Tarjeta>
 
                   <Tarjeta titulo="Accesos a Synergy Unlimited">
-                    {!editandoAccesos && cliente.accesosEditadoManual && (
+                    {cliente.guardaAccesoSu27 && (
+                      <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                        <Lock className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+                        Accesos congelados — guardados para Synergy Unlimited 2027. No se pueden editar ni se
+                        recalculan solos mientras esté activa esta reserva.
+                      </div>
+                    )}
+                    {!editandoAccesos && !cliente.guardaAccesoSu27 && cliente.accesosEditadoManual && (
                       <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
                         <span>Editados a mano — no se recalculan solos.</span>
                         {puedeEditarAccesos && (
@@ -1910,11 +2014,11 @@ export function ClientePanel({
                     <AccesosSynergy
                       valor={editandoAccesos && borradorAccesos ? borradorAccesos : cliente.accesos}
                       onChange={setBorradorAccesos}
-                      soloLectura={!editandoAccesos}
+                      soloLectura={cliente.guardaAccesoSu27 || !editandoAccesos}
                       sinInformacion={!editandoAccesos && cliente.boletosSinInformacion}
                     />
 
-                    {puedeEditarAccesos && !editandoAccesos && (
+                    {puedeEditarAccesos && !editandoAccesos && !cliente.guardaAccesoSu27 && (
                       <button
                         onClick={iniciarEdicionAccesos}
                         className="ease-spring mt-3 text-xs font-medium text-primary transition hover:text-primary-deep"
@@ -2615,11 +2719,16 @@ function AccesoBadge({
   label,
   detalle,
   tono,
+  congelado,
 }: {
   icon: typeof ShieldCheck;
   label: string;
   detalle: Accesos["general"];
   tono: "primary" | "warning" | "black";
+  // Reserva de acceso SU27 activa (cliente.guardaAccesoSu27): se sigue
+  // mostrando la cantidad (es lo que tiene guardado), pero en gris y sin el
+  // color de la categoría, para que se note que está congelado.
+  congelado?: boolean;
 }) {
   const activeClass =
     tono === "primary"
@@ -2631,10 +2740,14 @@ function AccesoBadge({
   return (
     <div
       className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3.5 text-center ${
-        activo ? `${activeClass} border-transparent` : "border-silver bg-surface-2 text-muted"
+        congelado
+          ? "border-silver bg-surface-2 text-muted opacity-60"
+          : activo
+            ? `${activeClass} border-transparent`
+            : "border-silver bg-surface-2 text-muted"
       }`}
     >
-      <Icon className="h-5 w-5" strokeWidth={1.75} />
+      {congelado ? <Lock className="h-5 w-5" strokeWidth={1.75} /> : <Icon className="h-5 w-5" strokeWidth={1.75} />}
       <span className="text-sm font-semibold">{label}</span>
       {activo && (
         <span className="text-xs opacity-80">

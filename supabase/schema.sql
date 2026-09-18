@@ -622,3 +622,15 @@ alter table avisos add column if not exists destinatario_id uuid references usua
 -- AvisoPendienteModal en Sidebar.tsx). false = estilo neutro actual, sin
 -- cambios de comportamiento para los avisos existentes.
 alter table avisos add column if not exists urgente boolean not null default false;
+
+-- Reserva de acceso a Synergy Unlimited 2027: un cliente puede pedir que su
+-- acceso calculado este año NO se use ahora, sino que se le respete para la
+-- edición del próximo año. Mientras esté activo, congela los accesos
+-- (recalcularAccesos/actualizarAccesos en db.ts lo respetan igual que
+-- accesos_editado_manual, pero es un concepto aparte: aquí ni siquiera se
+-- puede editar a mano) y lo hace aparecer en la pestaña "Guardan acceso
+-- SU27" de Otras Ofertas — sin sacarlo de la lista normal de Clientes.
+-- guarda_acceso_su27_en es la fecha en que se activó, mismo patrón que
+-- pausado_en.
+alter table clientes add column if not exists guarda_acceso_su27 boolean not null default false;
+alter table clientes add column if not exists guarda_acceso_su27_en timestamptz;

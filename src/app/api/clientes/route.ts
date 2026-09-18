@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
   const vencidosAntesDe = searchParams.get("vencidosAntesDe") ?? undefined;
   const vigencia = (searchParams.get("vigencia") as VigenciaFiltro | null) ?? undefined;
   const proceso = (searchParams.get("proceso") as ProcesoFiltro | null) ?? undefined;
+  // Pestaña "Guardan acceso SU27" de Otras Ofertas — reutiliza este mismo
+  // endpoint en vez de uno aparte, ver aplicarFiltrosClientes en db.ts.
+  const guardaAccesoSu27 = searchParams.get("guardaSu27") === "1" ? true : undefined;
   const { clientes, total } = await listarClientes({
     busqueda,
     limite,
@@ -42,6 +45,7 @@ export async function GET(req: NextRequest) {
     vencidosAntesDe,
     vigencia,
     proceso,
+    guardaAccesoSu27,
   });
   return NextResponse.json({ clientes, total });
 }

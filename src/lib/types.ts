@@ -85,6 +85,14 @@ export type Cliente = {
   pausadoEn: string | null;
   finAccesoAlPausar: string | null;
 
+  // Reserva de acceso a Synergy Unlimited 2027: mientras esté en true, los
+  // accesos quedan congelados (no editables, no recalculados solos) — ver
+  // activarGuardaAccesoSu27/quitarGuardaAccesoSu27 (db.ts). También lo hace
+  // aparecer en la pestaña "Guardan acceso SU27" de Otras Ofertas, sin
+  // sacarlo de la lista normal de Clientes.
+  guardaAccesoSu27: boolean;
+  guardaAccesoSu27En: string | null;
+
   creadoEn: string; // ISO
   actualizadoEn: string; // ISO
 };
@@ -109,7 +117,9 @@ export type TipoEvento =
   | "ELIMINADO"
   | "OFERTA_OTORGADA"
   | "OFERTA_REVOCADA"
-  | "COMPRA_HOTMART";
+  | "COMPRA_HOTMART"
+  | "SU27_ACTIVADO"
+  | "SU27_DESACTIVADO";
 
 // Tipos "activos": los que el buscador de Actividad ofrece para filtrar. Los
 // marcados como legado arriba solo existen en eventos viejos ya guardados —
@@ -132,6 +142,8 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "OFERTA_OTORGADA",
   "OFERTA_REVOCADA",
   "COMPRA_HOTMART",
+  "SU27_ACTIVADO",
+  "SU27_DESACTIVADO",
 ];
 
 export type EventoTimeline = {
@@ -166,6 +178,8 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   OFERTA_OTORGADA: "Oferta adicional otorgada",
   OFERTA_REVOCADA: "Oferta adicional revocada",
   COMPRA_HOTMART: "Compra detectada (Hotmart)",
+  SU27_ACTIVADO: "Guardó acceso para SU27",
+  SU27_DESACTIVADO: "Quitó la reserva de SU27",
 };
 
 export type Db = {
