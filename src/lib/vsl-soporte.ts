@@ -17,6 +17,19 @@ export type ConvertidoVsl = {
   notas: string;
   comprobanteUrl: string | null; // URL firmada, expira ~5 min desde que ellos la generan
   accesoDado: boolean;
+  // El vendedor de VSL elige estos campos en su propio formulario, que
+  // replica el mismo selector que usan nuestros vendedores: "evento" +
+  // "tipoMembresia" en FormularioSolicitudCliente.tsx (Club — mismos
+  // valores: "VSL MX"/"VSL USA"/"VSL LATAM" y "3 Meses"/"6 Meses"/
+  // "12 Meses") o "región" en FormularioSolicitudCertificacion.tsx
+  // (Certificaciones — mismos valores que RegionCertificacion). Solo uno
+  // de los dos pares aplica según esVentaDeCertificacion(producto). No
+  // siempre vienen (leads de antes de que VSL agregara estos campos a su
+  // formulario), por eso quedan opcionales — ver sincronizar-vsl.ts para
+  // el respaldo (detectar por monto, o adivinar por teléfono).
+  evento: string | null;
+  tipoMembresia: string | null;
+  region: string | null;
 };
 
 type RespuestaConvertidos = { convertidos: ConvertidoVsl[] };

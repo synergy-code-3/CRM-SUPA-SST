@@ -5,7 +5,7 @@ import { obtenerCliente } from "./db";
 import { crearSolicitud, obtenerSolicitudPorLeadVsl } from "./solicitudes";
 import { obtenerClienteCertificacion } from "./certificaciones";
 import { crearSolicitudCertificacion, obtenerSolicitudCertificacionPorLeadVsl } from "./solicitudes-certificacion";
-import type { RegionCertificacion } from "./certificaciones-tipos";
+import { REGIONES_CERTIFICACION, type RegionCertificacion } from "./certificaciones-tipos";
 import { subirComprobante } from "./storage";
 import { listarTodosConvertidosVsl, marcarAccesoDadoVsl, type ConvertidoVsl } from "./vsl-soporte";
 
@@ -42,11 +42,12 @@ async function usuarioSyncId(): Promise<string> {
   return data.id as string;
 }
 
-// Adivina el evento/país a partir del código de país del teléfono — se usa
-// solo como respaldo cuando VSL no reporta monto/moneda (ventas manuales,
-// "sin registrar"). El admin puede corregirlo antes de aprobar si adivinó
-// mal (ver editarSolicitud). Los 3 eventos ("VSL MX/USA/LATAM") ya están en
-// el catálogo de Biblioteca y en Asignacion de boletos.csv (1/2/3 VIP MX +
+// Adivina el evento/país a partir del código de país del teléfono — último
+// respaldo, solo cuando VSL no reportó evento/tipoMembresia (formulario
+// viejo) NI se pudo detectar por monto/moneda (venta "sin registrar"). El
+// admin puede corregirlo antes de aprobar si adivinó mal (ver
+// editarSolicitud). Los 3 eventos ("VSL MX/USA/LATAM") ya están en el
+// catálogo de Biblioteca y en Asignacion de boletos.csv (1/2/3 VIP MX +
 // 1/2/3 VIP US para 3/6/12 meses, igual sin importar la región).
 function inferirEventoYPaisDesdeTelefono(telefono: string | null): { evento: string; pais: string | null } {
   const limpio = (telefono ?? "").replace(/[^\d+]/g, "");
@@ -54,6 +55,25 @@ function inferirEventoYPaisDesdeTelefono(telefono: string | null): { evento: str
   if (limpio.startsWith("+1")) return { evento: "VSL USA", pais: "Estados Unidos" };
   return { evento: "VSL LATAM", pais: null };
 }
+
+function paisDesdeEventoVsl(evento: string): string | null {
+  if (evento === "VSL MX") return "México";
+  if (evento === "VSL USA") return "Estados Unidos";
+  return null; // VSL LATAM: abarca varios países, no hay uno solo que asignar
+}
+
+const EVENTOS_VSL_VALIDOS = ["VSL MX", "VSL USA", "VSL LATAM"];
+const TIPOS_MEMBRESIA_VALIDOS = ["3 Meses", "6 Meses", "12 Meses"];
+
+// De dónde salió el evento/región de una solicitud creada por la sync:
+//  - "reportado": el vendedor de VSL lo eligió en su propio formulario
+//    (mismo selector que el nuestro) — la fuente más confiable, no hace
+//    falta advertir nada al revisor.
+//  - "detectado": no vino del formulario, pero el monto/moneda coincidió
+//    exacto con una tarifa conocida (PRECIOS_VSL/PRECIOS_CERTIFICACION).
+//  - "adivinado": último respaldo, por el código de país del teléfono —
+//    el único caso que de verdad necesita revisión antes de aprobar.
+type OrigenDato = "reportado" | "detectado" | "adivinado";
 
 // VSL vende tanto Club Sinergético como Certificaciones (Legendar-IA) por el
 // mismo endpoint — el campo "producto" es la única señal, y son solo estas
@@ -124,15 +144,17 @@ function detectarDesdeMontoYMoneda(
   return PRECIOS_VSL.find((p) => p.moneda === monedaKey && p.monto === montoRedondeado) ?? null;
 }
 
-function notaParaRevisor(c: ConvertidoVsl, tipoMembresiaDetectada: boolean): string {
+function notaParaRevisor(c: ConvertidoVsl, origen: OrigenDato): string {
   const partes = [
-    `Detectado automático desde VSL — producto: "${c.producto}"`,
+    origen === "reportado"
+      ? `Elegido por el vendedor de VSL en su formulario — producto: "${c.producto}"`
+      : `Detectado automático desde VSL — producto: "${c.producto}"`,
     c.vendedor ? `vendedor: ${c.vendedor}` : null,
     c.monto != null ? `monto: ${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
     `fuente: ${c.fuenteVenta}`,
     c.fechaVenta ? `vendido el ${new Date(c.fechaVenta).toLocaleDateString("es-MX")}` : null,
-    !tipoMembresiaDetectada
-      ? "⚠ No se pudo detectar la región/duración por monto — verificar evento y tipo de membresía antes de aprobar"
+    origen === "adivinado"
+      ? "⚠ El vendedor de VSL no reportó el dato y no se pudo detectar por monto — adivinado por el código de país del teléfono, verificar antes de aprobar"
       : null,
   ].filter(Boolean);
   return partes.join(" · ") + (c.notas ? `\nNotas de VSL: ${c.notas}` : "");
@@ -214,9 +236,37 @@ async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSinc
   }
 
   const solicitudId = randomUUID();
-  const detectado = detectarDesdeMontoYMoneda(c.monto, c.moneda);
-  const { evento, pais } = detectado ?? inferirEventoYPaisDesdeTelefono(c.telefono);
-  const tipoMembresia = detectado?.tipoMembresia ?? TIPO_MEMBRESIA_DEFAULT;
+
+  const eventoReportado = c.evento && EVENTOS_VSL_VALIDOS.includes(c.evento) ? c.evento : null;
+  const tipoMembresiaReportada =
+    c.tipoMembresia && TIPOS_MEMBRESIA_VALIDOS.includes(c.tipoMembresia) ? c.tipoMembresia : null;
+
+  let evento: string;
+  let pais: string | null;
+  let tipoMembresia: string;
+  let origen: OrigenDato;
+
+  if (eventoReportado && tipoMembresiaReportada) {
+    evento = eventoReportado;
+    pais = paisDesdeEventoVsl(eventoReportado);
+    tipoMembresia = tipoMembresiaReportada;
+    origen = "reportado";
+  } else {
+    const detectado = detectarDesdeMontoYMoneda(c.monto, c.moneda);
+    if (detectado) {
+      evento = detectado.evento;
+      pais = detectado.pais;
+      tipoMembresia = detectado.tipoMembresia;
+      origen = "detectado";
+    } else {
+      const inferido = inferirEventoYPaisDesdeTelefono(c.telefono);
+      evento = inferido.evento;
+      pais = inferido.pais;
+      tipoMembresia = TIPO_MEMBRESIA_DEFAULT;
+      origen = "adivinado";
+    }
+  }
+
   const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
   await crearSolicitud({
@@ -237,7 +287,7 @@ async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSinc
   // acepta notaRevision porque normalmente no aplica hasta revisar.
   await supabase
     .from("solicitudes_cliente")
-    .update({ nota_revision: notaParaRevisor(c, detectado != null) })
+    .update({ nota_revision: notaParaRevisor(c, origen) })
     .eq("id", solicitudId);
 
   resultado.creadas++;
@@ -246,9 +296,7 @@ async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSinc
 // Mismo flujo que procesarConversionClub, pero hacia Certificaciones —
 // VSL también vende "Certificación LEGENDAR·IA", y esas conversiones deben
 // caer en las Solicitudes de Certificaciones, no en las del Club (ver
-// esVentaDeCertificacion). No hay tabla de precios confiable todavía para
-// Certificaciones (ver inferirRegionCertificacionDesdeTelefono), así que la
-// nota deja explícito que hace falta confirmar región/monto a mano.
+// esVentaDeCertificacion).
 async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: ResultadoSincronizarVsl): Promise<void> {
   const clienteExistente = await obtenerClienteCertificacion(c.email.trim().toLowerCase());
   if (clienteExistente) {
@@ -263,22 +311,27 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
   }
 
   const solicitudId = randomUUID();
-  const regionDetectada = detectarRegionCertificacionDesdeMontoYMoneda(c.monto, c.moneda);
-  const region = regionDetectada ?? inferirRegionCertificacionDesdeTelefono(c.telefono);
-  const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
-  const nota = [
-    `Detectado automático desde VSL — producto: "${c.producto}"`,
-    c.vendedor ? `vendedor: ${c.vendedor}` : null,
-    c.monto != null ? `monto: ${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
-    `fuente: ${c.fuenteVenta}`,
-    c.fechaVenta ? `vendido el ${new Date(c.fechaVenta).toLocaleDateString("es-MX")}` : null,
-    !regionDetectada
-      ? "⚠ No se pudo detectar la región por monto — adivinada por el código de país del teléfono, verificar antes de aprobar"
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const regionReportada =
+    c.region && (REGIONES_CERTIFICACION as string[]).includes(c.region) ? (c.region as RegionCertificacion) : null;
+
+  let region: RegionCertificacion;
+  let origen: OrigenDato;
+  if (regionReportada) {
+    region = regionReportada;
+    origen = "reportado";
+  } else {
+    const detectada = detectarRegionCertificacionDesdeMontoYMoneda(c.monto, c.moneda);
+    if (detectada) {
+      region = detectada;
+      origen = "detectado";
+    } else {
+      region = inferirRegionCertificacionDesdeTelefono(c.telefono);
+      origen = "adivinado";
+    }
+  }
+
+  const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
   await crearSolicitudCertificacion({
     id: solicitudId,
@@ -293,7 +346,10 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
     solicitadoPorNombre: NOMBRE_USUARIO_SYNC,
     leadIdVsl: c.leadId,
   });
-  await supabase.from("solicitudes_certificacion").update({ nota_revision: nota }).eq("id", solicitudId);
+  await supabase
+    .from("solicitudes_certificacion")
+    .update({ nota_revision: notaParaRevisor(c, origen) })
+    .eq("id", solicitudId);
 
   resultado.creadas++;
 }
