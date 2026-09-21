@@ -65,16 +65,36 @@ function esVentaDeCertificacion(producto: string | null | undefined): boolean {
 }
 
 // Mismo respaldo que inferirEventoYPaisDesdeTelefono, pero devolviendo una
-// región de Certificaciones en vez de un evento del Club — no hay tabla de
-// precios equivalente a PRECIOS_VSL para Certificaciones todavía (las 3
-// ventas reales vistas hasta ahora vienen sin monto/moneda, "sin
-// registrar"), así que aquí solo se adivina por teléfono; el admin
-// confirma región/monto al revisar.
+// región de Certificaciones en vez de un evento del Club — se usa solo
+// cuando detectarRegionCertificacionDesdeMontoYMoneda no encuentra el
+// monto (ventas "sin registrar"); el admin confirma región/monto al revisar.
 function inferirRegionCertificacionDesdeTelefono(telefono: string | null): RegionCertificacion {
   const limpio = (telefono ?? "").replace(/[^\d+]/g, "");
   if (limpio.startsWith("+52")) return "MX";
   if (limpio.startsWith("+1")) return "US";
   return "LATAM";
+}
+
+// Tabla de precios de Legendar-IA (monto + moneda → región) — mismos montos
+// que la tabla de 3 meses de PRECIOS_VSL a propósito (es el mismo precio de
+// entrada para ambos productos), pero esVentaDeCertificacion ya separó la
+// rama antes de llegar aquí, así que no hay ambigüedad real. Certificaciones
+// no tiene duración de membresía (a diferencia del Club), por eso esta tabla
+// no lleva tipoMembresia — solo región.
+const PRECIOS_CERTIFICACION: { moneda: string; monto: number; region: RegionCertificacion }[] = [
+  { moneda: "usd", monto: 997, region: "US" },
+  { moneda: "mxn", monto: 9997, region: "MX" },
+  { moneda: "usd", monto: 599, region: "LATAM" },
+];
+
+function detectarRegionCertificacionDesdeMontoYMoneda(
+  monto: number | null,
+  moneda: string | null
+): RegionCertificacion | null {
+  if (monto == null || !moneda) return null;
+  const monedaKey = moneda.trim().toLowerCase();
+  const montoRedondeado = Math.round(monto);
+  return PRECIOS_CERTIFICACION.find((p) => p.moneda === monedaKey && p.monto === montoRedondeado)?.region ?? null;
 }
 
 // Tabla de precios que mandó el director de VSL (monto + moneda → región +
@@ -243,7 +263,8 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
   }
 
   const solicitudId = randomUUID();
-  const region = inferirRegionCertificacionDesdeTelefono(c.telefono);
+  const regionDetectada = detectarRegionCertificacionDesdeMontoYMoneda(c.monto, c.moneda);
+  const region = regionDetectada ?? inferirRegionCertificacionDesdeTelefono(c.telefono);
   const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
   const nota = [
@@ -252,7 +273,9 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
     c.monto != null ? `monto: ${c.monto}${c.moneda ? ` ${c.moneda}` : ""}` : null,
     `fuente: ${c.fuenteVenta}`,
     c.fechaVenta ? `vendido el ${new Date(c.fechaVenta).toLocaleDateString("es-MX")}` : null,
-    "⚠ Región adivinada por el código de país del teléfono — verificar antes de aprobar",
+    !regionDetectada
+      ? "⚠ No se pudo detectar la región por monto — adivinada por el código de país del teléfono, verificar antes de aprobar"
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
