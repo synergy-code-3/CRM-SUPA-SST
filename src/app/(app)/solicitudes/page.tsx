@@ -718,7 +718,7 @@ export default function SolicitudesPage() {
                     disabled={procesando === modoSolicitud.id}
                     className="ease-spring w-full rounded-lg border border-silver px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
                   >
-                    Agregar Black Access — suma un acceso Black + 3 meses de Skool a lo que ya tenía
+                    Agregar Black Access — suma un acceso Black + 3 meses de Skool a lo que ya tenía y le manda la invitación a Skool
                   </button>
                 )}
                 <button

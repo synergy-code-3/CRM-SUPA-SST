@@ -786,6 +786,20 @@ export async function marcarInvitacionSkoolEnviada(id: string, fechaAncla?: stri
   return filaACliente(data as ClienteRow);
 }
 
+// Solo marca que la invitación a Skool ya salió, sin tocar el vencimiento de
+// Skool (a diferencia de marcarInvitacionSkoolEnviada, que lo recalcula desde
+// un ancla) — para cuando el vencimiento ya se extendió por otro camino.
+export async function marcarSoloInvitacionSkoolEnviada(id: string): Promise<Cliente> {
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({ invitacion_skool: "Invitación enviada", actualizado_en: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaACliente(data as ClienteRow);
+}
+
 export function finDeAccesoDentroDeUnAnio(): string {
   const ahora = new Date();
   return new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 365)).toISOString();

@@ -6,10 +6,13 @@ import {
   agregarNota,
   agregarNotaAlPerfil,
   aplicarSolicitudAClienteExistente,
+  marcarSoloInvitacionSkoolEnviada,
   normalizarEmail,
   obtenerCliente,
   renovarMembresia,
 } from "@/lib/db";
+import { finAccesoConEtiqueta, formatearFechaSkool } from "@/lib/fechas";
+import { invitarASkool } from "@/lib/skool";
 import { marcarSolicitudAprobada, obtenerSolicitud } from "@/lib/solicitudes";
 import { marcarAccesoDadoVsl } from "@/lib/vsl-soporte";
 
@@ -71,6 +74,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let avisoKajabi: string | null = null;
     let avisoSkool: string | null = null;
     let avisoGhl: string | null = null;
+    // Solo con Black Access: recordatorio de ajustar en Kajabi el fin de acceso.
+    let recordatorioKajabi: string | null = null;
 
     // Nota del vendedor (campo "Notas" del formulario de la solicitud) — se
     // agrega a las Notas del cliente en cualquier caso que sí toque el
@@ -89,6 +94,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           { etiqueta: "BLACK ACCESS", tipoMembresia: "3 Meses", notaSolicitud },
           permiso.usuario.nombre
         );
+        // Black Access también manda la invitación a Skool (el vencimiento de
+        // Skool ya quedó extendido arriba, por eso solo se marca el envío).
+        try {
+          await invitarASkool(cliente.email);
+          cliente = await marcarSoloInvitacionSkoolEnviada(cliente.id);
+        } catch (err) {
+          avisoSkool = err instanceof Error ? err.message : "No se pudo enviar la invitación a Skool";
+        }
+        const fin = finAccesoConEtiqueta(cliente.fechaInscripcion, cliente.fechaRenovacion, cliente.etiqueta, cliente.etiquetaAsignadaEn);
+        recordatorioKajabi =
+          "Recuerda cambiar la fecha de fin de acceso en Kajabi" +
+          (!fin.vitalicio && fin.fecha ? ` (nuevo fin de acceso: ${formatearFechaSkool(fin.fecha)}).` : ".");
       } else if (modo === "renovacion" || modo === "activar") {
         const clienteActualizado =
           modo === "renovacion"
@@ -148,7 +165,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    return NextResponse.json({ solicitud: actualizada, cliente, avisoKajabi, avisoSkool, avisoGhl, avisoVsl });
+    return NextResponse.json({ solicitud: actualizada, cliente, avisoKajabi, avisoSkool, avisoGhl, avisoVsl, recordatorioKajabi });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear el cliente";
     return NextResponse.json({ error: message }, { status: 400 });
