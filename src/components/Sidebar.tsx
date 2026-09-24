@@ -53,7 +53,7 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
   },
 ];
 
-type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
+export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
 
 // Antes 60s — se sentía nada "en tiempo real" (un admin viendo la pantalla
 // no veía la burbuja aparecer hasta un minuto después de que alguien se
@@ -66,7 +66,7 @@ const INTERVALO_CONTEOS_MS = 10 * 1000;
 // siempre se consulta, porque cualquier rol puede tener avisos sin
 // confirmar (la ruta ya calcula 0 en solicitudes/usuarios para quien no
 // tiene permiso, así que no se gasta nada de más).
-function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
+export function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
   const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, solicitudesCertificacion: 0, usuarios: 0, avisos: 0 });
 
   useEffect(() => {
@@ -258,7 +258,7 @@ const INTERVALO_AVISOS_MS = 30 * 1000;
 // GET /api/avisos/pendientes) — el modal siempre muestra cola[0]. Cada
 // poll reemplaza la cola completa con lo que diga el server, así que una
 // vez confirmado un aviso ya no vuelve a aparecer en el siguiente poll.
-function useAvisosPendientes(usuario: UsuarioSesion | null) {
+export function useAvisosPendientes(usuario: UsuarioSesion | null) {
   const [cola, setCola] = useState<Aviso[]>([]);
 
   useEffect(() => {
@@ -292,7 +292,7 @@ function useAvisosPendientes(usuario: UsuarioSesion | null) {
 // tocar el fondo mientras no se marque "Enterado" — a propósito, es la
 // forma de garantizar que el aviso de verdad se leyó antes de poder
 // seguir usando el CRM.
-function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () => void }) {
+export function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () => void }) {
   const [enterado, setEnterado] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
 

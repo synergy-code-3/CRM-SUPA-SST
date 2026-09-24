@@ -1,109 +1,243 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  ArrowUpRight,
+  ArrowUpWideNarrow,
+  AlertTriangle,
+  Download,
+  Layers,
+  MessageCircle,
+  RefreshCw,
+  Radio,
+  RefreshCcw,
+  Search,
+  ShieldCheck,
+  Tag as TagIcon,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
+import { descargarCsv } from "@/lib/csv";
 import type {
   ClienteCertificacion,
   EstadoCertificacion,
+  MensajeBienvenidaCertificacion,
   NuevoClientePendienteCertificacion,
   ResultadoSincronizacionCertificacion,
 } from "@/lib/certificaciones-tipos";
 import { REGION_CERTIFICACION_LABEL } from "@/lib/certificaciones-tipos";
+import {
+  BIENVENIDA_LABEL,
+  CERTIFICACION_LEGENDAR_IA,
+  ESTADO_LABEL,
+  colorDeTag,
+  diasRestantes,
+  estaActivo,
+  estadoReal,
+} from "@/components/certificaciones/constantes";
+import { StatusBadge } from "@/components/certificaciones/StatusBadge";
+import { CopyButton } from "@/components/certificaciones/CopyButton";
+import { FilterMultiSelect } from "@/components/certificaciones/FilterMultiSelect";
+import { BulkActionMenu } from "@/components/certificaciones/BulkActionMenu";
+import { InvitacionToggle, MensajeBienvenidaToggle } from "@/components/certificaciones/Toggles";
+import { ClienteCertificacionPanel } from "@/components/certificaciones/ClienteCertificacionPanel";
 
-const ESTADO_LABEL: Record<EstadoCertificacion, string> = {
-  NUEVO: "Nuevo",
-  INVITACION_ENVIADA: "Invitación enviada",
-  ACTIVO: "Miembro",
-  VENCIDO: "Vencido",
-};
-const ESTADO_ESTILO: Record<EstadoCertificacion, string> = {
-  NUEVO: "bg-silver text-muted",
-  INVITACION_ENVIADA: "bg-warning/15 text-warning",
-  ACTIVO: "bg-success/15 text-success",
-  VENCIDO: "bg-danger/15 text-danger",
-};
+type Criterio = "nombre" | "correo" | "telefono" | "notas" | "historial";
+const CRITERIOS: { value: Criterio; label: string }[] = [
+  { value: "nombre", label: "Nombre" },
+  { value: "correo", label: "Correo" },
+  { value: "telefono", label: "Teléfono" },
+  { value: "notas", label: "Notas" },
+  { value: "historial", label: "Historial" },
+];
 
-function estadoReal(c: ClienteCertificacion): EstadoCertificacion {
-  if (c.pausada) return c.estado === "ACTIVO" ? "ACTIVO" : c.estado;
-  if (c.fechaVencimiento && new Date(c.fechaVencimiento) < new Date()) return "VENCIDO";
-  return c.estado;
-}
+const OPCIONES_ESTADO = (Object.keys(ESTADO_LABEL) as EstadoCertificacion[]).map((e) => ({
+  value: e,
+  label: ESTADO_LABEL[e],
+}));
+const OPCIONES_BIENVENIDA = (Object.keys(BIENVENIDA_LABEL) as MensajeBienvenidaCertificacion[]).map((e) => ({
+  value: e,
+  label: BIENVENIDA_LABEL[e],
+}));
 
 export default function CertificacionesPage() {
   const { usuario } = useSesion();
-  const [clientes, setClientes] = useState<ClienteCertificacion[] | null>(null);
-  const [busqueda, setBusqueda] = useState("");
-  const [sincronizando, setSincronizando] = useState(false);
-  const [resultadoSync, setResultadoSync] = useState<ResultadoSincronizacionCertificacion | null>(null);
-  const [filtroEstado, setFiltroEstado] = useState<string[]>([]);
-  const [filtroRegion, setFiltroRegion] = useState<string[]>([]);
-  const [filtroTags, setFiltroTags] = useState<string[]>([]);
-  const [filtroEtiquetas, setFiltroEtiquetas] = useState<string[]>([]);
-  const [filtroVendedor, setFiltroVendedor] = useState<string[]>([]);
-
   const puedeGestionar = usuario ? tienePermiso(usuario.rol, "gestionarCertificaciones") : false;
   const puedeActualizar = usuario ? tienePermiso(usuario.rol, "actualizarCertificaciones") : false;
 
-  async function cargar() {
+  const [clientes, setClientes] = useState<ClienteCertificacion[] | null>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [criterios, setCriterios] = useState<string[]>(CRITERIOS.map((c) => c.value));
+  const [idsBusqueda, setIdsBusqueda] = useState<Set<string> | null>(null);
+  const [orden, setOrden] = useState<"recientes" | "antiguos">("recientes");
+  const [filtroEstado, setFiltroEstado] = useState<string[]>([]);
+  const [filtroRegion, setFiltroRegion] = useState<string[]>([]);
+  const [filtroBienvenida, setFiltroBienvenida] = useState<string[]>([]);
+  const [filtroTags, setFiltroTags] = useState<string[]>([]);
+  const [filtroVendedor, setFiltroVendedor] = useState<string[]>([]);
+  const [filtroCertificacion, setFiltroCertificacion] = useState<string[]>([]);
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [panelId, setPanelId] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resultadoSync, setResultadoSync] = useState<ResultadoSincronizacionCertificacion | null>(null);
+
+  const cargar = useCallback(async () => {
     const res = await fetch("/api/certificaciones");
     if (!res.ok) return;
     const data = await res.json();
     setClientes(data.clientes);
-  }
+  }, []);
 
   useEffect(() => {
     cargar();
+  }, [cargar]);
+
+  // El perfil (panel lateral) se puede abrir por URL: /certificaciones?id=…
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) setPanelId(id);
   }, []);
 
-  // Opciones de cada MultiSelect, derivadas de los clientes ya cargados —
-  // no hace falta un catálogo aparte (mismo dato con el que ya se filtra).
+  function abrirPanel(id: string | null) {
+    setPanelId(id);
+    const url = id ? `/certificaciones?id=${encodeURIComponent(id)}` : "/certificaciones";
+    window.history.replaceState(null, "", url);
+  }
+
+  // Búsqueda de texto (nombre/correo/teléfono/notas/historial) resuelta en
+  // el servidor — el historial vive en otra tabla. El resto de filtros
+  // (chips) se aplican aquí sobre los clientes ya cargados.
+  useEffect(() => {
+    const q = busqueda.trim();
+    if (!q) {
+      setIdsBusqueda(null);
+      return;
+    }
+    const controlador = new AbortController();
+    const timeout = setTimeout(() => {
+      const params = new URLSearchParams({ q, en: criterios.join(",") });
+      fetch(`/api/certificaciones/buscar?${params}`, { signal: controlador.signal })
+        .then((r) => r.json())
+        .then((data) => setIdsBusqueda(new Set<string>(data.ids ?? [])))
+        .catch(() => {});
+    }, 250);
+    return () => {
+      clearTimeout(timeout);
+      controlador.abort();
+    };
+  }, [busqueda, criterios]);
+
+  const conEstado = useMemo(
+    () => (clientes ?? []).map((c) => ({ c, estado: estadoReal(c), dias: diasRestantes(c) })),
+    [clientes]
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: conEstado.length,
+      miembros: conEstado.filter((x) => x.estado === "ACTIVO").length,
+      porVencer: conEstado.filter((x) => x.estado === "ACTIVO" && x.dias !== null && x.dias <= 30).length,
+      sinInvitar: conEstado.filter((x) => x.estado === "NUEVO").length,
+    }),
+    [conEstado]
+  );
+
   const opciones = useMemo(() => {
-    const lista = clientes ?? [];
     const regiones = new Set<string>();
     const tags = new Set<string>();
-    const etiquetas = new Set<string>();
     const vendedores = new Set<string>();
-    for (const c of lista) {
-      if (c.region) regiones.add(REGION_CERTIFICACION_LABEL[c.region]);
+    for (const { c } of conEstado) {
+      if (c.region) regiones.add(c.region);
       c.tags.forEach((t) => tags.add(t));
-      c.etiquetas.forEach((e) => etiquetas.add(e));
       if (c.vendedor) vendedores.add(c.vendedor);
     }
-    const ordenar = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b));
-    return { regiones: ordenar(regiones), tags: ordenar(tags), etiquetas: ordenar(etiquetas), vendedores: ordenar(vendedores) };
-  }, [clientes]);
+    const ord = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b));
+    return { regiones: ord(regiones), tags: ord(tags), vendedores: ord(vendedores) };
+  }, [conEstado]);
 
-  const hayFiltrosActivos =
-    filtroEstado.length > 0 ||
-    filtroRegion.length > 0 ||
-    filtroTags.length > 0 ||
-    filtroEtiquetas.length > 0 ||
-    filtroVendedor.length > 0;
+  const hayFiltros =
+    filtroEstado.length + filtroRegion.length + filtroBienvenida.length + filtroTags.length + filtroVendedor.length + filtroCertificacion.length > 0;
 
   function limpiarFiltros() {
     setFiltroEstado([]);
     setFiltroRegion([]);
+    setFiltroBienvenida([]);
     setFiltroTags([]);
-    setFiltroEtiquetas([]);
     setFiltroVendedor([]);
+    setFiltroCertificacion([]);
   }
 
-  const filtrados = useMemo(() => {
-    if (!clientes) return [];
-    const q = busqueda.trim().toLowerCase();
-    return clientes.filter((c) => {
-      if (q && !c.nombre.toLowerCase().includes(q) && !(c.email ?? "").toLowerCase().includes(q)) return false;
-      if (filtroEstado.length > 0 && !filtroEstado.includes(ESTADO_LABEL[estadoReal(c)])) return false;
-      if (filtroRegion.length > 0 && (!c.region || !filtroRegion.includes(REGION_CERTIFICACION_LABEL[c.region]))) return false;
-      if (filtroTags.length > 0 && !c.tags.some((t) => filtroTags.includes(t))) return false;
-      if (filtroEtiquetas.length > 0 && !c.etiquetas.some((e) => filtroEtiquetas.includes(e))) return false;
-      if (filtroVendedor.length > 0 && !(c.vendedor && filtroVendedor.includes(c.vendedor))) return false;
+  const ordenados = useMemo(() => {
+    const lista = conEstado.filter(({ c, estado }) => {
+      if (idsBusqueda && !idsBusqueda.has(c.id)) return false;
+      if (filtroEstado.length && !filtroEstado.includes(estado)) return false;
+      if (filtroRegion.length && (!c.region || !filtroRegion.includes(c.region))) return false;
+      if (filtroBienvenida.length && !filtroBienvenida.includes(c.mensajeBienvenida)) return false;
+      if (filtroTags.length && !c.tags.some((t) => filtroTags.includes(t))) return false;
+      if (filtroVendedor.length && !(c.vendedor && filtroVendedor.includes(c.vendedor))) return false;
+      if (filtroCertificacion.length) {
+        const conLegendar = c.etiquetas.length === 0 || c.etiquetas.some((e) => filtroCertificacion.includes(e));
+        if (!conLegendar) return false;
+      }
       return true;
     });
-  }, [clientes, busqueda, filtroEstado, filtroRegion, filtroTags, filtroEtiquetas, filtroVendedor]);
+    lista.sort((a, b) => {
+      const diff = new Date(b.c.fechaLlegada).getTime() - new Date(a.c.fechaLlegada).getTime();
+      return orden === "recientes" ? diff : -diff;
+    });
+    return lista;
+  }, [conEstado, idsBusqueda, filtroEstado, filtroRegion, filtroBienvenida, filtroTags, filtroVendedor, filtroCertificacion, orden]);
+
+  const todosSeleccionados = ordenados.length > 0 && ordenados.every(({ c }) => seleccionados.has(c.id));
+
+  function alternarTodos() {
+    setSeleccionados(todosSeleccionados ? new Set() : new Set(ordenados.map(({ c }) => c.id)));
+  }
+  function alternarUno(id: string) {
+    const copia = new Set(seleccionados);
+    if (copia.has(id)) copia.delete(id);
+    else copia.add(id);
+    setSeleccionados(copia);
+  }
+
+  // Acción masiva: recorre los seleccionados de uno en uno (cada uno con su
+  // propio evento en la línea de tiempo) y recarga al final.
+  async function masivo(ruta: string, body?: unknown, metodo: "POST" | "DELETE" = "POST", query = "") {
+    const ids = Array.from(seleccionados);
+    let fallos = 0;
+    for (const id of ids) {
+      const res = await fetch(`/api/certificaciones/${encodeURIComponent(id)}/${ruta}${query}`, {
+        method: metodo,
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) fallos++;
+    }
+    await cargar();
+    if (fallos) alert(`${fallos} de ${ids.length} no se pudieron actualizar.`);
+  }
+
+  function descargar() {
+    const encabezados = ["Nombre", "Correo", "Teléfono", "Región", "Estado", "Ingreso", "Vence", "Vendedor", "Monto", "Tags"];
+    const filas = ordenados.map(({ c, estado }) => [
+      c.nombre,
+      c.email ?? "",
+      c.telefono ?? "",
+      c.region ? REGION_CERTIFICACION_LABEL[c.region] : "",
+      ESTADO_LABEL[estado],
+      new Date(c.fechaLlegada).toLocaleDateString("es-MX"),
+      c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString("es-MX") : "",
+      c.vendedor ?? "",
+      c.monto ?? "",
+      c.tags.join(", "),
+    ]);
+    descargarCsv("certificaciones.csv", encabezados, filas);
+  }
 
   async function abrirSincronizar() {
     setSincronizando(true);
@@ -120,159 +254,322 @@ export default function CertificacionesPage() {
     }
   }
 
+  const textoCriterios =
+    criterios.length === CRITERIOS.length
+      ? `Buscar en: todo (${criterios.length})`
+      : criterios.length === 1
+        ? `Buscar en: ${CRITERIOS.find((c) => c.value === criterios[0])?.label}`
+        : `Buscar en: (${criterios.length})`;
+
+  const btnHerramienta =
+    "flex items-center justify-center gap-2 rounded-full border border-silver-deep/60 bg-surface-2 px-5 py-2.5 text-sm font-medium text-muted transition-all duration-500 ease-spring hover:text-primary disabled:opacity-60";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Certificaciones</h1>
-          <p className="text-sm text-muted">Socios de Legendar-IA.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {puedeGestionar && (
-            <Link
-              href="/certificaciones/papelera"
-              className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Papelera
-            </Link>
-          )}
-          {puedeActualizar && (
-            <button
-              onClick={abrirSincronizar}
-              disabled={sincronizando}
-              className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${sincronizando ? "animate-spin" : ""}`} strokeWidth={1.75} />
-              Actualizar
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary-dim px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-primary-deep">
+          <Radio className="h-3 w-3 animate-pulse" strokeWidth={2} />
+          Panel general · en vivo
+        </span>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Todos los clientes</h1>
+        <p className="text-sm text-muted">Control de invitaciones y membresías anuales de Legendar-IA.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5 sm:gap-4 md:grid-cols-4">
+        {[
+          { icon: Users, valor: stats.total, label: "Clientes totales" },
+          { icon: ShieldCheck, valor: stats.miembros, label: "Miembros en VIP" },
+          { icon: AlertTriangle, valor: stats.porVencer, label: "Por vencer (30 días)" },
+          { icon: UserPlus, valor: stats.sinInvitar, label: "Nuevos sin invitar" },
+        ].map(({ icon: Icon, valor, label }) => (
+          <div key={label} className="shell rounded-xl p-1 diffused sm:rounded-[1.75rem] sm:p-2">
+            <div className="core flex flex-row items-center gap-2 rounded-[calc(0.75rem-0.25rem)] p-2 sm:gap-3 sm:rounded-[calc(1.75rem-0.5rem)] sm:p-5">
+              <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-primary/10 sm:h-9 sm:w-9 sm:rounded-xl">
+                <Icon className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" strokeWidth={1.5} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-semibold tabular-nums text-foreground sm:text-2xl">{valor}</p>
+                <p className="truncate text-[9px] leading-tight text-muted sm:text-xs">{label}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="shell rounded-[2rem] p-2 diffused-lg">
+        <div className="core flex flex-col gap-4 rounded-[calc(2rem-0.5rem)] p-4 sm:p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="flex flex-1 items-center gap-2 rounded-2xl border border-silver-deep/60 bg-surface-2 px-4 py-2.5 transition-all duration-500 ease-spring focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/10">
+              <Search className="h-4 w-4 flex-none text-muted" strokeWidth={1.5} />
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar…"
+                className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted/60"
+              />
+            </div>
+            <FilterMultiSelect
+              label={textoCriterios}
+              opciones={CRITERIOS}
+              seleccionados={criterios}
+              onChange={(v) => setCriterios(v.length ? v : CRITERIOS.map((c) => c.value))}
+            />
+            {puedeActualizar && (
+              <button onClick={abrirSincronizar} disabled={sincronizando} className={btnHerramienta}>
+                <RefreshCw className={`h-4 w-4 ${sincronizando ? "animate-spin" : ""}`} strokeWidth={1.75} />
+                Actualizar
+              </button>
+            )}
+            <button onClick={descargar} disabled={ordenados.length === 0} className={btnHerramienta}>
+              <Download className="h-4 w-4" strokeWidth={1.75} />
+              Descargar CSV
             </button>
-          )}
-          {puedeGestionar && (
-            <Link
-              href="/certificaciones/nuevo"
-              className="ease-spring flex items-center gap-1.5 rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Nuevo cliente
-            </Link>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o correo…"
-          className="w-full rounded-lg border border-silver bg-surface-2 py-1.5 pl-9 pr-3 text-sm outline-none ring-primary/30 focus:ring-2"
-        />
-      </div>
-
-      <div className="shell rounded-[1.5rem] p-2 diffused">
-        <div className="core flex flex-wrap items-center gap-2 rounded-[calc(1.5rem-0.5rem)] p-3.5">
-          <MultiSelect
-            label="estados"
-            todasLabel="Todos los estados"
-            opciones={Object.values(ESTADO_LABEL)}
-            seleccion={filtroEstado}
-            onChange={setFiltroEstado}
-          />
-          <MultiSelect
-            label="regiones"
-            todasLabel="Todas las regiones"
-            opciones={opciones.regiones}
-            seleccion={filtroRegion}
-            onChange={setFiltroRegion}
-          />
-          <MultiSelect
-            label="certificaciones"
-            todasLabel="Todas las certificaciones"
-            opciones={opciones.etiquetas}
-            seleccion={filtroEtiquetas}
-            onChange={setFiltroEtiquetas}
-          />
-          <MultiSelect label="tags" todasLabel="Todos los tags" opciones={opciones.tags} seleccion={filtroTags} onChange={setFiltroTags} />
-          <MultiSelect
-            label="vendedores"
-            todasLabel="Todos los vendedores"
-            opciones={opciones.vendedores}
-            seleccion={filtroVendedor}
-            onChange={setFiltroVendedor}
-          />
-          {hayFiltrosActivos && (
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={limpiarFiltros}
-              className="ease-spring ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-danger/10 hover:text-danger"
+              onClick={() => setOrden((o) => (o === "recientes" ? "antiguos" : "recientes"))}
+              className="flex items-center justify-center gap-1.5 truncate rounded-full border border-silver-deep/60 bg-surface-2 px-4 py-2 text-xs font-medium text-muted transition-all duration-500 ease-spring hover:text-primary"
             >
-              <X className="h-3.5 w-3.5" strokeWidth={2} />
-              Limpiar
+              {orden === "recientes" ? (
+                <ArrowDownWideNarrow className="h-3.5 w-3.5" strokeWidth={2} />
+              ) : (
+                <ArrowUpWideNarrow className="h-3.5 w-3.5" strokeWidth={2} />
+              )}
+              {orden === "recientes" ? "Más nuevos primero" : "Más antiguos primero"}
             </button>
-          )}
+            <FilterMultiSelect label="Todos los estados" opciones={OPCIONES_ESTADO} seleccionados={filtroEstado} onChange={setFiltroEstado} />
+            <FilterMultiSelect
+              label="Todas las regiones"
+              opciones={opciones.regiones.map((r) => ({ value: r, label: REGION_CERTIFICACION_LABEL[r as keyof typeof REGION_CERTIFICACION_LABEL] }))}
+              seleccionados={filtroRegion}
+              onChange={setFiltroRegion}
+            />
+            <FilterMultiSelect label="Bienvenida WA: todos" opciones={OPCIONES_BIENVENIDA} seleccionados={filtroBienvenida} onChange={setFiltroBienvenida} />
+            <FilterMultiSelect
+              label="Todos los tags"
+              opciones={opciones.tags.map((t) => ({ value: t, label: t }))}
+              seleccionados={filtroTags}
+              onChange={setFiltroTags}
+              buscable
+            />
+            <FilterMultiSelect
+              label="Todos los vendedores"
+              opciones={opciones.vendedores.map((v) => ({ value: v, label: v }))}
+              seleccionados={filtroVendedor}
+              onChange={setFiltroVendedor}
+              buscable
+            />
+            <FilterMultiSelect
+              label="Todas las certificaciones"
+              opciones={[{ value: CERTIFICACION_LEGENDAR_IA, label: CERTIFICACION_LEGENDAR_IA }]}
+              seleccionados={filtroCertificacion}
+              onChange={setFiltroCertificacion}
+            />
+            {hayFiltros && (
+              <button
+                onClick={limpiarFiltros}
+                className="flex items-center gap-1 rounded-full px-4 py-2 text-xs font-medium text-muted transition-colors hover:text-danger"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+                Limpiar filtros
+              </button>
+            )}
+            {clientes !== null && (
+              <p className="text-xs text-muted sm:ml-auto sm:text-right">
+                {ordenados.length} de {conEstado.length} clientes
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      {clientes !== null && (
-        <p className="text-xs text-muted">
-          {filtrados.length} de {clientes.length} clientes
-        </p>
+      {puedeGestionar && seleccionados.size > 0 && (
+        <div className="shell animate-fade-in rounded-[1.75rem] p-2 diffused-lg">
+          <div className="core flex flex-wrap items-center gap-3 rounded-[calc(1.75rem-0.5rem)] p-4">
+            <span className="text-xs font-medium text-muted">
+              {seleccionados.size} seleccionado{seleccionados.size === 1 ? "" : "s"}
+            </span>
+            <BulkActionMenu
+              label="Estado"
+              icon={RefreshCcw}
+              options={[
+                {
+                  key: "aceptar",
+                  label: "Marcar invitación aceptada",
+                  onSelect: () => masivo("aceptar"),
+                },
+              ]}
+            />
+            <BulkActionMenu
+              label="Bienvenida WA"
+              icon={MessageCircle}
+              options={OPCIONES_BIENVENIDA.map((o) => ({
+                key: o.value,
+                label: o.label,
+                onSelect: () => masivo("bienvenida", { estado: o.value }),
+              }))}
+            />
+            <BulkActionMenu
+              label="Tags"
+              icon={TagIcon}
+              options={opciones.tags.flatMap((t) => [
+                { key: `add-${t}`, label: `Agregar "${t}"`, onSelect: () => masivo("tags", { tags: [t] }) },
+                {
+                  key: `del-${t}`,
+                  label: `Quitar "${t}"`,
+                  quitar: true,
+                  onSelect: () => masivo("tags", undefined, "DELETE", `?tag=${encodeURIComponent(t)}`),
+                },
+              ])}
+            />
+            <BulkActionMenu
+              label="Certificación"
+              icon={Layers}
+              options={[
+                {
+                  key: "add",
+                  label: `Agregar a ${CERTIFICACION_LEGENDAR_IA}`,
+                  onSelect: () => masivo("etiquetas", { etiquetas: [CERTIFICACION_LEGENDAR_IA] }),
+                },
+                {
+                  key: "del",
+                  label: `Quitar de ${CERTIFICACION_LEGENDAR_IA}`,
+                  quitar: true,
+                  onSelect: () => masivo("etiquetas", undefined, "DELETE", `?etiqueta=${encodeURIComponent(CERTIFICACION_LEGENDAR_IA)}`),
+                },
+              ]}
+            />
+            <button
+              onClick={() => setSeleccionados(new Set())}
+              className="ml-auto text-xs font-medium text-muted transition-colors hover:text-danger"
+            >
+              Limpiar selección
+            </button>
+          </div>
+        </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-silver">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">
-            <tr>
-              <th className="px-4 py-3">Nombre</th>
-              <th className="px-4 py-3">Correo</th>
-              <th className="px-4 py-3">Región</th>
-              <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3">Vencimiento</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clientes === null && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted">
-                  Cargando…
-                </td>
-              </tr>
-            )}
-            {clientes !== null && filtrados.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted">
-                  No hay clientes.
-                </td>
-              </tr>
-            )}
-            {filtrados.map((c) => {
-              const estado = estadoReal(c);
-              return (
-                <tr key={c.id} className="border-t border-silver/60 transition hover:bg-surface-2">
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <Link href={`/certificaciones/${encodeURIComponent(c.id)}`} className="hover:underline">
-                      {c.nombre}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted">{c.email ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted">{c.region ? REGION_CERTIFICACION_LABEL[c.region] : "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[estado]}`}>
-                      {ESTADO_LABEL[estado]}
-                      {c.pausada ? " (pausada)" : ""}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted">
-                    {c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString("es-MX") : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="shell rounded-[2rem] p-2 diffused-lg">
+        <div className="core rounded-[calc(2rem-0.5rem)] p-2 md:p-3">
+          {clientes === null ? (
+            <p className="px-4 py-10 text-center text-sm text-muted">Cargando…</p>
+          ) : ordenados.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted">
+              {conEstado.length === 0 ? "Todavía no hay clientes." : "Ningún cliente coincide con la búsqueda o los filtros."}
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-silver">
+              <li className="flex items-center gap-3 px-4 py-2">
+                <input
+                  type="checkbox"
+                  checked={todosSeleccionados}
+                  onChange={alternarTodos}
+                  className="h-4 w-4 flex-none rounded border-silver-deep/60 accent-primary"
+                />
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Seleccionar todos</span>
+              </li>
+              {ordenados.map(({ c, estado, dias }) => {
+                const activo = estaActivo(c);
+                return (
+                  <li key={c.id} className="flex items-center gap-3 px-4">
+                    <input
+                      type="checkbox"
+                      checked={seleccionados.has(c.id)}
+                      onChange={() => alternarUno(c.id)}
+                      className="h-4 w-4 flex-none rounded border-silver-deep/60 accent-primary"
+                    />
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => abrirPanel(c.id)}
+                      onKeyDown={(e) => e.key === "Enter" && abrirPanel(c.id)}
+                      className="group flex flex-1 cursor-pointer flex-wrap items-center justify-between gap-3 rounded-2xl py-4 outline-none transition-colors duration-300 hover:bg-surface-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">{c.nombre}</span>
+                          <span
+                            className={`hidden items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium sm:inline-flex ${
+                              c.pausada ? "bg-warning/10 text-warning" : activo ? "bg-success/10 text-success" : "bg-silver text-muted"
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${c.pausada ? "bg-warning" : activo ? "bg-success" : "bg-muted"}`} />
+                            {c.pausada ? "Pausado" : activo ? "Activo" : "Inactivo"}
+                          </span>
+                          <span className="hidden flex-none rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">
+                            {CERTIFICACION_LEGENDAR_IA}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="truncate text-xs text-muted">{c.email ?? "Sin correo"}</span>
+                          {c.email && <CopyButton valor={c.email} />}
+                        </div>
+                        <p className="hidden truncate text-xs text-muted sm:block">
+                          Ingreso: {new Date(c.fechaLlegada).toLocaleDateString("es-MX")}
+                          {c.fechaVencimiento && ` · Vence: ${new Date(c.fechaVencimiento).toLocaleDateString("es-MX")}`}
+                          {c.region && ` · ${REGION_CERTIFICACION_LABEL[c.region]}`}
+                        </p>
+                        {c.tags.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {c.tags.map((t) => (
+                              <span key={t} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${colorDeTag(t)}`}>
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-none items-center gap-2 sm:gap-3">
+                        <StatusBadge estado={estado} />
+                        {activo && dias !== null && (
+                          <span className="text-xs text-muted">{dias <= 0 ? "Vence hoy" : `${dias} días restantes`}</span>
+                        )}
+                        {puedeGestionar && (
+                          <>
+                            <InvitacionToggle
+                              compacto
+                              clienteId={c.id}
+                              clienteNombre={c.nombre}
+                              enviada={c.estado !== "NUEVO"}
+                              puedeDeshacer={c.estado === "INVITACION_ENVIADA"}
+                              onCambio={cargar}
+                            />
+                            <MensajeBienvenidaToggle compacto clienteId={c.id} estado={c.mensajeBienvenida} onCambio={cargar} />
+                          </>
+                        )}
+                        <ArrowUpRight
+                          className="h-4 w-4 text-muted transition-transform duration-500 ease-spring group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                          strokeWidth={1.5}
+                        />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
+
+      {panelId && (
+        <ClienteCertificacionPanel
+          clienteId={panelId}
+          vendedores={opciones.vendedores}
+          onClose={() => abrirPanel(null)}
+          onCambio={cargar}
+        />
+      )}
 
       {resultadoSync && (
         <RevisionSincronizacion resultado={resultadoSync} onCerrar={() => setResultadoSync(null)} onAplicado={cargar} />
+      )}
+
+      {puedeGestionar && clientes !== null && clientes.length === 0 && (
+        <Link href="/certificaciones/nuevo" className="text-sm text-primary hover:underline">
+          Registrar el primero
+        </Link>
       )}
     </div>
   );
@@ -444,118 +741,6 @@ function RevisionSincronizacion({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// Mismo componente/patrón que MultiSelect en /clientes (Club) — copiado en
-// vez de compartido a propósito, mientras esta sección sigue chica y con
-// sus propias opciones (regiones/tags/etiquetas propios de Certificaciones).
-function MultiSelect({
-  label,
-  todasLabel,
-  opciones,
-  seleccion,
-  onChange,
-}: {
-  label: string;
-  todasLabel: string;
-  opciones: string[];
-  seleccion: string[];
-  onChange: (v: string[]) => void;
-}) {
-  const [abierto, setAbierto] = useState(false);
-  const [busqueda, setBusqueda] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClickFuera(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false);
-    }
-    document.addEventListener("mousedown", onClickFuera);
-    return () => document.removeEventListener("mousedown", onClickFuera);
-  }, []);
-
-  useEffect(() => {
-    if (!abierto) setBusqueda("");
-  }, [abierto]);
-
-  function toggle(op: string) {
-    onChange(seleccion.includes(op) ? seleccion.filter((s) => s !== op) : [...seleccion, op]);
-  }
-
-  const opcionesFiltradas = busqueda.trim()
-    ? opciones.filter((op) => op.toLowerCase().includes(busqueda.trim().toLowerCase()))
-    : opciones;
-
-  const texto = seleccion.length === 0 ? todasLabel : seleccion.length === 1 ? seleccion[0] : `${seleccion.length} ${label}`;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setAbierto((a) => !a)}
-        className={`ease-spring flex max-w-[180px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
-          seleccion.length > 0
-            ? "border-primary bg-primary-dim text-primary-deep"
-            : "border-silver bg-surface-2 text-muted hover:border-silver-deep hover:text-foreground"
-        }`}
-      >
-        <span className="truncate">{texto}</span>
-        <ChevronDown className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
-      </button>
-
-      {abierto && (
-        <div className="animate-fade-in-fast absolute left-0 top-[calc(100%+6px)] z-20 w-64 rounded-xl border border-silver bg-surface p-1.5 shadow-xl">
-          {opciones.length > 5 && (
-            <div className="relative mb-1.5">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-              <input
-                autoFocus
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder={`Buscar ${label}…`}
-                className="w-full rounded-lg border border-silver bg-surface-2 py-1.5 pl-8 pr-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          )}
-          <div className="max-h-56 overflow-y-auto">
-            {seleccion.length > 0 && (
-              <button
-                onClick={() => onChange([])}
-                className="ease-spring mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-danger transition hover:bg-danger/10"
-              >
-                <X className="h-3.5 w-3.5" strokeWidth={2} />
-                Limpiar selección
-              </button>
-            )}
-            {opcionesFiltradas.length === 0 ? (
-              <p className="px-2.5 py-2 text-xs text-muted">{opciones.length === 0 ? "Sin opciones disponibles." : "Sin resultados."}</p>
-            ) : (
-              opcionesFiltradas.map((op) => {
-                const activo = seleccion.includes(op);
-                return (
-                  <button
-                    key={op}
-                    onClick={() => toggle(op)}
-                    className={`ease-spring flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
-                      activo ? "bg-primary-dim text-primary-deep font-medium" : "text-foreground hover:bg-surface-2"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-4 w-4 flex-none items-center justify-center rounded border ${
-                        activo ? "border-primary bg-primary text-white" : "border-silver"
-                      }`}
-                    >
-                      {activo && <Check className="h-3 w-3" strokeWidth={3} />}
-                    </span>
-                    <span className="truncate">{op}</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

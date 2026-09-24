@@ -144,6 +144,75 @@ export async function listarClientesCertificacion(): Promise<ClienteCertificacio
   return (data as ClienteCertificacionRow[]).map(filaACliente);
 }
 
+export type CriterioBusquedaCertificacion = "nombre" | "correo" | "telefono" | "notas" | "historial";
+export const CRITERIOS_BUSQUEDA_CERTIFICACION: CriterioBusquedaCertificacion[] = [
+  "nombre",
+  "correo",
+  "telefono",
+  "notas",
+  "historial",
+];
+
+const COLUMNA_POR_CRITERIO: Record<Exclude<CriterioBusquedaCertificacion, "historial">, string[]> = {
+  nombre: ["nombre"],
+  correo: ["email"],
+  telefono: ["telefono", "telefono_busqueda"],
+  notas: ["notas"],
+};
+
+// Ids de clientes (no eliminados) que cumplen una búsqueda de texto libre:
+// cada palabra debe aparecer (en cualquier orden) en alguno de los criterios
+// elegidos — columnas propias del cliente (nombre/correo/teléfono/notas) y/o
+// el Historial (detalle de sus eventos de línea de tiempo, incluidas las
+// notas agregadas a mano). Mismo criterio "todas las palabras" que la
+// búsqueda de Clientes del Club. Se devuelven ids (no filas) porque la
+// página ya tiene todos los clientes cargados y solo necesita saber cuáles
+// mostrar.
+export async function buscarIdsCertificaciones(
+  busqueda: string,
+  criterios: CriterioBusquedaCertificacion[]
+): Promise<string[]> {
+  const palabras = busqueda
+    .replace(/[,%*()]/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (palabras.length === 0) return [];
+
+  const columnas = criterios.flatMap((c) => (c === "historial" ? [] : COLUMNA_POR_CRITERIO[c]));
+  const incluyeHistorial = criterios.includes("historial");
+
+  let resultado = null as Set<string> | null;
+  for (const palabra of palabras) {
+    const coincidencias = new Set<string>();
+
+    if (columnas.length) {
+      const { data, error } = await supabase
+        .from("certificaciones_clientes")
+        .select("id")
+        .eq("eliminado", false)
+        .or(columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","))
+        .limit(5000);
+      if (error) throw error;
+      for (const f of data ?? []) coincidencias.add(f.id as string);
+    }
+
+    if (incluyeHistorial) {
+      const { data, error } = await supabase
+        .from("certificaciones_eventos")
+        .select("cliente_id")
+        .ilike("nota", `%${palabra}%`)
+        .limit(5000);
+      if (error) throw error;
+      for (const f of data ?? []) coincidencias.add(f.cliente_id as string);
+    }
+
+    resultado = resultado ? new Set([...resultado].filter((id) => coincidencias.has(id))) : coincidencias;
+    if (resultado.size === 0) break;
+  }
+  return [...(resultado ?? [])];
+}
+
 export async function listarPapeleraCertificacion(): Promise<ClienteCertificacion[]> {
   const { data, error } = await supabase
     .from("certificaciones_clientes")
@@ -440,6 +509,111 @@ export async function renovarMembresiaCertificacion(id: string, autor: string): 
     autor,
     `Membresía renovada por 1 año más — nuevo vencimiento: ${nuevoVencimiento.toLocaleDateString("es-MX")}`
   );
+}
+
+const ESTADOS_BIENVENIDA_VALIDOS: MensajeBienvenidaCertificacion[] = ["PENDIENTE", "ENVIADA", "INVALIDO"];
+const BIENVENIDA_LABEL: Record<MensajeBienvenidaCertificacion, string> = {
+  PENDIENTE: "Pendiente",
+  ENVIADA: "Enviada",
+  INVALIDO: "Número inválido",
+};
+
+export async function establecerMensajeBienvenidaCertificacion(
+  id: string,
+  estado: MensajeBienvenidaCertificacion,
+  autor: string
+): Promise<void> {
+  if (!ESTADOS_BIENVENIDA_VALIDOS.includes(estado)) throw new Error("Estado de bienvenida inválido");
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  if (cliente.mensajeBienvenida === estado) return;
+
+  const { error } = await supabase.from("certificaciones_clientes").update({ mensaje_bienvenida: estado }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "MENSAJE_BIENVENIDA", autor, `Mensaje de bienvenida: ${BIENVENIDA_LABEL[estado]}`);
+}
+
+export async function establecerVendedorCertificacion(id: string, vendedor: string | null, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const nuevo = vendedor?.trim() || null;
+  if (nuevo === cliente.vendedor) return;
+
+  const { error } = await supabase.from("certificaciones_clientes").update({ vendedor: nuevo }).eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(
+    id,
+    "VENDEDOR",
+    autor,
+    nuevo ? `Vendedor: ${cliente.vendedor ?? "sin asignar"} → ${nuevo}` : "Se quitó el vendedor asignado"
+  );
+}
+
+// "agregar" suma días a la fecha de vencimiento actual (Agregar 30 días /
+// personalizados); "corregir" la fija a N días desde hoy (o desde el momento
+// en que se pausó, si está pausada — así el contador congelado marca justo
+// N días). Pensado para arreglar el temporizador a mano.
+export async function ajustarDiasCertificacion(
+  id: string,
+  accion: "agregar" | "corregir",
+  dias: number,
+  autor: string
+): Promise<void> {
+  if (!Number.isInteger(dias) || dias < 0 || (accion === "agregar" && dias === 0) || dias > 3650) {
+    throw new Error("Los días deben ser un número entero válido");
+  }
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+
+  const MS_DIA = 24 * 60 * 60 * 1000;
+  let nuevoVencimiento: Date;
+  if (accion === "agregar") {
+    const base = cliente.fechaVencimiento ? new Date(cliente.fechaVencimiento) : new Date();
+    nuevoVencimiento = new Date(base.getTime() + dias * MS_DIA);
+  } else {
+    const referencia = cliente.pausada && cliente.fechaPausa ? new Date(cliente.fechaPausa) : new Date();
+    nuevoVencimiento = new Date(referencia.getTime() + dias * MS_DIA);
+  }
+
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ fecha_vencimiento: nuevoVencimiento.toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(
+    id,
+    "EXTENSION",
+    autor,
+    accion === "agregar"
+      ? `Se agregaron ${dias} días — nuevo vencimiento: ${nuevoVencimiento.toLocaleDateString("es-MX")}`
+      : `Días restantes corregidos a ${dias} — nuevo vencimiento: ${nuevoVencimiento.toLocaleDateString("es-MX")}`
+  );
+}
+
+// Deshace el último paso del ciclo de invitación: ACTIVO → INVITACION_ENVIADA
+// (quita la fecha de aceptación) o INVITACION_ENVIADA → NUEVO (quita la de
+// invitación). No toca la fecha de vencimiento.
+export async function deshacerCertificacion(id: string, que: "aceptacion" | "invitacion", autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+
+  if (que === "aceptacion") {
+    if (cliente.estado !== "ACTIVO" && cliente.estado !== "VENCIDO") throw new Error("Este cliente no tiene la invitación aceptada");
+    const { error } = await supabase
+      .from("certificaciones_clientes")
+      .update({ estado: "INVITACION_ENVIADA", fecha_aceptacion: null })
+      .eq("id", id);
+    if (error) throw error;
+    await registrarEventoCertificacion(id, "RESTAURACION", autor, "Se deshizo la aceptación de la invitación");
+  } else {
+    if (cliente.estado !== "INVITACION_ENVIADA") throw new Error("Este cliente no tiene una invitación pendiente de aceptar");
+    const { error } = await supabase
+      .from("certificaciones_clientes")
+      .update({ estado: "NUEVO", fecha_invitacion: null })
+      .eq("id", id);
+    if (error) throw error;
+    await registrarEventoCertificacion(id, "RESTAURACION", autor, "Se deshizo el envío de la invitación");
+  }
 }
 
 export async function eliminarClienteCertificacion(id: string, autor: string): Promise<void> {

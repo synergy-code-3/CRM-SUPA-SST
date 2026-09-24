@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { AccesoPendiente } from "@/components/AccesoPendiente";
 import { PerfilObligatorio } from "@/components/PerfilObligatorio";
+import { CertificacionesShell } from "@/components/certificaciones/CertificacionesShell";
 import { FiltrosMovilProvider } from "@/lib/filtros-movil-context";
 import { useSesion } from "@/lib/session-context";
 import { perfilIncompleto } from "@/lib/perfil";
@@ -12,6 +13,7 @@ import { perfilIncompleto } from "@/lib/perfil";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useSesion();
   const router = useRouter();
+  const pathname = usePathname();
 
   // El middleware solo garantiza que el JWT es válido en el momento de
   // cargar la página — si la sesión se invalida DESPUÉS (token_version
@@ -38,6 +40,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // después del chequeo de activo: una cuenta todavía no aprobada por un
   // admin debe ver "acceso pendiente" primero, no esto.
   if (perfilIncompleto(usuario)) return <PerfilObligatorio />;
+
+  // Certificaciones (Legendar-IA) tiene su propio shell, réplica del CRM
+  // original — el del Club (Sidebar + main) solo aplica al resto de rutas.
+  if (pathname.startsWith("/certificaciones")) return <CertificacionesShell>{children}</CertificacionesShell>;
 
   return (
     <FiltrosMovilProvider>

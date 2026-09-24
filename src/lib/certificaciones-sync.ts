@@ -13,6 +13,7 @@ import type {
   RegionCertificacion,
   ResultadoSincronizacionCertificacion,
 } from "./certificaciones-tipos";
+import { normalizarTelefono } from "./db";
 import { supabase } from "./supabase";
 
 export type { CambioPendienteCertificacion, NuevoClientePendienteCertificacion, ResultadoSincronizacionCertificacion };
@@ -117,7 +118,9 @@ function detectarCambios(
   const cambios: { monto?: string; vendedor?: string; telefono?: string } = {};
   if (monto && monto !== cliente.monto) cambios.monto = monto;
   if (vendedor && vendedor !== cliente.vendedor) cambios.vendedor = vendedor;
-  if (telefono && telefono !== cliente.telefono) cambios.telefono = telefono;
+  // Se compara por los últimos 10 dígitos: el teléfono guardado lleva "+" y el
+  // de la hoja no, y eso solo es formato, no un cambio real.
+  if (telefono && ultimos10Digitos(telefono) !== ultimos10Digitos(cliente.telefono)) cambios.telefono = telefono;
   return Object.keys(cambios).length > 0 ? cambios : null;
 }
 
@@ -225,7 +228,10 @@ export async function aplicarCambiosPendientesCertificacion(
       const datos: Record<string, unknown> = {};
       if (cambio.monto) datos.monto = cambio.monto;
       if (cambio.vendedor) datos.vendedor = cambio.vendedor;
-      if (cambio.telefono) datos.telefono = cambio.telefono;
+      if (cambio.telefono) {
+        datos.telefono = normalizarTelefono(cambio.telefono);
+        datos.telefono_busqueda = ultimos10Digitos(cambio.telefono);
+      }
 
       let tocado = false;
       if (Object.keys(datos).length > 0) {
