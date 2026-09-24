@@ -40,6 +40,7 @@ import {
   estaActivo,
   estadoReal,
 } from "@/components/certificaciones/constantes";
+import { useColoresTags } from "@/components/certificaciones/useColoresTags";
 import { StatusBadge } from "@/components/certificaciones/StatusBadge";
 import { CopyButton } from "@/components/certificaciones/CopyButton";
 import { FilterMultiSelect } from "@/components/certificaciones/FilterMultiSelect";
@@ -66,6 +67,7 @@ const OPCIONES_BIENVENIDA = (Object.keys(BIENVENIDA_LABEL) as MensajeBienvenidaC
 }));
 
 export default function CertificacionesPage() {
+  useColoresTags();
   const { usuario } = useSesion();
   const puedeGestionar = usuario ? tienePermiso(usuario.rol, "gestionarCertificaciones") : false;
   const puedeActualizar = usuario ? tienePermiso(usuario.rol, "actualizarCertificaciones") : false;

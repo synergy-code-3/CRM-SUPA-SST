@@ -41,24 +41,7 @@ export const EVENTO_LABEL: Record<string, string> = {
   ABONO: "Abono registrado",
 };
 
-export const COLORES_TAG = [
-  "bg-primary/10 text-primary",
-  "bg-success/10 text-success",
-  "bg-warning/10 text-warning",
-  "bg-danger/10 text-danger",
-  "bg-purple-500/10 text-purple-600",
-  "bg-pink-500/10 text-pink-600",
-  "bg-cyan-500/10 text-cyan-600",
-  "bg-amber-500/10 text-amber-600",
-];
-
-// Color estable por nombre (mismo criterio que colorParaNombre del CRM
-// original: hash del nombre → una de las 8 combinaciones).
-export function colorDeTag(nombre: string): string {
-  let hash = 0;
-  for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) >>> 0;
-  return COLORES_TAG[hash % COLORES_TAG.length];
-}
+export { colorDeTag } from "@/lib/tag-colores";
 
 export const CERTIFICACION_LEGENDAR_IA = "Legendar-IA";
 

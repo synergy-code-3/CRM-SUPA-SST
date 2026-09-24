@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus, Search, Tag as TagIcon, UserCheck } from "lucide-react";
 import { colorDeTag } from "./constantes";
+import { refrescarColoresTags, useColoresTags } from "./useColoresTags";
 
 export function VendedorSelect({
   valor,
@@ -111,6 +112,7 @@ export function TagPicker({
   onAgregar: (tags: string[]) => void | Promise<void>;
   disabled?: boolean;
 }) {
+  useColoresTags();
   const [catalogo, setCatalogo] = useState<string[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -156,6 +158,7 @@ export function TagPicker({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "tag_certificaciones", valor: nombre }),
       }).catch(() => {});
+      await refrescarColoresTags();
       await onAgregar([nombre]);
       setBusqueda("");
       setAbierto(false);

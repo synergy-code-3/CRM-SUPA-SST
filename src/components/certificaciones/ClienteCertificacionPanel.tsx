@@ -34,6 +34,7 @@ import { tienePermiso } from "@/lib/permisos";
 import type { ClienteCertificacion, EventoCertificacion } from "@/lib/certificaciones-tipos";
 import { REGION_CERTIFICACION_LABEL, REGIONES_CERTIFICACION } from "@/lib/certificaciones-tipos";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
+import { useColoresTags } from "./useColoresTags";
 import { CERTIFICACION_LEGENDAR_IA, beneficiosDeRegion, colorDeTag, diasRestantes, estaActivo, estadoReal } from "./constantes";
 import { StatusBadge } from "./StatusBadge";
 import { MensajeBienvenidaToggle } from "./Toggles";
@@ -82,6 +83,7 @@ export function ClienteCertificacionPanel({
   onClose: () => void;
   onCambio: () => void;
 }) {
+  useColoresTags();
   const { usuario } = useSesion();
   const puedeGestionar = !!usuario && tienePermiso(usuario.rol, "gestionarCertificaciones");
   const puedeNotas = !!usuario && tienePermiso(usuario.rol, "agregarNotaCertificaciones");

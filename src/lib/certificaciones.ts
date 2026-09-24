@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { agregarOpcionCatalogo } from "./catalogo";
 import { normalizarEmail, normalizarTelefono } from "./db";
 import {
   type AbonoCertificacion,
@@ -484,6 +485,11 @@ export async function agregarTagsCertificacion(id: string, tags: string[], autor
   if (unicos.length === cliente.tags.length) return;
   const { error } = await supabase.from("certificaciones_clientes").update({ tags: unicos }).eq("id", id);
   if (error) throw error;
+  // Todo tag asignado entra al catálogo (si no estaba) para que tenga su
+  // propio color, aunque se haya escrito a mano o venga de una importación.
+  for (const t of tags.map((x) => x.trim()).filter(Boolean)) {
+    await agregarOpcionCatalogo("tag_certificaciones", t).catch(() => {});
+  }
   await registrarEventoCertificacion(id, "TAGS", autor, `Se agregaron tags: ${tags.join(", ")}`);
 }
 

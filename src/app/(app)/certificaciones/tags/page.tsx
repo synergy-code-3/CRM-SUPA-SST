@@ -5,10 +5,12 @@ import { LoaderCircle, Plus, ShieldAlert, Tag as TagIcon, Trash2 } from "lucide-
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { colorDeTag } from "@/components/certificaciones/constantes";
+import { refrescarColoresTags, useColoresTags } from "@/components/certificaciones/useColoresTags";
 
 // Catálogo de tags de Certificaciones (Biblioteca, tipo "tag_certificaciones")
 // — las opciones que ofrece "+ Agregar tag" en el perfil de cada cliente.
 export default function TagsCertificacionesPage() {
+  useColoresTags();
   const { usuario, cargando } = useSesion();
   const puedeGestionar = !!usuario && tienePermiso(usuario.rol, "gestionarCatalogo");
   const [tags, setTags] = useState<string[] | null>(null);
@@ -39,6 +41,7 @@ export default function TagsCertificacionesPage() {
         return;
       }
       setTags(data.opciones ?? []);
+      await refrescarColoresTags();
       setNombre("");
     } finally {
       setCreando(false);
@@ -55,7 +58,10 @@ export default function TagsCertificacionesPage() {
         body: JSON.stringify({ tipo: "tag_certificaciones", valor: tag }),
       });
       const data = await res.json();
-      if (res.ok) setTags(data.opciones ?? []);
+      if (res.ok) {
+        setTags(data.opciones ?? []);
+        await refrescarColoresTags();
+      }
     } finally {
       setEliminando(null);
     }
