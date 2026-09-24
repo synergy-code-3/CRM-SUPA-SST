@@ -246,6 +246,22 @@ export default function UsuariosPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
+                    {esPendienteDeAprobar(u) && (
+                      <div className="mr-2 flex gap-2">
+                        <button
+                          onClick={() => eliminar(u.id, u.nombre)}
+                          className="ease-spring rounded-xl border border-danger/30 px-4 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+                        >
+                          Rechazar
+                        </button>
+                        <button
+                          onClick={() => actualizar(u.id, { activo: true })}
+                          className="ease-spring rounded-xl brand-plate px-4 py-1.5 text-xs font-medium text-white transition"
+                        >
+                          Aceptar
+                        </button>
+                      </div>
+                    )}
                     <button
                       onClick={() => resetearPassword(u.id)}
                       title="Restablecer contraseña"
