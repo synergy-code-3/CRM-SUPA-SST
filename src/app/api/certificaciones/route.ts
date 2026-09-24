@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
         notas: body.notas,
         monto: body.monto,
         etiquetas: body.etiquetas,
+        vendedor: body.vendedor,
       },
       permiso.usuario.nombre,
       permiso.usuario.rol

@@ -633,112 +633,119 @@ function RevisionSincronizacion({
     }
   }
 
+  const total = cambiosSel.size + nuevosSel.size;
+  const hayAlgo = resultado.cambiosPendientes.length > 0 || resultado.nuevosPendientes.length > 0;
+  const fila = "flex items-start gap-3 rounded-2xl border border-silver-deep/60 bg-surface-2 px-4 py-3 text-xs";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-silver bg-surface p-5 shadow-xl">
-        <h3 className="text-sm font-semibold text-foreground">Revisión de la hoja de ventas</h3>
-        <p className="mt-1 text-xs text-muted">
-          {resultado.filasLeidas} filas leídas · {resultado.ganadoras} ventas ganadoras · {resultado.omitidos} sin
-          cambios
-        </p>
-        {resultado.errores.length > 0 && (
-          <p className="mt-2 text-xs text-danger">{resultado.errores.join(" · ")}</p>
-        )}
-
-        {resultado.cambiosPendientes.length > 0 && (
-          <div className="mt-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              Cambios en clientes existentes ({resultado.cambiosPendientes.length})
-            </h4>
-            <div className="space-y-2">
-              {resultado.cambiosPendientes.map((c) => (
-                <label
-                  key={c.clienteId}
-                  className="flex items-start gap-2 rounded-lg border border-silver p-2.5 text-xs"
-                >
-                  <input
-                    type="checkbox"
-                    checked={cambiosSel.has(c.clienteId)}
-                    onChange={() => toggle(cambiosSel, setCambiosSel, c.clienteId)}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {c.nombre} — {c.correo}
-                    </p>
-                    {c.monto && (
-                      <p className="text-muted">
-                        Monto: {c.monto.actual ?? "—"} → {c.monto.nuevo}
-                      </p>
-                    )}
-                    {c.vendedor && (
-                      <p className="text-muted">
-                        Vendedor: {c.vendedor.actual ?? "—"} → {c.vendedor.nuevo}
-                      </p>
-                    )}
-                    {c.telefono && (
-                      <p className="text-muted">
-                        Teléfono: {c.telefono.actual ?? "—"} → {c.telefono.nuevo}
-                      </p>
-                    )}
-                    {c.agregarTagMiembroCS && <p className="text-muted">+ Tag &quot;Miembro del CS&quot;</p>}
-                  </div>
-                </label>
-              ))}
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 animate-fade-in-fast bg-black/40" onClick={onCerrar} />
+      <div className="shell animate-fade-in relative w-full max-w-lg rounded-[2rem] p-2 diffused-lg">
+        <div className="core flex max-h-[85vh] flex-col gap-4 rounded-[calc(2rem-0.5rem)] p-6">
+          <div>
+            <span className="inline-block rounded-full bg-primary-dim px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-primary-deep">
+              Hoja de ventas
+            </span>
+            <h3 className="mt-2 text-base font-semibold text-foreground">Revisión de la hoja de ventas</h3>
+            <p className="mt-1 text-xs text-muted">
+              {resultado.filasLeidas} filas leídas · {resultado.ganadoras} ventas ganadoras · {resultado.omitidos} sin
+              cambios
+            </p>
+            {resultado.errores.length > 0 && <p className="mt-2 text-xs text-danger">{resultado.errores.join(" · ")}</p>}
           </div>
-        )}
 
-        {resultado.nuevosPendientes.length > 0 && (
-          <div className="mt-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              Clientes nuevos ({resultado.nuevosPendientes.length})
-            </h4>
-            <div className="space-y-2">
-              {resultado.nuevosPendientes.map((n) => (
-                <label key={n.correo} className="flex items-start gap-2 rounded-lg border border-silver p-2.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={nuevosSel.has(n.correo)}
-                    onChange={() => toggle(nuevosSel, setNuevosSel, n.correo)}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {n.nombre} — {n.correo}
-                    </p>
-                    <p className="text-muted">
-                      {REGION_CERTIFICACION_LABEL[n.region]}
-                      {n.monto ? ` · ${n.monto}` : ""}
-                      {n.vendedor ? ` · ${n.vendedor}` : ""}
-                    </p>
-                  </div>
-                </label>
-              ))}
-            </div>
+          <div className="flex-1 space-y-4 overflow-y-auto">
+            {resultado.cambiosPendientes.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">
+                  Cambios en clientes existentes ({resultado.cambiosPendientes.length})
+                </h4>
+                <div className="space-y-2">
+                  {resultado.cambiosPendientes.map((c) => (
+                    <label key={c.clienteId} className={fila}>
+                      <input
+                        type="checkbox"
+                        checked={cambiosSel.has(c.clienteId)}
+                        onChange={() => toggle(cambiosSel, setCambiosSel, c.clienteId)}
+                        className="mt-0.5 h-4 w-4 flex-none rounded border-silver-deep/60 accent-primary"
+                      />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {c.nombre} — {c.correo}
+                        </p>
+                        {c.monto && (
+                          <p className="text-muted">
+                            Monto: {c.monto.actual ?? "—"} → {c.monto.nuevo}
+                          </p>
+                        )}
+                        {c.vendedor && (
+                          <p className="text-muted">
+                            Vendedor: {c.vendedor.actual ?? "—"} → {c.vendedor.nuevo}
+                          </p>
+                        )}
+                        {c.telefono && (
+                          <p className="text-muted">
+                            Teléfono: {c.telefono.actual ?? "—"} → {c.telefono.nuevo}
+                          </p>
+                        )}
+                        {c.agregarTagMiembroCS && <p className="text-muted">+ Tag &quot;Miembro del CS&quot;</p>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {resultado.nuevosPendientes.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">
+                  Clientes nuevos ({resultado.nuevosPendientes.length})
+                </h4>
+                <div className="space-y-2">
+                  {resultado.nuevosPendientes.map((n) => (
+                    <label key={n.correo} className={fila}>
+                      <input
+                        type="checkbox"
+                        checked={nuevosSel.has(n.correo)}
+                        onChange={() => toggle(nuevosSel, setNuevosSel, n.correo)}
+                        className="mt-0.5 h-4 w-4 flex-none rounded border-silver-deep/60 accent-primary"
+                      />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {n.nombre} — {n.correo}
+                        </p>
+                        <p className="text-muted">
+                          {REGION_CERTIFICACION_LABEL[n.region]}
+                          {n.monto ? ` · ${n.monto}` : ""}
+                          {n.vendedor ? ` · ${n.vendedor}` : ""}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!hayAlgo && <p className="text-sm text-muted">No hay nada nuevo que aplicar.</p>}
           </div>
-        )}
 
-        {resultado.cambiosPendientes.length === 0 && resultado.nuevosPendientes.length === 0 && (
-          <p className="mt-4 text-sm text-muted">No hay nada nuevo que aplicar.</p>
-        )}
-
-        <div className="mt-5 flex gap-2">
-          <button
-            onClick={onCerrar}
-            className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
-          >
-            Cerrar
-          </button>
-          {(resultado.cambiosPendientes.length > 0 || resultado.nuevosPendientes.length > 0) && (
+          <div className="flex items-center justify-end gap-2">
             <button
-              onClick={aplicar}
-              disabled={aplicando}
-              className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+              onClick={onCerrar}
+              className="rounded-full border border-silver-deep/60 bg-surface-2 px-5 py-2.5 text-sm font-medium text-muted transition-all duration-500 ease-spring hover:text-primary"
             >
-              {aplicando ? "Aplicando…" : "Aplicar seleccionados"}
+              Descartar
             </button>
-          )}
+            {hayAlgo && (
+              <button
+                onClick={aplicar}
+                disabled={aplicando || total === 0}
+                className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-[0_10px_24px_-8px_rgba(10,92,255,0.5)] transition-all duration-500 ease-spring active:scale-[0.98] disabled:opacity-50"
+              >
+                {aplicando ? "Aplicando…" : `Aplicar seleccionados (${total})`}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

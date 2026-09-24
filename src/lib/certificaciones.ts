@@ -213,6 +213,78 @@ export async function buscarIdsCertificaciones(
   return [...(resultado ?? [])];
 }
 
+export type ActividadCertificacion = {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  email: string | null;
+  telefono: string | null;
+  vendedor: string | null;
+  etiquetas: string[];
+  accion: string;
+  autor: string;
+  nota: string | null;
+  fecha: string;
+};
+
+// Bitácora de Certificaciones: los eventos de línea de tiempo de TODOS los
+// clientes en un rango de fechas, con los datos del cliente pegados (para
+// filtrar por vendedor/certificación y exportar). Tope de 5000 filas.
+export async function listarActividadCertificacion(opciones: {
+  desde: string;
+  hasta: string;
+  autor?: string;
+}): Promise<{ resultados: ActividadCertificacion[]; autores: string[] }> {
+  let query = supabase
+    .from("certificaciones_eventos")
+    .select("id,cliente_id,tipo,nota,autor,creado_en,cliente:certificaciones_clientes(nombre,email,telefono,vendedor,etiquetas)")
+    .gte("creado_en", opciones.desde)
+    .lte("creado_en", opciones.hasta)
+    .order("creado_en", { ascending: false })
+    .limit(5000);
+  if (opciones.autor) query = query.eq("autor", opciones.autor);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  type Fila = {
+    id: string;
+    cliente_id: string;
+    tipo: string;
+    nota: string | null;
+    autor: string;
+    creado_en: string;
+    cliente: { nombre: string; email: string | null; telefono: string | null; vendedor: string | null; etiquetas: string[] | null } | { nombre: string; email: string | null; telefono: string | null; vendedor: string | null; etiquetas: string[] | null }[] | null;
+  };
+  const resultados = ((data ?? []) as unknown as Fila[]).map((f) => {
+    const c = Array.isArray(f.cliente) ? f.cliente[0] : f.cliente;
+    return {
+      id: f.id,
+      clienteId: f.cliente_id,
+      clienteNombre: c?.nombre ?? f.cliente_id,
+      email: c?.email ?? null,
+      telefono: c?.telefono ?? null,
+      vendedor: c?.vendedor ?? null,
+      etiquetas: c?.etiquetas ?? [],
+      accion: f.tipo,
+      autor: f.autor,
+      nota: f.nota,
+      fecha: f.creado_en,
+    };
+  });
+
+  // Autores para el filtro: usuarios del CRM + quienes aparecen en eventos
+  // recientes (la sincronización con la hoja firma con el vendedor).
+  const [{ data: usuarios }, { data: recientes }] = await Promise.all([
+    supabase.from("usuarios").select("nombre"),
+    supabase.from("certificaciones_eventos").select("autor").order("creado_en", { ascending: false }).limit(3000),
+  ]);
+  const autores = new Set<string>();
+  for (const u of usuarios ?? []) if (u.nombre) autores.add(u.nombre as string);
+  for (const e of recientes ?? []) if (e.autor) autores.add(e.autor as string);
+
+  return { resultados, autores: Array.from(autores).sort((a, b) => a.localeCompare(b)) };
+}
+
 export async function listarPapeleraCertificacion(): Promise<ClienteCertificacion[]> {
   const { data, error } = await supabase
     .from("certificaciones_clientes")
@@ -281,6 +353,10 @@ export type CrearClienteCertificacionInput = {
   etiquetas?: string[];
   tags?: string[];
   vendedor?: string | null;
+  // Fecha de ingreso (importación CSV con fecha_inscripcion) — por defecto hoy.
+  fechaLlegada?: string | null;
+  // "csv" registra el evento IMPORTACION en vez de LLEGADA.
+  origen?: "csv";
 };
 
 export async function crearClienteCertificacion(
@@ -290,7 +366,8 @@ export async function crearClienteCertificacion(
 ): Promise<ClienteCertificacion> {
   if (!input.email?.trim()) throw new Error("Falta el correo");
   const id = normalizarEmail(input.email);
-  const fechaLlegada = new Date();
+  const fechaLlegada = input.fechaLlegada ? new Date(input.fechaLlegada) : new Date();
+  if (Number.isNaN(fechaLlegada.getTime())) throw new Error("Fecha de ingreso inválida");
 
   const { data, error } = await supabase
     .from("certificaciones_clientes")
@@ -317,7 +394,8 @@ export async function crearClienteCertificacion(
   if (error) throw error;
 
   const cliente = filaACliente(data as ClienteCertificacionRow);
-  await registrarEventoCertificacion(id, "LLEGADA", autor, "Cliente registrado en Certificaciones");
+  if (input.origen === "csv") await registrarEventoCertificacion(id, "IMPORTACION", autor, "Cliente importado por CSV");
+  else await registrarEventoCertificacion(id, "LLEGADA", autor, "Cliente registrado en Certificaciones");
   return cliente;
 }
 
