@@ -129,3 +129,33 @@ export function calcularVencimientoSkool(fechaInscripcion: string, tipoMembresia
   fin.setMonth(fin.getMonth() + meses);
   return fin;
 }
+
+export type NivelMembresia = "activa" | "por_vencer" | "critica" | "vencida";
+
+// Semáforo de la columna "Membresía" de Clientes. La membresía de 3/6/12
+// meses es la del acceso a Skool, así que se usa "Vencimiento Skool" (o, si
+// no lo tiene, inscripción/renovación + los meses del tipo). Sin fecha
+// calculable (o con la cuenta pausada) no hay semáforo.
+//  - activa: más de 30 días · por_vencer: de 16 a 30 · critica: 15 o menos
+//  - vencida: ya pasó la fecha.
+export function estadoMembresia(cliente: {
+  vencimientoSkool: string | null;
+  tipoMembresia: string | null;
+  fechaInscripcion: string | null;
+  fechaRenovacion: string | null;
+  pausadoEn: string | null;
+}): { nivel: NivelMembresia; dias: number; fecha: Date } | null {
+  if (cliente.pausadoEn) return null;
+  let fecha = parsearFechaSkool(cliente.vencimientoSkool);
+  if (!fecha) {
+    const ancla = cliente.fechaRenovacion || cliente.fechaInscripcion;
+    fecha = ancla ? calcularVencimientoSkool(ancla, cliente.tipoMembresia) : null;
+  }
+  if (!fecha) return null;
+  const hoy = new Date();
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).getTime();
+  const inicioFecha = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()).getTime();
+  const dias = Math.round((inicioFecha - inicioHoy) / 86400000);
+  const nivel: NivelMembresia = dias < 0 ? "vencida" : dias <= 15 ? "critica" : dias <= 30 ? "por_vencer" : "activa";
+  return { nivel, dias, fecha };
+}

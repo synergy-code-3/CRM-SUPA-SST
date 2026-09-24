@@ -22,6 +22,7 @@ import { ImportarClientesModal } from "@/components/ImportarClientesModal";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
+import { estadoMembresia, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 
 const LIMITE = 100;
@@ -683,7 +684,9 @@ function ClientesPageInner() {
                         <td className="truncate px-5 py-2.5 text-muted" title={c.evento ?? undefined}>
                           {c.evento || "—"}
                         </td>
-                        <td className="truncate px-5 py-2.5 text-muted">{c.tipoMembresia || "—"}</td>
+                        <td className="truncate px-5 py-2.5 text-muted">
+                          <EtiquetaMembresia cliente={c} />
+                        </td>
                         <td className="px-5 py-2.5">
                           <EstadoOnboarding cliente={c} enEsperaWa={clientesEsperandoWa.has(c.id)} />
                         </td>
@@ -1021,5 +1024,32 @@ function EstadoOnboarding({ cliente, enEsperaWa }: { cliente: Cliente; enEsperaW
         }`}
       />
     </div>
+  );
+}
+
+const ESTILO_MEMBRESIA: Record<NivelMembresia, string> = {
+  activa: "bg-success/15 text-success",
+  por_vencer: "bg-yellow-400/30 text-yellow-800",
+  critica: "bg-orange-500 text-white",
+  vencida: "bg-danger text-white",
+};
+
+// Tipo de membresía con un rectángulo de color detrás (semáforo): verde
+// activa, amarillo de 30 a 16 días, naranja 15 o menos, rojo vencida.
+function EtiquetaMembresia({ cliente }: { cliente: Cliente }) {
+  if (!cliente.tipoMembresia) return <>—</>;
+  const estado = estadoMembresia(cliente);
+  if (!estado) return <>{cliente.tipoMembresia}</>;
+  const detalle =
+    estado.dias < 0
+      ? `Venció el ${formatearFechaSkool(estado.fecha)} (hace ${-estado.dias} d)`
+      : `Vence el ${formatearFechaSkool(estado.fecha)} (${estado.dias} d)`;
+  return (
+    <span
+      title={detalle}
+      className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${ESTILO_MEMBRESIA[estado.nivel]}`}
+    >
+      {cliente.tipoMembresia}
+    </span>
   );
 }
