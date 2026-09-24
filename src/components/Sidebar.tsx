@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, Bell, Sparkles } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -44,6 +44,9 @@ const NAV_CLUB: ItemNav[] = [
 // crece según haga falta, igual que NAV_CLUB.
 const NAV_CERTIFICACIONES: ItemNav[] = [
   { href: "/certificaciones", label: "Clientes", icon: Users, permiso: "verCertificaciones" },
+  { href: "/certificaciones/nuevo", label: "Nuevo cliente", icon: UserPlus, permiso: "gestionarCertificaciones" },
+  { href: "/certificaciones/importar", label: "Importar CSV", icon: UploadCloud, permiso: "gestionarCertificaciones" },
+  { href: "/certificaciones/papelera", label: "Papelera", icon: Trash2, permiso: "gestionarCertificaciones" },
   {
     href: "/certificaciones/solicitudes",
     label: "Solicitudes",
@@ -51,6 +54,12 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
     permiso: "solicitarCertificacion",
     contador: "solicitudesCertificacion",
   },
+  { href: "/certificaciones/tags", label: "Tags", icon: Tag, permiso: "gestionarCertificaciones" },
+  { href: "/certificaciones/actividad", label: "Actividad", icon: History, permiso: "gestionarCertificaciones" },
+  { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
+  { href: "/avisos", label: "Dar avisos", icon: Megaphone, permiso: "gestionarAvisos" },
+  { href: "/avisos", label: "Avisos", icon: Bell, permiso: "verAvisos", contador: "avisos" },
+  { href: "/avisos", label: "Actualizaciones", icon: Sparkles, permiso: "gestionarAvisos" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
@@ -122,16 +131,29 @@ const ROL_LABEL: Record<Rol, string> = {
 function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean; puedeCambiar: boolean }) {
   return (
     <div className="flex items-center gap-3 px-2">
-      <Image src="/icons/icon-192.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">
-          {enCertificaciones ? "Certificaciones" : "CRM CS"}
-        </p>
-        <p className="truncate text-xs text-muted">{enCertificaciones ? "Legendar-IA" : "Club Sinergético"}</p>
-      </div>
+      {enCertificaciones ? (
+        <Link href="/certificaciones" className="flex min-w-0 flex-1 items-center">
+          <Image
+            src="/certificaciones/certificaciones-logo-full.png"
+            alt="Certificaciones oficiales"
+            width={184}
+            height={58}
+            className="h-11 w-auto max-w-full object-contain"
+            priority
+          />
+        </Link>
+      ) : (
+        <>
+          <Image src="/icons/icon-192.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-foreground">CRM CS</p>
+            <p className="truncate text-xs text-muted">Club Sinergético</p>
+          </div>
+        </>
+      )}
       {puedeCambiar && (
         <Link
-          href={enCertificaciones ? "/" : "/certificaciones"}
+          href={enCertificaciones ? "/clientes" : "/certificaciones"}
           aria-label={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
           title={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
           className="ease-spring flex h-8 w-8 flex-none items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
@@ -402,11 +424,11 @@ export function Sidebar() {
           <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {items.map(({ href, label, icon: Icon, contador }) => {
-            const activo = pathname === href;
+          {items.map(({ href, label, icon: Icon, contador }, i) => {
+            const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
             return (
               <Link
-                key={href}
+                key={`${href}-${label}`}
                 href={href}
                 className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
@@ -419,7 +441,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <EnlacesRenovacion />
+        {!enCertificaciones && <EnlacesRenovacion />}
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
       </aside>
 
@@ -460,11 +482,11 @@ export function Sidebar() {
               </button>
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {items.map(({ href, label, icon: Icon, contador }) => {
-                const activo = pathname === href;
+              {items.map(({ href, label, icon: Icon, contador }, i) => {
+                const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
                 return (
                   <Link
-                    key={href}
+                    key={`${href}-${label}`}
                     href={href}
                     className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
                       activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
@@ -501,7 +523,7 @@ export function Sidebar() {
               </div>
             )}
 
-            <EnlacesRenovacion />
+            {!enCertificaciones && <EnlacesRenovacion />}
             <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>
