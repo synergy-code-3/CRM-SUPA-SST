@@ -550,6 +550,11 @@ export async function registrarAbonoCertificacion(
 }
 
 export async function enviarInvitacionCertificacion(id: string, autor: string): Promise<void> {
+  // Solo desde NUEVO: reenviar el aviso a Skool a alguien ya invitado/activo
+  // tiene su propia acción (reenviar-skool) y no debe reiniciar su estado.
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  if (cliente.estado !== "NUEVO") throw new Error("A este cliente ya se le envió la invitación");
   const { error } = await supabase
     .from("certificaciones_clientes")
     .update({ estado: "INVITACION_ENVIADA", fecha_invitacion: new Date().toISOString() })

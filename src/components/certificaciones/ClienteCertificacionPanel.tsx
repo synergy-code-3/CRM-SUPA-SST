@@ -654,7 +654,9 @@ export function ClienteCertificacionPanel({
                       </div>
                     ) : (
                       <dl className="grid grid-cols-2 gap-3 text-sm">
-                        <CampoValor label="Correo" valor={cliente.email} />
+                        <div className="col-span-2">
+                          <CampoValor label="Correo" valor={cliente.email} />
+                        </div>
                         <CampoValor label="Teléfono" valor={cliente.telefono} />
                         <CampoValor label="Región" valor={cliente.region ? REGION_CERTIFICACION_LABEL[cliente.region] : null} />
                         <CampoValor label="Agregado por" valor={cliente.creadoPor} />
@@ -866,9 +868,9 @@ function Tarjeta({
 
 function CampoValor({ label, valor }: { label: string; valor: string | null }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="text-foreground">{valor || <span className="text-muted">—</span>}</p>
+      <p className="break-words text-foreground">{valor || <span className="text-muted">—</span>}</p>
     </div>
   );
 }

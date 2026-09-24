@@ -23,7 +23,7 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
         <Sidebar />
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 md:px-8 md:py-8">
           <div className="mx-auto max-w-6xl">
-            <div className="sticky top-0 z-20 -mx-4 -mt-5 bg-background px-4 pb-4 pt-5 sm:-mx-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8 md:pt-8">
+            <div className="sticky -top-5 z-20 -mx-4 -mt-5 bg-background px-4 pb-4 pt-5 sm:-mx-6 sm:px-6 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-8">
               <BarraCertificacion cantidadAvisos={conteos.avisos} />
             </div>
             <div className="animate-fade-in pt-2">{children}</div>

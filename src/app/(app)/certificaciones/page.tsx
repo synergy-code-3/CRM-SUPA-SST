@@ -232,8 +232,14 @@ export default function CertificacionesPage() {
 
   // Acción masiva: recorre los seleccionados de uno en uno (cada uno con su
   // propio evento en la línea de tiempo) y recarga al final.
-  async function masivo(ruta: string, body?: unknown, metodo: "POST" | "DELETE" = "POST", query = "") {
-    const ids = Array.from(seleccionados);
+  async function masivo(
+    ruta: string,
+    body?: unknown,
+    metodo: "POST" | "DELETE" = "POST",
+    query = "",
+    soloIds?: string[]
+  ) {
+    const ids = soloIds ?? Array.from(seleccionados);
     let fallos = 0;
     for (const id of ids) {
       const res = await fetch(`/api/certificaciones/${encodeURIComponent(id)}/${ruta}${query}`, {
@@ -245,6 +251,23 @@ export default function CertificacionesPage() {
     }
     await cargar();
     if (fallos) alert(`${fallos} de ${ids.length} no se pudieron actualizar.`);
+  }
+
+  // Acción masiva que solo aplica a clientes en cierto estado (ej. enviar
+  // invitación: solo NUEVO). Los demás seleccionados se omiten y se avisa.
+  async function masivoPorEstado(
+    estadoRequerido: EstadoCertificacion,
+    ruta: string,
+    confirmar: (aplican: number, omitidos: number) => string
+  ) {
+    const aplican = conEstado.filter(({ c }) => seleccionados.has(c.id) && c.estado === estadoRequerido).map(({ c }) => c.id);
+    const omitidos = seleccionados.size - aplican.length;
+    if (aplican.length === 0) {
+      alert("Ninguno de los clientes seleccionados está en el estado que requiere esta acción.");
+      return;
+    }
+    if (!window.confirm(confirmar(aplican.length, omitidos))) return;
+    await masivo(ruta, undefined, "POST", "", aplican);
   }
 
   function descargar() {
@@ -423,9 +446,28 @@ export default function CertificacionesPage() {
               icon={RefreshCcw}
               options={[
                 {
+                  key: "invitar",
+                  label: "Enviar invitación",
+                  onSelect: () =>
+                    masivoPorEstado("NUEVO", "invitar", (n, omitidos) =>
+                      `¿Enviar la invitación (con aviso a Skool) a ${n} cliente${n === 1 ? "" : "s"}?${
+                        omitidos ? `
+
+${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no está${omitidos === 1 ? "" : "n"} en "Nuevo" y se omite${omitidos === 1 ? "" : "n"}.` : ""
+                      }`
+                    ),
+                },
+                {
                   key: "aceptar",
                   label: "Marcar invitación aceptada",
-                  onSelect: () => masivo("aceptar"),
+                  onSelect: () =>
+                    masivoPorEstado("INVITACION_ENVIADA", "aceptar", (n, omitidos) =>
+                      `¿Marcar como aceptada la invitación de ${n} cliente${n === 1 ? "" : "s"}?${
+                        omitidos ? `
+
+${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? "" : "n"} invitación pendiente y se omite${omitidos === 1 ? "" : "n"}.` : ""
+                      }`
+                    ),
                 },
               ]}
             />
