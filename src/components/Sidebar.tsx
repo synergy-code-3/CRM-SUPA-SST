@@ -56,10 +56,10 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
   },
   { href: "/certificaciones/tags", label: "Tags", icon: Tag, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/actividad", label: "Actividad", icon: History, permiso: "gestionarCertificaciones" },
-  { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
-  { href: "/avisos", label: "Dar avisos", icon: Megaphone, permiso: "gestionarAvisos" },
-  { href: "/avisos", label: "Avisos", icon: Bell, permiso: "verAvisos", contador: "avisos" },
-  { href: "/avisos", label: "Actualizaciones", icon: Sparkles, permiso: "gestionarAvisos" },
+  { href: "/certificaciones/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
+  { href: "/certificaciones/avisos", label: "Dar avisos", icon: Megaphone, permiso: "gestionarAvisos" },
+  { href: "/certificaciones/avisos", label: "Avisos", icon: Bell, permiso: "verAvisos", contador: "avisos" },
+  { href: "/certificaciones/avisos", label: "Actualizaciones", icon: Sparkles, permiso: "gestionarAvisos" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
@@ -69,41 +69,60 @@ export type Conteos = { solicitudes: number; solicitudesCertificacion: number; u
 // autoregistrara). Bajo tráfico interno, la llamada es barata.
 const INTERVALO_CONTEOS_MS = 10 * 1000;
 
+// Un solo poll compartido por todos los que usan el hook (el Sidebar y, en
+// Certificaciones, la campana de la barra superior): antes cada uno abría su
+// propio intervalo contra el mismo endpoint y sus contadores podían
+// desincronizarse.
+type OyenteConteos = (conteos: Conteos) => void;
+const CONTEOS_VACIOS: Conteos = { solicitudes: 0, solicitudesCertificacion: 0, usuarios: 0, avisos: 0 };
+let conteosActuales: Conteos = CONTEOS_VACIOS;
+const oyentesConteos = new Set<OyenteConteos>();
+let temporizadorConteos: ReturnType<typeof setInterval> | null = null;
+
+async function cargarConteos() {
+  try {
+    const res = await fetch("/api/notificaciones/pendientes");
+    if (!res.ok) return;
+    const data = await res.json();
+    conteosActuales = {
+      solicitudes: data.solicitudes ?? 0,
+      solicitudesCertificacion: data.solicitudesCertificacion ?? 0,
+      usuarios: data.usuarios ?? 0,
+      avisos: data.avisos ?? 0,
+    };
+    oyentesConteos.forEach((oyente) => oyente(conteosActuales));
+  } catch {
+    // Sin conteo esta vez — se reintenta solo en el próximo intervalo.
+  }
+}
+
+function suscribirConteos(oyente: OyenteConteos): () => void {
+  oyentesConteos.add(oyente);
+  if (oyentesConteos.size === 1) {
+    cargarConteos();
+    temporizadorConteos = setInterval(cargarConteos, INTERVALO_CONTEOS_MS);
+  } else {
+    oyente(conteosActuales);
+  }
+  return () => {
+    oyentesConteos.delete(oyente);
+    if (oyentesConteos.size === 0 && temporizadorConteos) {
+      clearInterval(temporizadorConteos);
+      temporizadorConteos = null;
+    }
+  };
+}
+
 // Burbuja de "cosas pendientes por revisar" (solicitudes de cliente nuevo,
-// usuarios recién autoregistrados, avisos sin confirmar). Antes solo se
-// consultaba si el rol podía revisar solicitudes o usuarios — ahora
-// siempre se consulta, porque cualquier rol puede tener avisos sin
-// confirmar (la ruta ya calcula 0 en solicitudes/usuarios para quien no
-// tiene permiso, así que no se gasta nada de más).
+// usuarios recién autoregistrados, avisos sin confirmar). Siempre se consulta,
+// porque cualquier rol puede tener avisos sin confirmar (la ruta ya calcula 0
+// en solicitudes/usuarios para quien no tiene permiso).
 export function useConteosPendientes(usuario: UsuarioSesion | null): Conteos {
-  const [conteos, setConteos] = useState<Conteos>({ solicitudes: 0, solicitudesCertificacion: 0, usuarios: 0, avisos: 0 });
+  const [conteos, setConteos] = useState<Conteos>(conteosActuales);
 
   useEffect(() => {
     if (!usuario) return;
-
-    let cancelado = false;
-    async function cargar() {
-      try {
-        const res = await fetch("/api/notificaciones/pendientes");
-        if (!res.ok || cancelado) return;
-        const data = await res.json();
-        if (!cancelado)
-          setConteos({
-            solicitudes: data.solicitudes ?? 0,
-            solicitudesCertificacion: data.solicitudesCertificacion ?? 0,
-            usuarios: data.usuarios ?? 0,
-            avisos: data.avisos ?? 0,
-          });
-      } catch {
-        // Sin conteo esta vez — se reintenta solo en el próximo intervalo.
-      }
-    }
-    cargar();
-    const intervalo = setInterval(cargar, INTERVALO_CONTEOS_MS);
-    return () => {
-      cancelado = true;
-      clearInterval(intervalo);
-    };
+    return suscribirConteos(setConteos);
   }, [usuario]);
 
   return conteos;
@@ -280,7 +299,7 @@ const INTERVALO_AVISOS_MS = 30 * 1000;
 // GET /api/avisos/pendientes) — el modal siempre muestra cola[0]. Cada
 // poll reemplaza la cola completa con lo que diga el server, así que una
 // vez confirmado un aviso ya no vuelve a aparecer en el siguiente poll.
-export function useAvisosPendientes(usuario: UsuarioSesion | null) {
+function useAvisosPendientes(usuario: UsuarioSesion | null) {
   const [cola, setCola] = useState<Aviso[]>([]);
 
   useEffect(() => {
@@ -314,7 +333,7 @@ export function useAvisosPendientes(usuario: UsuarioSesion | null) {
 // tocar el fondo mientras no se marque "Enterado" — a propósito, es la
 // forma de garantizar que el aviso de verdad se leyó antes de poder
 // seguir usando el CRM.
-export function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () => void }) {
+function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () => void }) {
   const [enterado, setEnterado] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
 

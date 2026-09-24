@@ -19,7 +19,10 @@ export function ResultadoPopup({
   const Icon = tipo === "error" ? AlertTriangle : CheckCircle2;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+    // stopPropagation: este popup vive dentro de la fila clicable de la lista;
+    // los eventos de React suben por el árbol aunque el overlay sea fixed, y
+    // sin esto cada clic en "Entendido" abría además el perfil del cliente.
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
       <div className="absolute inset-0 animate-fade-in-fast bg-black/40" onClick={onClose} />
       <div className="animate-fade-in relative flex w-full max-w-sm flex-col gap-3 rounded-[2rem] bg-surface p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-2">

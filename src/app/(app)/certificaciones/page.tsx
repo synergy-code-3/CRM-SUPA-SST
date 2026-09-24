@@ -74,6 +74,7 @@ export default function CertificacionesPage() {
   const [busqueda, setBusqueda] = useState("");
   const [criterios, setCriterios] = useState<string[]>(CRITERIOS.map((c) => c.value));
   const [idsBusqueda, setIdsBusqueda] = useState<Set<string> | null>(null);
+  const [errorBusqueda, setErrorBusqueda] = useState(false);
   const [orden, setOrden] = useState<"recientes" | "antiguos">("recientes");
   const [filtroEstado, setFiltroEstado] = useState<string[]>([]);
   const [filtroRegion, setFiltroRegion] = useState<string[]>([]);
@@ -116,15 +117,26 @@ export default function CertificacionesPage() {
     const q = busqueda.trim();
     if (!q) {
       setIdsBusqueda(null);
+      setErrorBusqueda(false);
       return;
     }
     const controlador = new AbortController();
     const timeout = setTimeout(() => {
       const params = new URLSearchParams({ q, en: criterios.join(",") });
       fetch(`/api/certificaciones/buscar?${params}`, { signal: controlador.signal })
-        .then((r) => r.json())
-        .then((data) => setIdsBusqueda(new Set<string>(data.ids ?? [])))
-        .catch(() => {});
+        .then(async (r) => {
+          const data = await r.json().catch(() => ({}));
+          // Un error no es "sin resultados": se avisa y se muestra la lista
+          // completa en vez de una lista vacía o resultados de otra búsqueda.
+          if (!r.ok) throw new Error(data.error ?? "Error del servidor");
+          setErrorBusqueda(false);
+          setIdsBusqueda(new Set<string>(data.ids ?? []));
+        })
+        .catch((err) => {
+          if (err?.name === "AbortError") return;
+          setErrorBusqueda(true);
+          setIdsBusqueda(null);
+        });
     }, 250);
     return () => {
       clearTimeout(timeout);
@@ -192,6 +204,19 @@ export default function CertificacionesPage() {
     });
     return lista;
   }, [conEstado, idsBusqueda, filtroEstado, filtroRegion, filtroBienvenida, filtroTags, filtroVendedor, filtroCertificacion, orden]);
+
+  // Las acciones masivas solo deben tocar lo que se ve: si un filtro o una
+  // búsqueda oculta clientes que estaban seleccionados, se sacan de la
+  // selección (si no, "Quitar tag" o "Marcar aceptada" se aplicaba también
+  // a clientes ocultos sin que el admin lo notara).
+  useEffect(() => {
+    setSeleccionados((prev) => {
+      if (prev.size === 0) return prev;
+      const visibles = new Set(ordenados.map(({ c }) => c.id));
+      const podada = new Set([...prev].filter((id) => visibles.has(id)));
+      return podada.size === prev.size ? prev : podada;
+    });
+  }, [ordenados]);
 
   const todosSeleccionados = ordenados.length > 0 && ordenados.every(({ c }) => seleccionados.has(c.id));
 
@@ -374,6 +399,9 @@ export default function CertificacionesPage() {
                 <X className="h-3.5 w-3.5" strokeWidth={2} />
                 Limpiar filtros
               </button>
+            )}
+            {errorBusqueda && (
+              <p className="text-xs text-danger">No se pudo buscar — se muestra la lista completa.</p>
             )}
             {clientes !== null && (
               <p className="text-xs text-muted sm:ml-auto sm:text-right">

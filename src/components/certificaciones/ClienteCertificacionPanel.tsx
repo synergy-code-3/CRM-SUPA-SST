@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   CalendarClock,
@@ -33,7 +34,7 @@ import { tienePermiso } from "@/lib/permisos";
 import type { ClienteCertificacion, EventoCertificacion } from "@/lib/certificaciones-tipos";
 import { REGION_CERTIFICACION_LABEL, REGIONES_CERTIFICACION } from "@/lib/certificaciones-tipos";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
-import { CERTIFICACION_LEGENDAR_IA, beneficiosDeRegion, colorDeTag, diasRestantes, estadoReal } from "./constantes";
+import { CERTIFICACION_LEGENDAR_IA, beneficiosDeRegion, colorDeTag, diasRestantes, estaActivo, estadoReal } from "./constantes";
 import { StatusBadge } from "./StatusBadge";
 import { MensajeBienvenidaToggle } from "./Toggles";
 import { TagPicker, VendedorSelect } from "./Selectores";
@@ -122,17 +123,6 @@ export function ClienteCertificacionPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  // Mientras el panel está abierto la página de atrás no debe moverse: sin
-  // esto, al llegar al final del scroll del perfil el scroll "se encadenaba"
-  // a la lista de clientes.
-  useEffect(() => {
-    const anterior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = anterior;
-    };
-  }, []);
 
   // Ejecuta una acción POST del cliente y refresca panel + lista.
   async function accion(ruta: string, body?: unknown, confirmar?: string): Promise<boolean> {
@@ -252,9 +242,14 @@ export function ClienteCertificacionPanel({
   const dias = cliente ? diasRestantes(cliente) : null;
   const beneficios = cliente ? beneficiosDeRegion(cliente.region) : [];
   const tieneLegendarIA = cliente?.etiquetas.some((e) => e.toLowerCase() === CERTIFICACION_LEGENDAR_IA.toLowerCase());
-  const activo = !!cliente && !cliente.pausada && (dias ?? 0) >= 0 && !!cliente.fechaVencimiento;
+  // Mismo criterio que el badge "Activo" de la lista (compara timestamps: con
+  // días redondeados, alguien vencido hace horas seguía saliendo "Activo").
+  const activo = !!cliente && estaActivo(cliente);
 
-  return (
+  // Portal a <body>: el panel se pinta fuera de <main> (que es el que hace
+  // scroll), así la rueda sobre el fondo o al llegar al final del perfil ya no
+  // mueve la lista de atrás — el scroll no tiene por dónde encadenarse.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
         aria-label="Cerrar panel"
@@ -840,7 +835,8 @@ export function ClienteCertificacionPanel({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

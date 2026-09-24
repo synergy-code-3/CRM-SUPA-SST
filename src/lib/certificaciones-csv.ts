@@ -85,24 +85,27 @@ const ALIAS_COLUMNAS: Record<string, CampoTexto> = {
   fecha_inscripción: "fechaInscripcionTexto",
 };
 
+// new Date(año, mes, día) "desborda" las fechas imposibles (mes 15, 31 de
+// febrero) en vez de fallar — se rechazan comprobando que el día/mes/año
+// que sale sea el mismo que se escribió. Así un CSV con fechas en formato
+// mes/día (06/15/2026) marca error en vez de guardar una fecha equivocada.
+function fechaExacta(anio: number, mes: number, dia: number): Date | null {
+  const fecha = new Date(anio, mes - 1, dia);
+  if (fecha.getFullYear() !== anio || fecha.getMonth() !== mes - 1 || fecha.getDate() !== dia) return null;
+  return fecha;
+}
+
 function parsearFecha(texto: string): Date | null {
   const limpio = texto.trim();
   if (!limpio) return null;
 
   const iso = limpio.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) {
-    const fecha = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-    return Number.isNaN(fecha.getTime()) ? null : fecha;
-  }
+  if (iso) return fechaExacta(Number(iso[1]), Number(iso[2]), Number(iso[3]));
 
   const dmy = limpio.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (dmy) {
-    const fecha = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
-    return Number.isNaN(fecha.getTime()) ? null : fecha;
-  }
+  if (dmy) return fechaExacta(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]));
 
-  const fallback = new Date(limpio);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
+  return null;
 }
 
 export function filasAClientes(filas: string[][]): FilaClienteCSV[] {

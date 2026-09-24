@@ -168,12 +168,30 @@ const COLUMNA_POR_CRITERIO: Record<Exclude<CriterioBusquedaCertificacion, "histo
 // búsqueda de Clientes del Club. Se devuelven ids (no filas) porque la
 // página ya tiene todos los clientes cargados y solo necesita saber cuáles
 // mostrar.
+// PostgREST devuelve como máximo 1000 filas por petición aunque se pida más
+// (.limit(5000) se recorta) — se pide por páginas hasta agotar o llegar al tope.
+async function traerPaginas<T>(
+  pedir: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  tope = 10000
+): Promise<T[]> {
+  const filas: T[] = [];
+  for (let desde = 0; desde < tope; desde += 1000) {
+    const { data, error } = await pedir(desde, desde + 999);
+    if (error) throw new Error(error.message);
+    filas.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return filas;
+}
+
 export async function buscarIdsCertificaciones(
   busqueda: string,
   criterios: CriterioBusquedaCertificacion[]
 ): Promise<string[]> {
+  // Se quitan los caracteres reservados de PostgREST (coma, paréntesis,
+  // comodines, comillas y barra invertida) para no romper el filtro or().
   const palabras = busqueda
-    .replace(/[,%*()]/g, "")
+    .replace(/[,%*()"\\]/g, "")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
@@ -187,24 +205,28 @@ export async function buscarIdsCertificaciones(
     const coincidencias = new Set<string>();
 
     if (columnas.length) {
-      const { data, error } = await supabase
-        .from("certificaciones_clientes")
-        .select("id")
-        .eq("eliminado", false)
-        .or(columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","))
-        .limit(5000);
-      if (error) throw error;
-      for (const f of data ?? []) coincidencias.add(f.id as string);
+      const filas = await traerPaginas<{ id: string }>((desde, hasta) =>
+        supabase
+          .from("certificaciones_clientes")
+          .select("id")
+          .eq("eliminado", false)
+          .or(columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","))
+          .order("id")
+          .range(desde, hasta)
+      );
+      for (const f of filas) coincidencias.add(f.id);
     }
 
     if (incluyeHistorial) {
-      const { data, error } = await supabase
-        .from("certificaciones_eventos")
-        .select("cliente_id")
-        .ilike("nota", `%${palabra}%`)
-        .limit(5000);
-      if (error) throw error;
-      for (const f of data ?? []) coincidencias.add(f.cliente_id as string);
+      const filas = await traerPaginas<{ cliente_id: string }>((desde, hasta) =>
+        supabase
+          .from("certificaciones_eventos")
+          .select("cliente_id")
+          .ilike("nota", `%${palabra}%`)
+          .order("id")
+          .range(desde, hasta)
+      );
+      for (const f of filas) coincidencias.add(f.cliente_id);
     }
 
     resultado = resultado ? new Set([...resultado].filter((id) => coincidencias.has(id))) : coincidencias;
@@ -537,6 +559,13 @@ export async function enviarInvitacionCertificacion(id: string, autor: string): 
 }
 
 export async function marcarInvitacionAceptadaCertificacion(id: string, autor: string): Promise<void> {
+  // Solo desde "invitación enviada": si no, un NUEVO se saltaría la invitación y
+  // un ACTIVO/VENCIDO perdería su fecha de aceptación original.
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  if (cliente.estado !== "INVITACION_ENVIADA") {
+    throw new Error("Este cliente no tiene una invitación pendiente de aceptar");
+  }
   const { error } = await supabase
     .from("certificaciones_clientes")
     .update({ estado: "ACTIVO", fecha_aceptacion: new Date().toISOString() })
@@ -646,7 +675,11 @@ export async function ajustarDiasCertificacion(
   const MS_DIA = 24 * 60 * 60 * 1000;
   let nuevoVencimiento: Date;
   if (accion === "agregar") {
-    const base = cliente.fechaVencimiento ? new Date(cliente.fechaVencimiento) : new Date();
+    // Si ya venció, los días se cuentan desde hoy (si no, "agregar 30 días" a
+    // alguien vencido hace 60 días lo dejaría igual de vencido). Pausada: se
+    // suma al vencimiento guardado, que es el que se reanuda.
+    const vencimiento = cliente.fechaVencimiento ? new Date(cliente.fechaVencimiento) : new Date();
+    const base = cliente.pausada ? vencimiento : new Date(Math.max(vencimiento.getTime(), Date.now()));
     nuevoVencimiento = new Date(base.getTime() + dias * MS_DIA);
   } else {
     const referencia = cliente.pausada && cliente.fechaPausa ? new Date(cliente.fechaPausa) : new Date();

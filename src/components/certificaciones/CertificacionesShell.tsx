@@ -54,7 +54,7 @@ function BarraCertificacion({ cantidadAvisos }: { cantidadAvisos: number }) {
           Agregar
         </span>
         <Link
-          href="/avisos"
+          href="/certificaciones/avisos"
           aria-label="Avisos"
           title="Avisos"
           className="relative ml-auto flex h-11 w-11 flex-none items-center justify-center rounded-2xl border border-silver-deep/60 bg-surface-2 text-muted transition-all duration-500 ease-spring hover:text-primary"
