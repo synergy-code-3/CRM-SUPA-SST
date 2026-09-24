@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import {
   Bell,
+  ChevronsUpDown,
   FileCheck2,
   History,
   LayoutGrid,
@@ -123,6 +124,21 @@ function ListaNav({
   );
 }
 
+// Mismo switcher que el logo del Club (chevrons arriba a la derecha): cambia de
+// workspace. Solo para quien puede ver Clientes del Club.
+function CambiarAlClub() {
+  return (
+    <Link
+      href="/clientes"
+      aria-label="Cambiar a Club Sinergético"
+      title="Cambiar a Club Sinergético"
+      className="ease-spring absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
+    >
+      <ChevronsUpDown className="h-4 w-4" strokeWidth={1.75} />
+    </Link>
+  );
+}
+
 function BotonCampana({ cantidad }: { cantidad: number }) {
   return (
     <Link
@@ -199,18 +215,21 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
             >
               <Menu className="h-5 w-5" strokeWidth={1.75} />
             </button>
-            <Link
-              href="/certificaciones"
-              className="relative h-[52px] flex-1 overflow-hidden rounded-2xl bg-white p-1.5 shadow-[0_10px_24px_-10px_rgba(11,18,32,0.35)]"
-            >
-              <Image
-                src="/certificaciones/certificaciones-logo-full.png"
-                alt="Certificaciones oficiales"
-                fill
-                sizes="300px"
-                className="object-contain"
-              />
-            </Link>
+            <div className="relative h-[52px] flex-1">
+              <Link
+                href="/certificaciones"
+                className="relative block h-full w-full overflow-hidden rounded-2xl bg-white p-1.5 shadow-[0_10px_24px_-10px_rgba(11,18,32,0.35)]"
+              >
+                <Image
+                  src="/certificaciones/certificaciones-logo-full.png"
+                  alt="Certificaciones oficiales"
+                  fill
+                  sizes="300px"
+                  className="object-contain"
+                />
+              </Link>
+              {puedeIrAlClub && <CambiarAlClub />}
+            </div>
             <BotonCampana cantidad={conteos.avisos} />
           </div>
           <BarraCertificacion cantidadAvisos={conteos.avisos} />
@@ -218,18 +237,21 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
 
         {/* Sidebar de escritorio: 3 tarjetas flotantes */}
         <aside className="hidden w-full flex-col gap-4 md:sticky md:top-[calc(env(safe-area-inset-top,0px)+2.5rem)] md:flex md:max-h-[calc(100vh-2.5rem-env(safe-area-inset-top,0px)-1.5rem)] md:w-64 md:flex-none">
-          <Link
-            href="/certificaciones"
-            className="flex h-[84px] w-full flex-none items-center justify-center overflow-hidden rounded-[1.5rem] bg-white shadow-[0_10px_24px_-10px_rgba(11,18,32,0.35)] transition-transform duration-500 ease-spring active:scale-[0.98]"
-          >
-            <Image
-              src="/certificaciones/certificaciones-logo-full.png"
-              alt="Certificaciones oficiales"
-              width={184}
-              height={58}
-              priority
-            />
-          </Link>
+          <div className="relative flex-none">
+            <Link
+              href="/certificaciones"
+              className="flex h-[84px] w-full items-center justify-center overflow-hidden rounded-[1.5rem] bg-white shadow-[0_10px_24px_-10px_rgba(11,18,32,0.35)] transition-transform duration-500 ease-spring active:scale-[0.98]"
+            >
+              <Image
+                src="/certificaciones/certificaciones-logo-full.png"
+                alt="Certificaciones oficiales"
+                width={184}
+                height={58}
+                priority
+              />
+            </Link>
+            {puedeIrAlClub && <CambiarAlClub />}
+          </div>
 
           <div className="shell flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] p-2 diffused">
             <nav className="core flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto rounded-[calc(1.75rem-0.5rem)] p-2">
@@ -241,7 +263,6 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
             nombre={usuario.nombre}
             rol={usuario.rol}
             inicial={inicial}
-            puedeIrAlClub={puedeIrAlClub}
             onPerfil={() => setMostrarPerfil(true)}
             onCerrarSesion={cerrarSesion}
           />
@@ -287,14 +308,6 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
             <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
               <ListaNav items={items} pathname={pathname} conteos={conteos} onNavegar={() => setDrawerAbierto(false)} />
             </nav>
-            {puedeIrAlClub && (
-              <Link
-                href="/clientes"
-                className="rounded-xl px-4 py-2 text-center text-xs font-medium text-muted hover:text-primary"
-              >
-                Ir a Club Sinergético
-              </Link>
-            )}
             <button
               onClick={cerrarSesion}
               className="flex items-center justify-center gap-2 rounded-xl border border-silver-deep/60 bg-surface-2 py-2.5 text-xs font-medium text-muted hover:text-danger"
@@ -316,14 +329,12 @@ function TarjetaUsuario({
   nombre,
   rol,
   inicial,
-  puedeIrAlClub,
   onPerfil,
   onCerrarSesion,
 }: {
   nombre: string;
   rol: string;
   inicial: string;
-  puedeIrAlClub: boolean;
   onPerfil: () => void;
   onCerrarSesion: () => void;
 }) {
@@ -339,11 +350,6 @@ function TarjetaUsuario({
             <span className="block text-[11px] uppercase tracking-wider text-muted">{rol}</span>
           </span>
         </button>
-        {puedeIrAlClub && (
-          <Link href="/clientes" className="text-center text-[11px] font-medium text-muted transition hover:text-primary">
-            Ir a Club Sinergético
-          </Link>
-        )}
         <button
           onClick={onCerrarSesion}
           className="group flex items-center justify-center gap-2 rounded-xl border border-silver-deep/60 bg-surface-2 py-2 text-xs font-medium text-muted transition-all duration-500 ease-spring hover:border-danger/30 hover:text-danger active:scale-[0.98]"
