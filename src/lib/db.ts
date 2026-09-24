@@ -135,6 +135,8 @@ export type FiltrosClientes = {
   // SU27" de Otras Ofertas, ver /api/clientes?guardaSu27=1). No tiene
   // sentido combinarlo con false, así que es un simple flag on/off.
   guardaAccesoSu27?: boolean;
+  // Interno: lo llena resolverBusquedaTimeline, no viene de la API.
+  idsTimelinePorPalabra?: string[][];
   limite?: number;
   pagina?: number;
 };
@@ -181,11 +183,64 @@ function sanearBusqueda(q: string): string {
 // columnas dadas. (No se hace genérica sobre el tipo del query builder de
 // Supabase a propósito: eso dispara "Type instantiation is excessively
 // deep" — cada call site aplica las cláusulas en su propio for.)
-function clausulasBusquedaMultiPalabra(busqueda: string | undefined, columnas: string[]): string[] {
+function clausulasBusquedaMultiPalabra(
+  busqueda: string | undefined,
+  columnas: string[],
+  // Ids extra que también cuentan como "match" para la palabra en la misma
+  // posición (misma que palabrasBusqueda) — ver resolverBusquedaTimeline.
+  idsExtraPorPalabra?: string[][]
+): string[] {
+  const palabras = palabrasBusqueda(busqueda);
+  return palabras.map((palabra, i) => {
+    const partes = columnas.map((c) => `${c}.ilike.%${palabra}%`);
+    const ids = idsExtraPorPalabra?.[i];
+    if (ids?.length) partes.push(`id.in.(${ids.join(",")})`);
+    return partes.join(",");
+  });
+}
+
+function palabrasBusqueda(busqueda: string | undefined): string[] {
   const q = sanearBusqueda(busqueda?.trim() ?? "");
-  if (!q) return [];
-  const palabras = q.split(/\s+/).filter(Boolean);
-  return palabras.map((palabra) => columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","));
+  return q ? q.split(/\s+/).filter(Boolean) : [];
+}
+
+// Tope de clientes por palabra que se traen de la línea de tiempo — los ids
+// van dentro de la URL del query (id.in.(...)), y una lista enorme la
+// rompería (mismo criterio que idsClientesPorBusqueda más abajo, que topa en
+// 500). Se quedan los más recientes.
+const MAX_IDS_TIMELINE_POR_PALABRA = 500;
+
+// Ids de clientes cuya línea de tiempo (detalle de cada evento — incluye las
+// notas agregadas a mano, que se guardan como eventos NOTA) contiene la
+// palabra. Se omiten ids con caracteres que romperían la sintaxis de in.().
+async function idsClientesPorTimeline(palabra: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("eventos_timeline")
+    .select("cliente_id")
+    .ilike("detalle", `%${palabra}%`)
+    .order("fecha", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  const ids = new Set<string>();
+  for (const fila of data ?? []) {
+    const id = fila.cliente_id as string;
+    if (/[,()"]/.test(id)) continue;
+    ids.add(id);
+    if (ids.size >= MAX_IDS_TIMELINE_POR_PALABRA) break;
+  }
+  return [...ids];
+}
+
+// La búsqueda de la lista de Clientes también revisa la línea de tiempo,
+// que vive en otra tabla — no se puede filtrar desde el mismo query, así que
+// se resuelve aparte (una consulta por palabra, en paralelo) y los ids se
+// agregan como condición extra al or() de cada palabra en
+// aplicarFiltrosClientes.
+async function resolverBusquedaTimeline(opciones?: FiltrosClientes): Promise<FiltrosClientes | undefined> {
+  const palabras = palabrasBusqueda(opciones?.busqueda);
+  if (!opciones || palabras.length === 0) return opciones;
+  const idsTimelinePorPalabra = await Promise.all(palabras.map(idsClientesPorTimeline));
+  return { ...opciones, idsTimelinePorPalabra };
 }
 
 // El CSV de origen mezcla "3 Meses"/"3 MESES"/etc. — mismo dato, distinta
@@ -226,7 +281,14 @@ function aplicarFiltrosClientes<
   // disponibles si algún día se conecta un control real en la UI.
   const vigencia = opciones?.vigencia ?? "todos";
 
-  for (const clausula of clausulasBusquedaMultiPalabra(opciones?.busqueda, ["nombre", "email", "telefono"])) query = query.or(clausula);
+  // Además de nombre/correo/teléfono, busca en las notas del cliente (Notas y
+  // notas de soporte) y, vía idsTimelinePorPalabra, en su línea de tiempo.
+  for (const clausula of clausulasBusquedaMultiPalabra(
+    opciones?.busqueda,
+    ["nombre", "email", "telefono", "notas", "notas_soporte"],
+    opciones?.idsTimelinePorPalabra
+  ))
+    query = query.or(clausula);
 
   if (opciones?.estado === "activos") query = query.ilike("acceso_plataforma", "si");
   if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
@@ -275,7 +337,7 @@ export async function listarClientes(opcionesCrudas?: FiltrosClientes): Promise<
   clientes: Cliente[];
   total: number;
 }> {
-  const opciones = await resolverFiltroTipoEvento(opcionesCrudas);
+  const opciones = await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas));
   const limite = opciones?.limite ?? 100;
   const pagina = Math.max(1, opciones?.pagina ?? 1);
   const inicio = (pagina - 1) * limite;
@@ -297,7 +359,7 @@ const CAP_EXPORTACION = 50_000;
 // página actual. Usa el mismo traerTodo() que ya pagina de a 1000 filas
 // (límite de PostgREST) para las agregaciones del dashboard.
 export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promise<Cliente[]> {
-  const opciones = await resolverFiltroTipoEvento(opcionesCrudas);
+  const opciones = await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas));
   const filas = await traerTodo<ClienteRow>((from, to) => {
     let query = supabase.from("clientes").select("*").is("eliminado_en", null);
     query = aplicarFiltrosClientes(query, opciones);
