@@ -467,38 +467,38 @@ export default function SolicitudesPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => aprobar(s.id)}
                         disabled={procesando === s.id}
-                        className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success transition hover:bg-success/25 disabled:opacity-40"
+                        className="ease-spring flex w-full items-center justify-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-40 sm:w-auto sm:flex-1"
                       >
-                        <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <Check className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
                         Aprobar y crear cliente
                       </button>
                       <button
                         onClick={() => abrirEdicion(s)}
                         disabled={procesando === s.id}
-                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                        className="ease-spring flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-silver px-2 py-2.5 text-center text-sm font-medium leading-tight text-foreground transition hover:bg-surface-2 disabled:opacity-40 sm:px-4"
                       >
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <Pencil className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
                         Editar
                       </button>
                       <button
                         onClick={() => correoInvalido(s.id)}
                         disabled={procesando === s.id}
                         title="Devolver al vendedor para que corrija el correo"
-                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
+                        className="ease-spring flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-danger/30 px-2 py-2.5 text-center text-sm font-medium leading-tight text-danger transition hover:bg-danger/10 disabled:opacity-40 sm:px-4"
                       >
-                        <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <AlertTriangle className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
                         Correo inválido
                       </button>
                       <button
                         onClick={() => rechazar(s.id)}
                         disabled={procesando === s.id}
-                        className="ease-spring flex items-center justify-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-40"
+                        className="ease-spring flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-danger/30 px-2 py-2.5 text-center text-sm font-medium leading-tight text-danger transition hover:bg-danger/10 disabled:opacity-40 sm:px-4"
                       >
-                        <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <X className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
                         Rechazar
                       </button>
                     </div>
