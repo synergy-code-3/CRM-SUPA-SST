@@ -133,7 +133,7 @@ export default function ActividadPage() {
   const fin = Math.min(pagina * LIMITE, total);
 
   return (
-    <div>
+    <div className="md:flex md:h-[calc(100vh-4rem)] md:flex-col">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Actividad</h1>
@@ -225,7 +225,7 @@ export default function ActividadPage() {
         </div>
       </div>
 
-      <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:h-[calc(100vh-21rem)]">
+      <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:min-h-0 md:flex-1">
         <div className="core flex flex-1 flex-col overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
           {cargando ? (
             <p className="p-8 text-center text-sm text-muted">Cargando actividad…</p>
@@ -443,7 +443,7 @@ function ImportacionesCsvTab({ puedeDescargar }: { puedeDescargar: boolean }) {
   }
 
   return (
-    <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:h-[calc(100vh-21rem)]">
+    <div className="shell flex min-h-[24rem] flex-col rounded-[1.75rem] p-2 diffused md:min-h-0 md:flex-1">
       <div className="core flex flex-1 flex-col overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
         {importaciones === null ? (
           <p className="p-8 text-center text-sm text-muted">Cargando importaciones…</p>
