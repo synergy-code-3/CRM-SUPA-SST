@@ -106,7 +106,7 @@ export default function SolicitudesCertificacionPage() {
   }
 
   async function aprobar(id: string) {
-    if (!confirm("¿Aprobar esta solicitud? Se creará el cliente en Certificaciones.")) return;
+    if (!confirm("¿Aprobar esta solicitud? Se creará el cliente en Certificaciones y se le enviará la invitación a Skool.")) return;
     setProcesando(id);
     try {
       const res = await fetch(`/api/solicitudes-certificacion/${id}/aprobar`, { method: "POST" });
@@ -114,6 +114,13 @@ export default function SolicitudesCertificacionPage() {
       if (!res.ok) {
         alert(data.error ?? "No se pudo aprobar la solicitud");
         return;
+      }
+      if (data.avisoSkool) {
+        alert(`Solicitud aprobada, pero la invitación a Skool falló:
+
+${data.avisoSkool}
+
+El cliente quedó como Nuevo; puedes reintentar con "Enviar invitación".`);
       }
       cargar();
     } finally {

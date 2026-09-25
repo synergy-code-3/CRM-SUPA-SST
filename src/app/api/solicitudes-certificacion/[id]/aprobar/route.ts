@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { crearClienteCertificacion, obtenerClienteCertificacion } from "@/lib/certificaciones";
+import { crearClienteCertificacion, enviarInvitacionCertificacion, obtenerClienteCertificacion } from "@/lib/certificaciones";
+import { invitarASkoolCertificaciones } from "@/lib/skool";
 import { marcarSolicitudCertificacionAprobada, obtenerSolicitudCertificacion } from "@/lib/solicitudes-certificacion";
 import type { RegionCertificacion } from "@/lib/certificaciones-tipos";
 
@@ -58,7 +59,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
     const actualizada = await marcarSolicitudCertificacionAprobada(id, cliente.id, permiso.usuario.nombre);
 
-    return NextResponse.json({ solicitud: actualizada, cliente });
+    // Al aprobar también se manda la invitación a Skool. Si Skool falla, el
+    // cliente se queda en NUEVO (para reintentar con "Enviar invitación") y
+    // se avisa; la aprobación no se pierde.
+    let avisoSkool: string | null = null;
+    let clienteFinal = cliente;
+    try {
+      await invitarASkoolCertificaciones(cliente.email ?? solicitud.correo);
+      await enviarInvitacionCertificacion(cliente.id, permiso.usuario.nombre);
+      clienteFinal = (await obtenerClienteCertificacion(cliente.id)) ?? cliente;
+    } catch (err) {
+      avisoSkool = err instanceof Error ? err.message : "No se pudo enviar la invitación a Skool";
+    }
+
+    return NextResponse.json({ solicitud: actualizada, cliente: clienteFinal, avisoSkool });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear el cliente";
     return NextResponse.json({ error: message }, { status: 400 });
