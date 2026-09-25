@@ -32,7 +32,7 @@ type Region = "todos" | "MX" | "US" | "LATAM";
 type TipoEvento = "todos" | "webinar" | "presencial";
 // "Sin Kajabi" queda fuera a propósito — el alta bloquea si Kajabi falla,
 // así que ningún cliente real puede quedar sin Kajabi (ver alta-cliente.ts).
-type Proceso = "todos" | "sin_skool" | "sin_bienvenida";
+type Proceso = "todos" | "sin_skool" | "sin_bienvenida" | "skool_vencida";
 
 const FILTROS_VACIOS = {
   estado: "todos" as Estado,
@@ -429,6 +429,7 @@ function ClientesPageInner() {
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "sin_skool", label: "Sin Skool" },
+                { valor: "skool_vencida", label: "Skool vencida" },
                 { valor: "sin_bienvenida", label: "Sin Bienvenida" },
               ]}
               valor={filtros.proceso}
@@ -546,6 +547,7 @@ function ClientesPageInner() {
                   opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "sin_skool", label: "Sin Skool" },
+                    { valor: "skool_vencida", label: "Skool vencida" },
                     { valor: "sin_bienvenida", label: "Sin Bienvenida" },
                   ]}
                   valor={filtros.proceso}

@@ -117,7 +117,7 @@ export type TipoEventoFiltro = "todos" | "webinar" | "presencial";
 // "Sin Kajabi" no aplica: crearCliente() bloquea el alta si Kajabi falla
 // (ver alta-cliente.ts), así que ningún cliente real puede quedar sin
 // Kajabi — no tiene caso ofrecer ese filtro.
-export type ProcesoFiltro = "todos" | "sin_skool" | "sin_bienvenida";
+export type ProcesoFiltro = "todos" | "sin_skool" | "sin_bienvenida" | "skool_vencida";
 
 export type FiltrosClientes = {
   busqueda?: string;
@@ -322,6 +322,12 @@ function aplicarFiltrosClientes<
     query = query.or(
       "invitacion_skool.is.null,and(invitacion_skool.not.ilike.Invitación enviada,invitacion_skool.not.ilike.Invitacion enviada)"
     );
+  }
+  // Membresía de Skool vencida: su fecha de vencimiento en Skool ya pasó
+  // (hoy, hora de México, todavía cuenta como vigente). Sin fecha, no entra.
+  if (opciones?.proceso === "skool_vencida") {
+    const hoyMx = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+    query = query.lt("vencimiento_skool_fecha", hoyMx);
   }
   if (opciones?.proceso === "sin_bienvenida") {
     query = query.or("contacto_whats.is.null,and(contacto_whats.neq.Enviado,contacto_whats.neq.MSJS Bienvenida)");
