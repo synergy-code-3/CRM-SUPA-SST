@@ -31,6 +31,13 @@ export const REGIONES_CERTIFICACION: RegionCertificacion[] = [
   "VSL_US",
   "VSL_LATAM",
 ];
+// Cualquier valor que no sea un evento conocido se descarta (null), para que
+// nunca se guarde un texto suelto que rompa etiquetas, filtros o accesos.
+export function regionValida(valor: unknown): RegionCertificacion | null {
+  const texto = typeof valor === "string" ? valor.trim() : "";
+  return (REGIONES_CERTIFICACION as string[]).includes(texto) ? (texto as RegionCertificacion) : null;
+}
+
 export const REGION_CERTIFICACION_LABEL: Record<RegionCertificacion, string> = {
   MX: "Legendar-IA MX",
   US: "Legendar-IA US",

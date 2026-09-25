@@ -5,6 +5,7 @@ import { finAccesoConEtiqueta } from "./fechas";
 import { normalizarEmail, normalizarTelefono } from "./db";
 import {
   accesosDeRegion,
+  regionValida,
   type AbonoCertificacion,
   type ClienteCertificacion,
   type EstadoCertificacion,
@@ -405,7 +406,7 @@ export async function crearClienteCertificacion(
       email: id,
       telefono: normalizarTelefono(input.telefono ?? null),
       telefono_busqueda: ultimos10Digitos(input.telefono),
-      region: input.region ?? null,
+      region: regionValida(input.region),
       estado: "NUEVO",
       notas: input.notas?.trim() || null,
       fecha_llegada: fechaLlegada.toISOString(),
@@ -452,7 +453,7 @@ export async function actualizarDatosCertificacion(
       email: cambios.email?.trim() || null,
       telefono,
       telefono_busqueda: ultimos10Digitos(cambios.telefono),
-      region: cambios.region ?? null,
+      region: regionValida(cambios.region),
       notas: cambios.notas?.trim() || null,
       monto: cambios.monto?.trim() || null,
     })
@@ -465,7 +466,7 @@ export async function actualizarDatosCertificacion(
     { label: "Nombre", anterior: anterior.nombre, nuevo: cambios.nombre },
     { label: "Correo", anterior: anterior.email ?? "—", nuevo: cambios.email || "—" },
     { label: "Teléfono", anterior: anterior.telefono ?? "—", nuevo: telefono ?? "—" },
-    { label: "Evento", anterior: anterior.region ?? "—", nuevo: cambios.region ?? "—" },
+    { label: "Evento", anterior: anterior.region ?? "—", nuevo: regionValida(cambios.region) ?? "—" },
     { label: "Notas", anterior: anterior.notas ?? "—", nuevo: cambios.notas || "—" },
     { label: "Monto", anterior: anterior.monto ?? "—", nuevo: cambios.monto || "—" },
   ];
@@ -847,14 +848,24 @@ export async function sincronizarTagsClubCertificaciones(): Promise<{ revisados:
     return filas;
   };
 
-  const [cert, club] = await Promise.all([
-    traer<{ id: string; email: string | null; tags: string[] | null }>("certificaciones_clientes", "id,email,tags", (q) => q.eq("eliminado", false)),
-    traer<FilaClubParaTag>(
-      "clientes",
-      "id,email,acceso_plataforma,pausado_en,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en",
-      (q) => q.is("eliminado_en", null)
-    ),
-  ]);
+  const cert = await traer<{ id: string; email: string | null; tags: string[] | null }>(
+    "certificaciones_clientes",
+    "id,email,tags",
+    (q) => q.eq("eliminado", false)
+  );
+  // El Club tiene decenas de miles de clientes: solo se consultan los correos
+  // de Certificaciones (por lotes) en vez de traerlos todos.
+  const correos = Array.from(new Set(cert.map((c) => (c.email ?? c.id).trim().toLowerCase())));
+  const club: FilaClubParaTag[] = [];
+  for (let i = 0; i < correos.length; i += 100) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("id,email,acceso_plataforma,pausado_en,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en")
+      .in("id", correos.slice(i, i + 100))
+      .is("eliminado_en", null);
+    if (error) throw error;
+    club.push(...((data ?? []) as FilaClubParaTag[]));
+  }
 
   const ahora = Date.now();
   const clubPorCorreo = new Map<string, FilaClubParaTag>();

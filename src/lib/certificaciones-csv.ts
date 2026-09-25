@@ -1,4 +1,4 @@
-import { REGIONES_CERTIFICACION } from "./certificaciones-tipos";
+import { REGIONES_CERTIFICACION, REGION_CERTIFICACION_LABEL } from "./certificaciones-tipos";
 
 // Parser del CSV de importación de Certificaciones (portado de csvParse.ts del
 // CRM original). Puro, sin imports de servidor.
@@ -131,7 +131,8 @@ export function filasAClientes(filas: string[][]): FilaClienteCSV[] {
     const fechaInscripcionTexto = leer(fila, "fechaInscripcionTexto");
 
     const regionCruda = leer(fila, "region").toUpperCase();
-    const region = (REGIONES_CERTIFICACION as string[]).includes(regionCruda) ? regionCruda : "";
+    const porNombre = REGIONES_CERTIFICACION.find((r) => REGION_CERTIFICACION_LABEL[r].toUpperCase() === regionCruda);
+    const region = (REGIONES_CERTIFICACION as string[]).includes(regionCruda) ? regionCruda : (porNombre ?? "");
 
     const base = { nombre, email, telefono, region, notas, vendedor, fechaInscripcionTexto };
 

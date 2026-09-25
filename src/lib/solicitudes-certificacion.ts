@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import type { EstadoSolicitudCertificacion, RegionCertificacion, SolicitudCertificacion } from "@/lib/certificaciones-tipos";
+import { regionValida, type EstadoSolicitudCertificacion, type RegionCertificacion, type SolicitudCertificacion } from "@/lib/certificaciones-tipos";
 
 // Solicitudes de alta para Certificaciones — puerto de src/lib/solicitudes.ts
 // (Club) a la forma más simple de Certificaciones (un solo correo, region en
@@ -70,7 +70,7 @@ export async function crearSolicitudCertificacion(input: {
       nombre: input.nombre.trim(),
       correo: input.correo.trim().toLowerCase(),
       telefono: input.telefono.trim(),
-      region: input.region?.trim() || null,
+      region: regionValida(input.region),
       monto: input.monto?.trim() || null,
       etiqueta: input.etiqueta?.trim() || null,
       notas: input.notas?.trim() || null,
@@ -107,7 +107,7 @@ export async function editarSolicitudCertificacion(
   if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim();
   if (cambios.correo !== undefined) patch.correo = cambios.correo.trim().toLowerCase();
   if (cambios.telefono !== undefined) patch.telefono = cambios.telefono.trim();
-  if (cambios.region !== undefined) patch.region = cambios.region?.trim() || null;
+  if (cambios.region !== undefined) patch.region = regionValida(cambios.region);
   if (cambios.monto !== undefined) patch.monto = cambios.monto?.trim() || null;
   if (cambios.etiqueta !== undefined) patch.etiqueta = cambios.etiqueta?.trim() || null;
   if (cambios.notas !== undefined) patch.notas = cambios.notas?.trim() || null;
