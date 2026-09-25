@@ -45,11 +45,10 @@ import {
   estadoReal,
 } from "@/components/certificaciones/constantes";
 import { useColoresTags } from "@/components/certificaciones/useColoresTags";
-import { StatusBadge } from "@/components/certificaciones/StatusBadge";
+import { Foquitos } from "@/components/certificaciones/Foquitos";
 import { CopyButton } from "@/components/certificaciones/CopyButton";
 import { FilterMultiSelect } from "@/components/certificaciones/FilterMultiSelect";
 import { BulkActionMenu } from "@/components/certificaciones/BulkActionMenu";
-import { InvitacionToggle, MensajeBienvenidaToggle } from "@/components/certificaciones/Toggles";
 import { ClienteCertificacionPanel } from "@/components/certificaciones/ClienteCertificacionPanel";
 
 type Criterio = "nombre" | "correo" | "telefono" | "notas" | "historial";
@@ -651,7 +650,7 @@ ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? 
                 />
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Seleccionar todos</span>
               </li>
-              {ordenados.map(({ c, estado, dias }) => {
+              {ordenados.map(({ c, dias }) => {
                 const activo = estaActivo(c);
                 return (
                   <li key={c.id} className="flex items-center gap-3 px-4">
@@ -704,22 +703,9 @@ ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? 
                       </div>
 
                       <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:flex-none sm:gap-3">
-                        <StatusBadge estado={estado} />
+                        <Foquitos cliente={c} />
                         {activo && dias !== null && (
                           <span className="text-xs text-muted">{dias <= 0 ? "Vence hoy" : `${dias} días restantes`}</span>
-                        )}
-                        {puedeGestionar && (
-                          <>
-                            <InvitacionToggle
-                              compacto
-                              clienteId={c.id}
-                              clienteNombre={c.nombre}
-                              enviada={c.estado !== "NUEVO"}
-                              puedeDeshacer={c.estado === "INVITACION_ENVIADA"}
-                              onCambio={cargar}
-                            />
-                            <MensajeBienvenidaToggle compacto clienteId={c.id} estado={c.mensajeBienvenida} onCambio={cargar} />
-                          </>
                         )}
                         <ArrowUpRight
                           className="h-4 w-4 text-muted transition-transform duration-500 ease-spring group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
