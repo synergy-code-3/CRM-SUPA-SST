@@ -134,19 +134,26 @@ export function AccesosSynergy({
           asignación manual.
         </p>
       )}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Lectura: tres tarjetas en fila. Edición: una debajo de otra, con los
+          contadores a la derecha — en tres columnas no caben (ni en celular ni en
+          el panel angosto). */}
+      <div className={`grid gap-3 ${soloLectura ? "grid-cols-3" : "grid-cols-1"}`}>
         {NIVELES.map(({ key, label, icon: Icon, activeClass, tieneVariante }) => {
           const detalle = valor[key];
           const activo = detalle.length > 0;
           return (
             <div
               key={key}
-              className={`flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-center transition ${
-                activo ? `${activeClass} border-transparent diffused` : "border-silver bg-surface-2 text-muted"
-              }`}
+              className={`flex rounded-2xl border transition ${
+                soloLectura
+                  ? "flex-col items-center gap-2 px-3 py-4 text-center"
+                  : "flex-row items-center justify-between gap-3 px-4 py-3 text-left"
+              } ${activo ? `${activeClass} border-transparent diffused` : "border-silver bg-surface-2 text-muted"}`}
             >
-              <Icon className="h-6 w-6" strokeWidth={1.75} />
-              <span className="text-sm font-semibold">{label}</span>
+              <div className={`flex items-center ${soloLectura ? "flex-col gap-2" : "gap-2.5"}`}>
+                <Icon className="h-6 w-6 flex-none" strokeWidth={1.75} />
+                <span className="text-sm font-semibold">{label}</span>
+              </div>
 
               {soloLectura ? (
                 <span className={`text-xs uppercase tracking-wide ${activo ? "opacity-80" : "opacity-60"}`}>
