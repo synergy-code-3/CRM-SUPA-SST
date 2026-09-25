@@ -435,6 +435,104 @@ export function ClienteCertificacionPanel({
             <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-6">
               {tab === "resumen" && (
                 <div className="space-y-5">
+                  {accesosActuales && (
+                    <Tarjeta titulo="Accesos a Synergy Unlimited" icono={Ticket}>
+                      {!editandoAccesos && cliente.accesos && (
+                        <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
+                          <span>Editados a mano — no siguen al evento.</span>
+                          {puedeGestionar && (
+                            <button
+                              onClick={() =>
+                                accion(
+                                  "accesos",
+                                  { restablecer: true },
+                                  "Esto vuelve a calcular los accesos según el evento, reemplazando la corrección manual. ¿Confirmas?"
+                                )
+                              }
+                              disabled={procesando}
+                              className="ease-spring flex-none font-medium underline decoration-dotted underline-offset-2 transition hover:text-primary disabled:opacity-50"
+                            >
+                              Volver a calcular por evento
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <AccesosSynergy
+                        valor={editandoAccesos && borradorAccesos ? borradorAccesos : accesosActuales}
+                        onChange={setBorradorAccesos}
+                        soloLectura={!editandoAccesos}
+                      />
+
+                      {puedeGestionar && !editandoAccesos && (
+                        <button
+                          onClick={() => {
+                            setBorradorAccesos(accesosActuales);
+                            setEditandoAccesos(true);
+                            setConfirmandoAccesos(false);
+                          }}
+                          className="ease-spring mt-3 text-xs font-medium text-primary transition hover:text-primary-deep"
+                        >
+                          Editar accesos →
+                        </button>
+                      )}
+
+                      {editandoAccesos && !confirmandoAccesos && (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditandoAccesos(false);
+                              setBorradorAccesos(null);
+                            }}
+                            className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => setConfirmandoAccesos(true)}
+                            disabled={!borradorAccesos || diferenciasAccesos(accesosActuales, borradorAccesos).length === 0}
+                            className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Guardar cambios
+                          </button>
+                        </div>
+                      )}
+
+                      {editandoAccesos && confirmandoAccesos && borradorAccesos && (
+                        <div className="mt-3 rounded-lg border border-primary/30 bg-primary-dim/40 p-3">
+                          <p className="mb-2 text-xs font-medium text-foreground">Confirma el cambio de accesos:</p>
+                          <ul className="mb-2.5 space-y-1 text-xs text-foreground">
+                            {diferenciasAccesos(accesosActuales, borradorAccesos).map((d) => (
+                              <li key={d.nivel}>
+                                <span className="font-medium">{NIVEL_LABEL[d.nivel]}:</span> {d.de} → {d.a}
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setConfirmandoAccesos(false)}
+                              className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                            >
+                              Volver a editar
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (await accion("accesos", { accesos: borradorAccesos })) {
+                                  setEditandoAccesos(false);
+                                  setConfirmandoAccesos(false);
+                                  setBorradorAccesos(null);
+                                }
+                              }}
+                              disabled={procesando}
+                              className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                            >
+                              {procesando ? "Guardando…" : "Confirmar y guardar"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </Tarjeta>
+                  )}
+
                   <Tarjeta titulo="Estado y membresía">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge
@@ -593,104 +691,6 @@ export function ClienteCertificacionPanel({
                       )}
                     </div>
                   </Tarjeta>
-
-                  {accesosActuales && (
-                    <Tarjeta titulo="Accesos a Synergy Unlimited" icono={Ticket}>
-                      {!editandoAccesos && cliente.accesos && (
-                        <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
-                          <span>Editados a mano — no siguen al evento.</span>
-                          {puedeGestionar && (
-                            <button
-                              onClick={() =>
-                                accion(
-                                  "accesos",
-                                  { restablecer: true },
-                                  "Esto vuelve a calcular los accesos según el evento, reemplazando la corrección manual. ¿Confirmas?"
-                                )
-                              }
-                              disabled={procesando}
-                              className="ease-spring flex-none font-medium underline decoration-dotted underline-offset-2 transition hover:text-primary disabled:opacity-50"
-                            >
-                              Volver a calcular por evento
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      <AccesosSynergy
-                        valor={editandoAccesos && borradorAccesos ? borradorAccesos : accesosActuales}
-                        onChange={setBorradorAccesos}
-                        soloLectura={!editandoAccesos}
-                      />
-
-                      {puedeGestionar && !editandoAccesos && (
-                        <button
-                          onClick={() => {
-                            setBorradorAccesos(accesosActuales);
-                            setEditandoAccesos(true);
-                            setConfirmandoAccesos(false);
-                          }}
-                          className="ease-spring mt-3 text-xs font-medium text-primary transition hover:text-primary-deep"
-                        >
-                          Editar accesos →
-                        </button>
-                      )}
-
-                      {editandoAccesos && !confirmandoAccesos && (
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            onClick={() => {
-                              setEditandoAccesos(false);
-                              setBorradorAccesos(null);
-                            }}
-                            className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            onClick={() => setConfirmandoAccesos(true)}
-                            disabled={!borradorAccesos || diferenciasAccesos(accesosActuales, borradorAccesos).length === 0}
-                            className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Guardar cambios
-                          </button>
-                        </div>
-                      )}
-
-                      {editandoAccesos && confirmandoAccesos && borradorAccesos && (
-                        <div className="mt-3 rounded-lg border border-primary/30 bg-primary-dim/40 p-3">
-                          <p className="mb-2 text-xs font-medium text-foreground">Confirma el cambio de accesos:</p>
-                          <ul className="mb-2.5 space-y-1 text-xs text-foreground">
-                            {diferenciasAccesos(accesosActuales, borradorAccesos).map((d) => (
-                              <li key={d.nivel}>
-                                <span className="font-medium">{NIVEL_LABEL[d.nivel]}:</span> {d.de} → {d.a}
-                              </li>
-                            ))}
-                          </ul>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setConfirmandoAccesos(false)}
-                              className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
-                            >
-                              Volver a editar
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (await accion("accesos", { accesos: borradorAccesos })) {
-                                  setEditandoAccesos(false);
-                                  setConfirmandoAccesos(false);
-                                  setBorradorAccesos(null);
-                                }
-                              }}
-                              disabled={procesando}
-                              className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
-                            >
-                              {procesando ? "Guardando…" : "Confirmar y guardar"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </Tarjeta>
-                  )}
 
                   {cliente.fechaVencimiento && (
                     <Tarjeta>
