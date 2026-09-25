@@ -124,14 +124,16 @@ export type SolicitudCertificacion = {
 // Accesos a Synergy Unlimited que le tocan a cada región (mismo mapeo que
 // BENEFICIOS_POR_REGION en constantes.ts) en el formato de accesos del Club.
 // La asesoría 1 a 1 de BLACK no es un acceso a Synergy, por eso no entra.
+// MX/US/LATAM: 1 VIP MX + 1 VIP US (México) o 2 + 2 (Estados Unidos y LATAM).
 export function accesosDeRegion(region: RegionCertificacion | null): Accesos {
   const a = (cantidad: number, variante: "MX" | "US" | null) => ({ activo: true, cantidad, variante });
   switch (region) {
+    // Producto Legendaria (tabla de precios): todo VIP, en MX y en US.
     case "MX":
-    case "LATAM":
-      return { general: [a(1, "MX")], vip: [], black: [] };
+      return { general: [], vip: [a(1, "MX"), a(1, "US")], black: [] };
     case "US":
-      return { general: [a(1, "US")], vip: [a(1, "MX")], black: [] };
+    case "LATAM":
+      return { general: [], vip: [a(2, "MX"), a(2, "US")], black: [] };
     case "PRES_USA":
       return { general: [a(2, "US")], vip: [a(2, "MX")], black: [] };
     case "PRES_MX":
