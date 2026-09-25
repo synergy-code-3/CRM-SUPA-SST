@@ -60,10 +60,16 @@ const CRITERIOS: { value: Criterio; label: string }[] = [
   { value: "historial", label: "Historial" },
 ];
 
-const OPCIONES_ESTADO = (Object.keys(ESTADO_LABEL) as EstadoCertificacion[]).map((e) => ({
-  value: e,
-  label: ESTADO_LABEL[e],
-}));
+// "Sin aceptar invitación" no es un estado real: junta a los Nuevos (aún sin
+// invitar) y a los que ya tienen la invitación enviada pero no la han aceptado.
+const FILTRO_SIN_ACEPTAR = "SIN_ACEPTAR";
+const OPCIONES_ESTADO = [
+  { value: "NUEVO", label: ESTADO_LABEL.NUEVO },
+  { value: "INVITACION_ENVIADA", label: ESTADO_LABEL.INVITACION_ENVIADA },
+  { value: FILTRO_SIN_ACEPTAR, label: "Sin aceptar invitación" },
+  { value: "ACTIVO", label: "Miembro VIP" },
+  { value: "VENCIDO", label: ESTADO_LABEL.VENCIDO },
+];
 const OPCIONES_BIENVENIDA = (Object.keys(BIENVENIDA_LABEL) as MensajeBienvenidaCertificacion[]).map((e) => ({
   value: e,
   label: BIENVENIDA_LABEL[e],
@@ -214,7 +220,13 @@ export default function CertificacionesPage() {
   const ordenados = useMemo(() => {
     const lista = conEstado.filter(({ c, estado }) => {
       if (idsBusqueda && !idsBusqueda.has(c.id)) return false;
-      if (filtroEstado.length && !filtroEstado.includes(estado)) return false;
+      if (
+        filtroEstado.length &&
+        !filtroEstado.some((f) =>
+          f === FILTRO_SIN_ACEPTAR ? c.estado === "NUEVO" || c.estado === "INVITACION_ENVIADA" : f === estado
+        )
+      )
+        return false;
       if (filtroRegion.length && (!c.region || !filtroRegion.includes(REGION_PAIS_DE_EVENTO[c.region]))) return false;
       if (filtroBienvenida.length && !filtroBienvenida.includes(c.mensajeBienvenida)) return false;
       if (filtroTags.length && !c.tags.some((t) => filtroTags.includes(t))) return false;
