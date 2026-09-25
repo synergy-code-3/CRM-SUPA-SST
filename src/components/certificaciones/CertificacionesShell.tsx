@@ -37,7 +37,7 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
 function BarraCertificacion({ cantidadAvisos }: { cantidadAvisos: number }) {
   return (
     <div className="shell rounded-[1.75rem] p-2 diffused">
-      <div className="core flex flex-nowrap items-center gap-2 overflow-x-auto rounded-[calc(1.75rem-0.5rem)] p-2 md:flex-wrap md:overflow-visible">
+      <div className="core flex flex-wrap items-center gap-2 rounded-[calc(1.75rem-0.5rem)] p-2">
         <Link
           href="/certificaciones"
           className="flex h-11 flex-none items-center overflow-visible rounded-2xl bg-primary px-4 shadow-[0_10px_24px_-8px_rgba(10,92,255,0.5)] transition-all duration-500 ease-spring"
