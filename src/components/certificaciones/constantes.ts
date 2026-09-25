@@ -6,7 +6,7 @@ import type { EstadoCertificacion, MensajeBienvenidaCertificacion, RegionCertifi
 export const ESTADO_LABEL: Record<EstadoCertificacion, string> = {
   NUEVO: "Nuevo",
   INVITACION_ENVIADA: "Invitación enviada",
-  ACTIVO: "Miembro",
+  ACTIVO: "Miembro VIP",
   VENCIDO: "Vencido",
 };
 
