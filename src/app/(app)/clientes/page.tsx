@@ -394,7 +394,9 @@ function ClientesPageInner() {
       <div className={`shell mb-5 hidden rounded-[1.5rem] p-2 diffused ${filtrosVisibles ? "md:block" : ""}`}>
         <div className="core space-y-3 rounded-[calc(1.5rem-0.5rem)] p-3.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Pildora
+            <SelectUnico
+              prefijo="Estado"
+              todasLabel="Estado: todos"
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "activos", label: "Activos" },
@@ -403,8 +405,9 @@ function ClientesPageInner() {
               valor={filtros.estado}
               onChange={(v) => setFiltros((f) => ({ ...f, estado: v as Estado }))}
             />
-            <span className="mx-0.5 h-5 w-px bg-silver" />
-            <Pildora
+            <SelectUnico
+              prefijo="Región"
+              todasLabel="Región: todas"
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "MX", label: "MX" },
@@ -414,8 +417,9 @@ function ClientesPageInner() {
               valor={filtros.region}
               onChange={(v) => setFiltros((f) => ({ ...f, region: v as Region }))}
             />
-            <span className="mx-0.5 h-5 w-px bg-silver" />
-            <Pildora
+            <SelectUnico
+              prefijo="Tipo"
+              todasLabel="Tipo: todos"
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "webinar", label: "Webinar" },
@@ -424,8 +428,9 @@ function ClientesPageInner() {
               valor={filtros.tipoEvento}
               onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
             />
-            <span className="mx-0.5 h-5 w-px bg-silver" />
-            <Pildora
+            <SelectUnico
+              prefijo="Proceso"
+              todasLabel="Proceso: todos"
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "sin_skool", label: "Sin Skool" },
@@ -435,7 +440,6 @@ function ClientesPageInner() {
               valor={filtros.proceso}
               onChange={(v) => setFiltros((f) => ({ ...f, proceso: v as Proceso }))}
             />
-            <span className="mx-0.5 h-5 w-px bg-silver" />
             <MultiSelect
               label="eventos"
               todasLabel="Todos los eventos"
@@ -506,53 +510,61 @@ function ClientesPageInner() {
             <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted">Estado</p>
-                <Pildora
-                  opciones={[
+                <SelectUnico
+              prefijo="Estado"
+              todasLabel="Estado: todos"
+              opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "activos", label: "Activos" },
                     { valor: "revocados", label: "Revocados" },
                   ]}
-                  valor={filtros.estado}
-                  onChange={(v) => setFiltros((f) => ({ ...f, estado: v as Estado }))}
-                />
+              valor={filtros.estado}
+              onChange={(v) => setFiltros((f) => ({ ...f, estado: v as Estado }))} anchoCompleto
+            />
               </div>
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted">Región</p>
-                <Pildora
-                  opciones={[
+                <SelectUnico
+              prefijo="Región"
+              todasLabel="Región: todas"
+              opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "MX", label: "MX" },
                     { valor: "US", label: "US" },
                     { valor: "LATAM", label: "LATAM" },
                   ]}
-                  valor={filtros.region}
-                  onChange={(v) => setFiltros((f) => ({ ...f, region: v as Region }))}
-                />
+              valor={filtros.region}
+              onChange={(v) => setFiltros((f) => ({ ...f, region: v as Region }))} anchoCompleto
+            />
               </div>
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted">Tipo de evento</p>
-                <Pildora
-                  opciones={[
+                <SelectUnico
+              prefijo="Tipo"
+              todasLabel="Tipo: todos"
+              opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "webinar", label: "Webinar" },
                     { valor: "presencial", label: "Presencial" },
                   ]}
-                  valor={filtros.tipoEvento}
-                  onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))}
-                />
+              valor={filtros.tipoEvento}
+              onChange={(v) => setFiltros((f) => ({ ...f, tipoEvento: v as TipoEvento }))} anchoCompleto
+            />
               </div>
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted">Proceso</p>
-                <Pildora
-                  opciones={[
+                <SelectUnico
+              prefijo="Proceso"
+              todasLabel="Proceso: todos"
+              opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "sin_skool", label: "Sin Skool" },
                     { valor: "skool_vencida", label: "Skool vencida" },
                     { valor: "sin_bienvenida", label: "Sin Bienvenida" },
                   ]}
-                  valor={filtros.proceso}
-                  onChange={(v) => setFiltros((f) => ({ ...f, proceso: v as Proceso }))}
-                />
+              valor={filtros.proceso}
+              onChange={(v) => setFiltros((f) => ({ ...f, proceso: v as Proceso }))} anchoCompleto
+            />
               </div>
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted">Evento</p>
@@ -765,33 +777,69 @@ function ClientesPageInner() {
   );
 }
 
-function Pildora({
+function SelectUnico({
+  prefijo,
+  todasLabel,
   opciones,
   valor,
   onChange,
+  anchoCompleto,
 }: {
+  prefijo: string;
+  todasLabel: string;
   opciones: { valor: string; label: string }[];
   valor: string;
   onChange: (v: string) => void;
+  anchoCompleto?: boolean;
 }) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickFuera(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false);
+    }
+    document.addEventListener("mousedown", onClickFuera);
+    return () => document.removeEventListener("mousedown", onClickFuera);
+  }, []);
+
+  const activa = valor !== "todos";
+  const texto = activa ? `${prefijo}: ${opciones.find((o) => o.valor === valor)?.label ?? valor}` : todasLabel;
+
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {opciones.map((o) => {
-        const activo = o.valor === valor;
-        return (
-          <button
-            key={o.valor}
-            onClick={() => onChange(o.valor)}
-            className={`ease-spring rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
-              activo
-                ? "border-transparent brand-plate text-white"
-                : "border-silver bg-surface-2 text-muted hover:border-silver-deep hover:text-foreground"
-            }`}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div ref={ref} className={`relative ${anchoCompleto ? "w-full" : ""}`}>
+      <button
+        onClick={() => setAbierto((a) => !a)}
+        className={`ease-spring flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+          anchoCompleto ? "w-full justify-between" : ""
+        } ${
+          activa
+            ? "border-primary bg-primary-dim text-primary-deep"
+            : "border-silver bg-surface-2 text-muted hover:border-silver-deep hover:text-foreground"
+        }`}
+      >
+        <span className="truncate">{texto}</span>
+        <ChevronDown className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+      </button>
+
+      {abierto && (
+        <div className="animate-fade-in-fast absolute left-0 top-[calc(100%+6px)] z-20 w-56 rounded-xl border border-silver bg-surface p-1.5 shadow-xl">
+          {opciones.map((o) => (
+            <button
+              key={o.valor}
+              onClick={() => {
+                onChange(o.valor);
+                setAbierto(false);
+              }}
+              className={`ease-spring flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                o.valor === valor ? "bg-primary-dim font-medium text-primary-deep" : "text-foreground hover:bg-surface-2"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
