@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, Bell, Sparkles } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -58,9 +58,6 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
   { href: "/certificaciones/tags", label: "Tags", icon: Tag, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/actividad", label: "Actividad", icon: History, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
-  { href: "/certificaciones/avisos", label: "Dar avisos", icon: Megaphone, permiso: "gestionarAvisos" },
-  { href: "/certificaciones/avisos", label: "Avisos", icon: Bell, permiso: "verAvisos", contador: "avisos" },
-  { href: "/certificaciones/avisos", label: "Actualizaciones", icon: Sparkles, permiso: "gestionarAvisos" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
