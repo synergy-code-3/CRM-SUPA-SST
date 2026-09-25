@@ -9,9 +9,28 @@ import type { Accesos } from "./types";
 
 export type EstadoCertificacion = "NUEVO" | "INVITACION_ENVIADA" | "ACTIVO" | "VENCIDO";
 export type MensajeBienvenidaCertificacion = "PENDIENTE" | "ENVIADA" | "INVALIDO";
-export type RegionCertificacion = "MX" | "US" | "LATAM" | "PRES_USA" | "PRES_MX" | "BLACK";
+export type RegionCertificacion =
+  | "MX"
+  | "US"
+  | "LATAM"
+  | "PRES_USA"
+  | "PRES_MX"
+  | "BLACK"
+  | "VSL_MX"
+  | "VSL_US"
+  | "VSL_LATAM";
 
-export const REGIONES_CERTIFICACION: RegionCertificacion[] = ["MX", "US", "LATAM", "PRES_USA", "PRES_MX", "BLACK"];
+export const REGIONES_CERTIFICACION: RegionCertificacion[] = [
+  "MX",
+  "US",
+  "LATAM",
+  "PRES_USA",
+  "PRES_MX",
+  "BLACK",
+  "VSL_MX",
+  "VSL_US",
+  "VSL_LATAM",
+];
 export const REGION_CERTIFICACION_LABEL: Record<RegionCertificacion, string> = {
   MX: "Legendar-IA MX",
   US: "Legendar-IA US",
@@ -19,6 +38,9 @@ export const REGION_CERTIFICACION_LABEL: Record<RegionCertificacion, string> = {
   PRES_USA: "Presencial L-IA USA",
   PRES_MX: "Presencial L-IA MX",
   BLACK: "Legendar-IA Black",
+  VSL_MX: "VSL Legendar-IA MX",
+  VSL_US: "VSL Legendar-IA US",
+  VSL_LATAM: "VSL Legendar-IA LATAM",
 };
 
 export type ClienteCertificacion = {
@@ -124,16 +146,22 @@ export type SolicitudCertificacion = {
 // Accesos a Synergy Unlimited que le tocan a cada región (mismo mapeo que
 // BENEFICIOS_POR_REGION en constantes.ts) en el formato de accesos del Club.
 // La asesoría 1 a 1 de BLACK no es un acceso a Synergy, por eso no entra.
-// MX/US/LATAM: 1 VIP MX + 1 VIP US (México) o 2 + 2 (Estados Unidos y LATAM).
+// Las regiones VSL_* son las del producto Legendaria que entra por VSL (tabla
+// de precios: todo VIP, en MX y en US). Las normales y las presenciales
+// llevan el mapeo original de Legendar-IA.
 export function accesosDeRegion(region: RegionCertificacion | null): Accesos {
   const a = (cantidad: number, variante: "MX" | "US" | null) => ({ activo: true, cantidad, variante });
   switch (region) {
-    // Producto Legendaria (tabla de precios): todo VIP, en MX y en US.
-    case "MX":
+    case "VSL_MX":
       return { general: [], vip: [a(1, "MX"), a(1, "US")], black: [] };
-    case "US":
-    case "LATAM":
+    case "VSL_US":
+    case "VSL_LATAM":
       return { general: [], vip: [a(2, "MX"), a(2, "US")], black: [] };
+    case "MX":
+    case "LATAM":
+      return { general: [a(1, "MX")], vip: [], black: [] };
+    case "US":
+      return { general: [a(1, "US")], vip: [a(1, "MX")], black: [] };
     case "PRES_USA":
       return { general: [a(2, "US")], vip: [a(2, "MX")], black: [] };
     case "PRES_MX":

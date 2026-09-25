@@ -331,6 +331,14 @@ async function procesarConversionCertificacion(c: ConvertidoVsl, resultado: Resu
     }
   }
 
+  // Todo lo que entra por VSL va a la región VSL de su país (accesos todo VIP).
+  const REGION_VSL: Partial<Record<RegionCertificacion, RegionCertificacion>> = {
+    MX: "VSL_MX",
+    US: "VSL_US",
+    LATAM: "VSL_LATAM",
+  };
+  region = REGION_VSL[region] ?? region;
+
   const comprobantes = c.comprobanteUrl ? await reubicarComprobante(solicitudId, c.comprobanteUrl) : [];
 
   await crearSolicitudCertificacion({

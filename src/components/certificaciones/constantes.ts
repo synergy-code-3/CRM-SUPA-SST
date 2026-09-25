@@ -51,15 +51,21 @@ export type Beneficio = { evento: string; tipo: string; cantidad: number };
 // Synergy Unlimited: los boletos de cada socio dependen de su región (mismo
 // mapeo que el CRM original).
 export const BENEFICIOS_POR_REGION: Record<RegionCertificacion, Beneficio[]> = {
-  MX: [
+  MX: [{ evento: "Synergy Unlimited MX", tipo: "General", cantidad: 1 }],
+  US: [
+    { evento: "Synergy Unlimited MX", tipo: "VIP", cantidad: 1 },
+    { evento: "Synergy Unlimited US", tipo: "General", cantidad: 1 },
+  ],
+  LATAM: [{ evento: "Synergy Unlimited MX", tipo: "General", cantidad: 1 }],
+  VSL_MX: [
     { evento: "Synergy Unlimited MX", tipo: "VIP", cantidad: 1 },
     { evento: "Synergy Unlimited US", tipo: "VIP", cantidad: 1 },
   ],
-  US: [
+  VSL_US: [
     { evento: "Synergy Unlimited MX", tipo: "VIP", cantidad: 2 },
     { evento: "Synergy Unlimited US", tipo: "VIP", cantidad: 2 },
   ],
-  LATAM: [
+  VSL_LATAM: [
     { evento: "Synergy Unlimited MX", tipo: "VIP", cantidad: 2 },
     { evento: "Synergy Unlimited US", tipo: "VIP", cantidad: 2 },
   ],

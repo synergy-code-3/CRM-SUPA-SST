@@ -512,7 +512,7 @@ create table if not exists certificaciones_clientes (
   email text,
   telefono text,
   telefono_busqueda text, -- últimos 10 dígitos, para encontrar por teléfono si el correo cambió
-  region text, -- MX | US | LATAM | PRES_USA | PRES_MX | BLACK
+  region text, -- MX | US | LATAM | PRES_USA | PRES_MX | BLACK | VSL_MX | VSL_US | VSL_LATAM
   estado text not null default 'NUEVO', -- NUEVO | INVITACION_ENVIADA | ACTIVO | VENCIDO
   notas text,
   fecha_llegada timestamptz not null default now(),
