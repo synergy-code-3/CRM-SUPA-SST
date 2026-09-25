@@ -582,10 +582,10 @@ ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no está${omitidos === 1 ? 
                 },
                 {
                   key: "aceptar",
-                  label: "Marcar invitación aceptada",
+                  label: "Miembro VIP",
                   onSelect: () =>
                     masivoPorEstado("INVITACION_ENVIADA", "aceptar", (n, omitidos) =>
-                      `¿Marcar como aceptada la invitación de ${n} cliente${n === 1 ? "" : "s"}?${
+                      `¿Pasar a Miembro VIP a ${n} cliente${n === 1 ? "" : "s"}?${
                         omitidos ? `
 
 ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? "" : "n"} invitación pendiente y se omite${omitidos === 1 ? "" : "n"}.` : ""

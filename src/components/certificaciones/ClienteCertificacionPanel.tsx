@@ -441,7 +441,7 @@ export function ClienteCertificacionPanel({
                         estado={estado}
                         onClick={
                           puedeGestionar && cliente.estado === "INVITACION_ENVIADA"
-                            ? () => accion("aceptar", undefined, `¿Marcar la invitación de "${cliente.nombre}" como aceptada?`)
+                            ? () => accion("aceptar", undefined, `¿Pasar a "${cliente.nombre}" a Miembro VIP?`)
                             : undefined
                         }
                         cargando={procesando}
@@ -780,10 +780,10 @@ export function ClienteCertificacionPanel({
                             <button
                               className={BTN_PRIMARIO}
                               disabled={procesando}
-                              onClick={() => accion("aceptar", undefined, "¿Marcar la invitación como aceptada?")}
+                              onClick={() => accion("aceptar", undefined, `¿Pasar a "${cliente.nombre}" a Miembro VIP?`)}
                             >
                               <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
-                              Marcar invitación aceptada
+                              Miembro VIP
                             </button>
                             <button
                               className={BTN_SECUNDARIO}
