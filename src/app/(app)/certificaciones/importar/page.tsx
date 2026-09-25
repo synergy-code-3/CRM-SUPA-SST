@@ -17,11 +17,14 @@ import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
 import { filasAClientes, parsearCSV, type FilaClienteCSV } from "@/lib/certificaciones-csv";
+import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { REGIONES_CERTIFICACION, REGION_CERTIFICACION_LABEL, type RegionCertificacion } from "@/lib/certificaciones-tipos";
 import { CERTIFICACION_LEGENDAR_IA } from "@/components/certificaciones/constantes";
 import { TagPicker } from "@/components/certificaciones/Selectores";
 
 const LOTE = 50;
+
+const OPCIONES_EVENTO = REGIONES_CERTIFICACION.map((r) => ({ valor: r, etiqueta: REGION_CERTIFICACION_LABEL[r] }));
 
 export default function ImportarCertificacionesPage() {
   const router = useRouter();
@@ -170,16 +173,17 @@ export default function ImportarCertificacionesPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium uppercase tracking-wider text-muted">Evento de este lote</span>
-            <button type="button" onClick={() => setRegionLote("")} className={chip(regionLote === "")}>
-              La que traiga el CSV
-            </button>
-            {REGIONES_CERTIFICACION.map((r) => (
-              <button key={r} type="button" onClick={() => setRegionLote(r)} className={chip(regionLote === r)}>
-                {REGION_CERTIFICACION_LABEL[r]}
-              </button>
-            ))}
+            <div className="w-full max-w-sm">
+              <ComboboxBuscador
+                opciones={OPCIONES_EVENTO}
+                valor={regionLote}
+                onChange={(v) => setRegionLote(v as RegionCertificacion | "")}
+                placeholder="Seleccionar evento…"
+                etiquetaVacio="La que traiga el CSV"
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

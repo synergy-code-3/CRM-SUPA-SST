@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, LoaderCircle, ShieldAlert, Ticket } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
+import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { REGIONES_CERTIFICACION, REGION_CERTIFICACION_LABEL, type RegionCertificacion } from "@/lib/certificaciones-tipos";
 import { CERTIFICACION_LEGENDAR_IA, beneficiosDeRegion } from "@/components/certificaciones/constantes";
+
+const OPCIONES_EVENTO = REGIONES_CERTIFICACION.map((r) => ({ valor: r, etiqueta: REGION_CERTIFICACION_LABEL[r] }));
 
 const INPUT =
   "w-full rounded-2xl border border-silver-deep/60 bg-surface-2 px-4 py-3 text-sm text-foreground outline-none transition-all duration-500 ease-spring placeholder:text-muted/60 focus:border-primary/50 focus:ring-4 focus:ring-primary/10";
@@ -110,25 +113,15 @@ export default function NuevoClienteCertificacionPage() {
             />
           </Campo>
 
-          <div>
-            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted">Evento</span>
-            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-surface-2 p-1">
-              {REGIONES_CERTIFICACION.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, region: f.region === r ? "" : r }))}
-                  className={`rounded-xl py-2.5 text-sm font-medium transition-all duration-500 ease-spring ${
-                    form.region === r
-                      ? "bg-surface text-primary shadow-[0_6px_16px_-6px_rgba(10,92,255,0.35)]"
-                      : "text-muted"
-                  }`}
-                >
-                  {REGION_CERTIFICACION_LABEL[r]}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Campo label="Evento">
+            <ComboboxBuscador
+              opciones={OPCIONES_EVENTO}
+              valor={form.region}
+              onChange={(region) => setForm((f) => ({ ...f, region: region as RegionCertificacion | "" }))}
+              placeholder="Seleccionar evento…"
+              etiquetaVacio="— Sin evento —"
+            />
+          </Campo>
 
           {beneficios.length > 0 && (
             <div className="rounded-2xl bg-primary-dim p-4">
