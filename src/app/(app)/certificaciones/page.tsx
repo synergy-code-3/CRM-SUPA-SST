@@ -20,6 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
@@ -176,6 +177,21 @@ export default function CertificacionesPage() {
 
   const hayFiltros =
     filtroEstado.length + filtroRegion.length + filtroBienvenida.length + filtroTags.length + filtroVendedor.length + filtroCertificacion.length > 0;
+
+  // Igual que el CRM original en celular: los filtros no van en la página,
+  // sino en un panel que se abre desde "Esta página → Filtros" del menú lateral.
+  const [filtrosMovilAbiertos, setFiltrosMovilAbiertos] = useState(false);
+  const { registrar: registrarFiltrosMovil } = useFiltrosMovil();
+  const contadorFiltros =
+    filtroEstado.length + filtroRegion.length + filtroBienvenida.length + filtroTags.length + filtroVendedor.length + filtroCertificacion.length;
+  useEffect(() => {
+    registrarFiltrosMovil({
+      activo: contadorFiltros > 0,
+      contador: contadorFiltros,
+      onAbrir: () => setFiltrosMovilAbiertos(true),
+    });
+    return () => registrarFiltrosMovil(null);
+  }, [contadorFiltros, registrarFiltrosMovil]);
 
   function limpiarFiltros() {
     setFiltroEstado([]);
@@ -376,7 +392,13 @@ export default function CertificacionesPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {clientes !== null && (
+            <p className="text-xs text-muted md:hidden">
+              {ordenados.length} de {conEstado.length} clientes
+            </p>
+          )}
+
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
             <button
               onClick={() => setOrden((o) => (o === "recientes" ? "antiguos" : "recientes"))}
               className="flex items-center justify-center gap-1.5 truncate rounded-full border border-silver-deep/60 bg-surface-2 px-4 py-2 text-xs font-medium text-muted transition-all duration-500 ease-spring hover:text-primary"
@@ -436,6 +458,77 @@ export default function CertificacionesPage() {
           </div>
         </div>
       </div>
+
+      {filtrosMovilAbiertos && (
+        <div className="fixed inset-0 z-[70] md:hidden">
+          <div
+            className="absolute inset-0 bg-foreground/30 backdrop-blur-[2px]"
+            onClick={() => setFiltrosMovilAbiertos(false)}
+            aria-hidden="true"
+          />
+          <div className="animate-slide-in-right relative ml-auto flex h-full w-full max-w-sm flex-col gap-3 overflow-y-auto bg-surface p-4 pt-[calc(1rem+env(safe-area-inset-top))] shadow-2xl">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-foreground">Filtros</p>
+              <button
+                onClick={() => setFiltrosMovilAbiertos(false)}
+                title="Cerrar filtros"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-xl border border-silver-deep/60 bg-surface-2 text-muted"
+              >
+                <X className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <button
+              onClick={() => setOrden((o) => (o === "recientes" ? "antiguos" : "recientes"))}
+              className="flex w-full items-center justify-start gap-1.5 truncate rounded-full border border-silver-deep/60 bg-surface-2 px-4 py-2.5 text-xs font-medium text-muted transition-all duration-500 ease-spring hover:text-primary"
+            >
+              {orden === "recientes" ? (
+                <ArrowDownWideNarrow className="h-3.5 w-3.5 flex-none" strokeWidth={2} />
+              ) : (
+                <ArrowUpWideNarrow className="h-3.5 w-3.5 flex-none" strokeWidth={2} />
+              )}
+              <span className="truncate">{orden === "recientes" ? "Más nuevos primero" : "Más antiguos primero"}</span>
+            </button>
+            <FilterMultiSelect label="Todos los estados" opciones={OPCIONES_ESTADO} seleccionados={filtroEstado} onChange={setFiltroEstado} />
+            <FilterMultiSelect
+              label="Todas las regiones"
+              opciones={opciones.regiones.map((r) => ({ value: r, label: REGION_PAIS_LABEL[r as RegionPais] }))}
+              seleccionados={filtroRegion}
+              onChange={setFiltroRegion}
+            />
+            <FilterMultiSelect label="Bienvenida WA: todos" opciones={OPCIONES_BIENVENIDA} seleccionados={filtroBienvenida} onChange={setFiltroBienvenida} />
+            <FilterMultiSelect
+              label="Todos los tags"
+              opciones={opciones.tags.map((t) => ({ value: t, label: t }))}
+              seleccionados={filtroTags}
+              onChange={setFiltroTags}
+              buscable
+            />
+            <FilterMultiSelect
+              label="Todos los vendedores"
+              opciones={opciones.vendedores.map((v) => ({ value: v, label: v }))}
+              seleccionados={filtroVendedor}
+              onChange={setFiltroVendedor}
+              buscable
+            />
+            <FilterMultiSelect
+              label="Todas las certificaciones"
+              opciones={[{ value: CERTIFICACION_LEGENDAR_IA, label: CERTIFICACION_LEGENDAR_IA }]}
+              seleccionados={filtroCertificacion}
+              onChange={setFiltroCertificacion}
+            />
+            {hayFiltros && (
+              <button
+                onClick={limpiarFiltros}
+                className="flex w-full items-center justify-start gap-1.5 rounded-full px-4 py-2.5 text-xs font-medium text-muted transition-all duration-500 ease-spring hover:text-danger"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {puedeGestionar && seleccionados.size > 0 && (
         <div className="shell animate-fade-in rounded-[1.75rem] p-2 diffused-lg">
