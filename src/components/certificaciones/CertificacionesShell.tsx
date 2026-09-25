@@ -3,10 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Plus } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { FiltrosMovilProvider } from "@/lib/filtros-movil-context";
 import { Sidebar, useConteosPendientes } from "@/components/Sidebar";
+import { CertificacionActualProvider, useCertificacionActual } from "@/lib/certificacion-actual-context";
+import { CERTIFICACIONES } from "./constantes";
 
 // Shell de Certificaciones (Legendar-IA): el mismo menú lateral del Club
 // (Sidebar, que ya trae el workspace de Certificaciones con su logo y sus
@@ -18,6 +21,7 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
   const conteos = useConteosPendientes(usuario);
 
   return (
+    <CertificacionActualProvider>
     <FiltrosMovilProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background bg-mesh md:flex-row">
         <Sidebar />
@@ -31,21 +35,41 @@ export function CertificacionesShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </FiltrosMovilProvider>
+    </CertificacionActualProvider>
   );
 }
 
 function BarraCertificacion({ cantidadAvisos }: { cantidadAvisos: number }) {
+  const router = useRouter();
+  const { certificacionActual, setCertificacionActual } = useCertificacionActual();
   return (
     <div className="shell rounded-[1.75rem] p-2 diffused">
       <div className="core flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden rounded-[calc(1.75rem-0.5rem)] p-2">
-        <Link
-          href="/certificaciones"
-          className="flex h-11 flex-none items-center overflow-visible rounded-2xl bg-primary px-4 shadow-[0_10px_24px_-8px_rgba(10,92,255,0.5)] transition-all duration-500 ease-spring"
-        >
-          <span className="relative h-24 w-32 flex-none">
-            <Image src="/certificaciones/legendar-ia-logo.png" alt="Legendar-IA" fill sizes="128px" className="object-contain" />
-          </span>
-        </Link>
+        {CERTIFICACIONES.map((cert) => {
+          const activa = certificacionActual === cert.id;
+          return (
+            <button
+              key={cert.id}
+              onClick={() => {
+                setCertificacionActual(cert.id);
+                router.push("/certificaciones");
+              }}
+              title={`Ver solo ${cert.nombre}`}
+              aria-pressed={activa}
+              className={`flex h-11 flex-none items-center overflow-visible rounded-2xl bg-primary px-4 shadow-[0_10px_24px_-8px_rgba(10,92,255,0.5)] transition-all duration-500 ease-spring ${
+                activa ? "ring-2 ring-primary-deep ring-offset-2 ring-offset-surface" : "opacity-90 hover:opacity-100"
+              }`}
+            >
+              {cert.logo ? (
+                <span className="relative h-24 w-32 flex-none">
+                  <Image src={cert.logo} alt={cert.nombre} fill sizes="128px" className="object-contain" />
+                </span>
+              ) : (
+                <span className="text-sm font-medium text-white">{cert.nombre}</span>
+              )}
+            </button>
+          );
+        })}
         <span
           title="Agregar certificación (próximamente)"
           className="flex h-11 flex-none cursor-not-allowed items-center gap-1.5 rounded-2xl border border-dashed border-silver-deep/60 px-3 py-2.5 text-xs font-medium text-muted/60"

@@ -10,6 +10,7 @@ import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
+import { useCertificacionActualOpcional } from "@/lib/certificacion-actual-context";
 import { perfilIncompleto } from "@/lib/perfil";
 import { MiPerfilModal } from "./MiPerfilModal";
 
@@ -148,10 +149,17 @@ const ROL_LABEL: Record<Rol, string> = {
 // puedeCambiar: si el usuario tiene verCertificaciones — sin eso, ni se
 // muestra el botón del switcher.
 function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean; puedeCambiar: boolean }) {
+  // En Certificaciones, tocar el logo muestra todas las certificaciones.
+  const certificacion = useCertificacionActualOpcional();
   return (
     <div className="flex items-center gap-3 px-2">
       {enCertificaciones ? (
-        <Link href="/certificaciones" className="flex min-w-0 flex-1 items-center">
+        <Link
+          href="/certificaciones"
+          onClick={() => certificacion?.setCertificacionActual(null)}
+          title="Ver todas las certificaciones"
+          className="flex min-w-0 flex-1 items-center"
+        >
           <Image
             src="/certificaciones/certificaciones-logo-full.png"
             alt="Certificaciones oficiales"

@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
+import { useCertificacionActual } from "@/lib/certificacion-actual-context";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
@@ -35,6 +36,8 @@ import { REGION_CERTIFICACION_LABEL, REGION_PAIS_DE_EVENTO, REGION_PAIS_LABEL, t
 import {
   BIENVENIDA_LABEL,
   CERTIFICACION_LEGENDAR_IA,
+  CERTIFICACIONES,
+  certificacionesDeCliente,
   ESTADO_LABEL,
   colorDeTag,
   diasRestantes,
@@ -147,9 +150,16 @@ export default function CertificacionesPage() {
     };
   }, [busqueda, criterios]);
 
+  // Certificación elegida en la barra superior (null = todas: todos los
+  // clientes y los totales del panel).
+  const { certificacionActual } = useCertificacionActual();
+  const nombreCertificacion = CERTIFICACIONES.find((c) => c.id === certificacionActual)?.nombre ?? null;
   const conEstado = useMemo(
-    () => (clientes ?? []).map((c) => ({ c, estado: estadoReal(c), dias: diasRestantes(c) })),
-    [clientes]
+    () =>
+      (clientes ?? [])
+        .filter((c) => !certificacionActual || certificacionesDeCliente(c.etiquetas).includes(certificacionActual))
+        .map((c) => ({ c, estado: estadoReal(c), dias: diasRestantes(c) })),
+    [clientes, certificacionActual]
   );
 
   const stats = useMemo(
@@ -337,8 +347,14 @@ export default function CertificacionesPage() {
           <Radio className="h-3 w-3 animate-pulse" strokeWidth={2} />
           Panel general · en vivo
         </span>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Todos los clientes</h1>
-        <p className="text-sm text-muted">Control de invitaciones y membresías anuales de Legendar-IA.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {nombreCertificacion ? `Clientes de ${nombreCertificacion}` : "Todos los clientes"}
+        </h1>
+        <p className="text-sm text-muted">
+          {nombreCertificacion
+            ? `Control de invitaciones y membresías anuales de ${nombreCertificacion}.`
+            : "Vista general de clientes de todas las certificaciones."}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-1.5 sm:gap-4 md:grid-cols-4">

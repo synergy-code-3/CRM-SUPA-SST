@@ -46,6 +46,20 @@ export { colorDeTag } from "@/lib/tag-colores";
 
 export const CERTIFICACION_LEGENDAR_IA = "Legendar-IA";
 
+// Certificaciones que se ofrecen. Legendar-IA es la primera de varias: para
+// agregar otra, se añade aquí (id = nombre de la etiqueta de certificación).
+export const CERTIFICACIONES: { id: string; nombre: string; logo: string | null }[] = [
+  { id: CERTIFICACION_LEGENDAR_IA, nombre: "Legendar-IA", logo: "/certificaciones/legendar-ia-logo.png" },
+];
+
+// A qué certificaciones pertenece un cliente. Mientras Legendar-IA sea la
+// única, quien no tenga ninguna certificación asignada cuenta como de
+// Legendar-IA (así ver "solo Legendar-IA" muestra a todos, como hoy).
+export function certificacionesDeCliente(etiquetas: string[]): string[] {
+  const conocidas = etiquetas.filter((e) => CERTIFICACIONES.some((c) => c.id.toLowerCase() === e.toLowerCase()));
+  return conocidas.length ? conocidas : [CERTIFICACION_LEGENDAR_IA];
+}
+
 export type Beneficio = { evento: string; tipo: string; cantidad: number };
 
 // Synergy Unlimited: los boletos de cada socio dependen de su región (mismo
