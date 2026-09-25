@@ -634,3 +634,8 @@ alter table avisos add column if not exists urgente boolean not null default fal
 -- pausado_en.
 alter table clientes add column if not exists guarda_acceso_su27 boolean not null default false;
 alter table clientes add column if not exists guarda_acceso_su27_en timestamptz;
+
+-- Accesos a Synergy Unlimited editados a mano en Certificaciones (mismo
+-- formato que clientes.accesos: {general, vip, black}). null = los que toquen
+-- por región (ver accesosDeRegion en certificaciones-tipos.ts).
+alter table certificaciones_clientes add column if not exists accesos jsonb;

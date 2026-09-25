@@ -5,6 +5,8 @@
 // dominio del Club — los componentes cliente importan de aquí, nunca
 // directo de certificaciones.ts/certificaciones-sync.ts.
 
+import type { Accesos } from "./types";
+
 export type EstadoCertificacion = "NUEVO" | "INVITACION_ENVIADA" | "ACTIVO" | "VENCIDO";
 export type MensajeBienvenidaCertificacion = "PENDIENTE" | "ENVIADA" | "INVALIDO";
 export type RegionCertificacion = "MX" | "US" | "LATAM" | "PRES_USA" | "PRES_MX" | "BLACK";
@@ -21,6 +23,8 @@ export const REGION_CERTIFICACION_LABEL: Record<RegionCertificacion, string> = {
 
 export type ClienteCertificacion = {
   id: string;
+  // Accesos a Synergy Unlimited editados a mano; null = los que tocan por región.
+  accesos: Accesos | null;
   nombre: string;
   email: string | null;
   telefono: string | null;
@@ -116,3 +120,25 @@ export type SolicitudCertificacion = {
   leadIdVsl: string | null;
   creadoEn: string;
 };
+
+// Accesos a Synergy Unlimited que le tocan a cada región (mismo mapeo que
+// BENEFICIOS_POR_REGION en constantes.ts) en el formato de accesos del Club.
+// La asesoría 1 a 1 de BLACK no es un acceso a Synergy, por eso no entra.
+export function accesosDeRegion(region: RegionCertificacion | null): Accesos {
+  const a = (cantidad: number, variante: "MX" | "US" | null) => ({ activo: true, cantidad, variante });
+  switch (region) {
+    case "MX":
+    case "LATAM":
+      return { general: [a(1, "MX")], vip: [], black: [] };
+    case "US":
+      return { general: [a(1, "US")], vip: [a(1, "MX")], black: [] };
+    case "PRES_USA":
+      return { general: [a(2, "US")], vip: [a(2, "MX")], black: [] };
+    case "PRES_MX":
+      return { general: [a(2, "MX")], vip: [], black: [] };
+    case "BLACK":
+      return { general: [], vip: [], black: [a(1, null)] };
+    default:
+      return { general: [], vip: [], black: [] };
+  }
+}

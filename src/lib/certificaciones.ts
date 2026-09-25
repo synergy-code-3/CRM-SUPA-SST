@@ -1,7 +1,9 @@
 import { supabase } from "./supabase";
+import type { Accesos } from "./types";
 import { agregarOpcionCatalogo } from "./catalogo";
 import { normalizarEmail, normalizarTelefono } from "./db";
 import {
+  accesosDeRegion,
   type AbonoCertificacion,
   type ClienteCertificacion,
   type EstadoCertificacion,
@@ -35,6 +37,7 @@ const MEMBRESIA_DIAS = 365;
 
 type ClienteCertificacionRow = {
   id: string;
+  accesos?: Accesos | null;
   nombre: string;
   email: string | null;
   telefono: string | null;
@@ -65,6 +68,7 @@ type ClienteCertificacionRow = {
 function filaACliente(r: ClienteCertificacionRow): ClienteCertificacion {
   return {
     id: r.id,
+    accesos: r.accesos ?? null,
     nombre: r.nombre,
     email: r.email,
     telefono: r.telefono,
@@ -759,4 +763,52 @@ export async function restaurarClienteCertificacion(id: string, autor: string): 
 export async function eliminarClienteCertificacionPermanente(id: string): Promise<void> {
   const { error } = await supabase.from("certificaciones_clientes").delete().eq("id", id);
   if (error) throw error;
+}
+
+const NIVEL_ACCESO_LABEL: Record<keyof Accesos, string> = { general: "General", vip: "VIP", black: "Black" };
+
+function textoAccesos(a: Accesos): string {
+  const partes = (Object.keys(NIVEL_ACCESO_LABEL) as (keyof Accesos)[])
+    .filter((n) => a[n].length > 0)
+    .map((n) => `${NIVEL_ACCESO_LABEL[n]}: ${a[n].map((d) => `${d.cantidad}${d.variante ? ` ${d.variante}` : ""}`).join(" + ")}`);
+  return partes.length ? partes.join(" · ") : "Sin acceso";
+}
+
+// Guarda los accesos a Synergy Unlimited de un cliente. `null` los devuelve al
+// cálculo automático por región.
+export async function establecerAccesosCertificacion(id: string, accesos: Accesos | null, autor: string): Promise<void> {
+  const cliente = await obtenerClienteCertificacion(id);
+  if (!cliente) throw new Error("Cliente no encontrado");
+  const anterior = cliente.accesos ?? accesosDeRegion(cliente.region);
+
+  let nuevo: Accesos | null = null;
+  if (accesos) {
+    nuevo = (Object.keys(NIVEL_ACCESO_LABEL) as (keyof Accesos)[]).reduce((acc, nivel) => {
+      acc[nivel] = (accesos[nivel] ?? [])
+        .map((d) => ({
+          activo: d.cantidad > 0,
+          cantidad: Math.max(0, Math.floor(d.cantidad || 0)),
+          variante: nivel !== "black" ? d.variante : null,
+        }))
+        .filter((d) => d.cantidad > 0);
+      return acc;
+    }, {} as Accesos);
+  }
+
+  const { error } = await supabase.from("certificaciones_clientes").update({ accesos: nuevo }).eq("id", id);
+  if (error) {
+    if (/accesos/i.test(error.message ?? "")) {
+      throw new Error("Falta crear la columna \"accesos\" en Supabase (ver supabase/schema.sql).");
+    }
+    throw error;
+  }
+  const despues = nuevo ?? accesosDeRegion(cliente.region);
+  await registrarEventoCertificacion(
+    id,
+    "ACCESOS",
+    autor,
+    nuevo
+      ? `Accesos a Synergy Unlimited editados: ${textoAccesos(anterior)} → ${textoAccesos(despues)}`
+      : `Accesos vueltos al cálculo por región: ${textoAccesos(despues)}`
+  );
 }

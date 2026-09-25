@@ -34,6 +34,7 @@ export const EVENTO_LABEL: Record<string, string> = {
   TAGS: "Tags actualizados",
   VENDEDOR: "Vendedor actualizado",
   ETIQUETAS: "Certificación asignada",
+  ACCESOS: "Accesos a Synergy Unlimited",
   EDICION: "Datos del cliente editados",
   PAPELERA: "Enviado a la papelera",
   RESTAURACION_PAPELERA: "Restaurado de la papelera",

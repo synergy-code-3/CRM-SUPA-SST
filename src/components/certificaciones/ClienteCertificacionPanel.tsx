@@ -35,7 +35,10 @@ import type { ClienteCertificacion, EventoCertificacion } from "@/lib/certificac
 import { REGION_CERTIFICACION_LABEL, REGIONES_CERTIFICACION } from "@/lib/certificaciones-tipos";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { useColoresTags } from "./useColoresTags";
-import { CERTIFICACION_LEGENDAR_IA, beneficiosDeRegion, colorDeTag, diasRestantes, estaActivo, estadoReal } from "./constantes";
+import { AccesosSynergy } from "@/components/AccesosSynergy";
+import { accesosDeRegion } from "@/lib/certificaciones-tipos";
+import type { Accesos } from "@/lib/types";
+import { CERTIFICACION_LEGENDAR_IA, colorDeTag, diasRestantes, estaActivo, estadoReal } from "./constantes";
 import { StatusBadge } from "./StatusBadge";
 import { MensajeBienvenidaToggle } from "./Toggles";
 import { TagPicker, VendedorSelect } from "./Selectores";
@@ -97,6 +100,9 @@ export function ClienteCertificacionPanel({
   const [notaNueva, setNotaNueva] = useState("");
   const [diasExtra, setDiasExtra] = useState("");
   const [diasCorregir, setDiasCorregir] = useState("");
+  const [editandoAccesos, setEditandoAccesos] = useState(false);
+  const [borradorAccesos, setBorradorAccesos] = useState<Accesos | null>(null);
+  const [confirmandoAccesos, setConfirmandoAccesos] = useState(false);
   const [copiado, setCopiado] = useState<"email" | "telefono" | null>(null);
 
   const url = `/api/certificaciones/${encodeURIComponent(clienteId)}`;
@@ -242,7 +248,7 @@ export function ClienteCertificacionPanel({
   const cliente = datos?.cliente;
   const estado = cliente ? estadoReal(cliente) : null;
   const dias = cliente ? diasRestantes(cliente) : null;
-  const beneficios = cliente ? beneficiosDeRegion(cliente.region) : [];
+  const accesosActuales: Accesos | null = cliente ? (cliente.accesos ?? accesosDeRegion(cliente.region)) : null;
   const tieneLegendarIA = cliente?.etiquetas.some((e) => e.toLowerCase() === CERTIFICACION_LEGENDAR_IA.toLowerCase());
   // Mismo criterio que el badge "Activo" de la lista (compara timestamps: con
   // días redondeados, alguien vencido hace horas seguía saliendo "Activo").
@@ -588,21 +594,101 @@ export function ClienteCertificacionPanel({
                     </div>
                   </Tarjeta>
 
-                  {beneficios.length > 0 && (
-                    <Tarjeta titulo="Beneficios Synergy Unlimited" icono={Ticket}>
-                      <ul className="flex flex-col gap-2">
-                        {beneficios.map((b) => (
-                          <li
-                            key={`${b.evento}-${b.tipo}`}
-                            className="flex items-center justify-between rounded-xl bg-primary-dim px-4 py-2.5 text-sm text-primary-deep"
+                  {accesosActuales && (
+                    <Tarjeta titulo="Accesos a Synergy Unlimited" icono={Ticket}>
+                      {!editandoAccesos && cliente.accesos && (
+                        <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
+                          <span>Editados a mano — no siguen a la región.</span>
+                          {puedeGestionar && (
+                            <button
+                              onClick={() =>
+                                accion(
+                                  "accesos",
+                                  { restablecer: true },
+                                  "Esto vuelve a calcular los accesos según la región, reemplazando la corrección manual. ¿Confirmas?"
+                                )
+                              }
+                              disabled={procesando}
+                              className="ease-spring flex-none font-medium underline decoration-dotted underline-offset-2 transition hover:text-primary disabled:opacity-50"
+                            >
+                              Volver a calcular por región
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <AccesosSynergy
+                        valor={editandoAccesos && borradorAccesos ? borradorAccesos : accesosActuales}
+                        onChange={setBorradorAccesos}
+                        soloLectura={!editandoAccesos}
+                      />
+
+                      {puedeGestionar && !editandoAccesos && (
+                        <button
+                          onClick={() => {
+                            setBorradorAccesos(accesosActuales);
+                            setEditandoAccesos(true);
+                            setConfirmandoAccesos(false);
+                          }}
+                          className="ease-spring mt-3 text-xs font-medium text-primary transition hover:text-primary-deep"
+                        >
+                          Editar accesos →
+                        </button>
+                      )}
+
+                      {editandoAccesos && !confirmandoAccesos && (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditandoAccesos(false);
+                              setBorradorAccesos(null);
+                            }}
+                            className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
                           >
-                            <span>{b.evento}</span>
-                            <span>
-                              {b.cantidad}x {b.tipo}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => setConfirmandoAccesos(true)}
+                            disabled={!borradorAccesos || diferenciasAccesos(accesosActuales, borradorAccesos).length === 0}
+                            className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Guardar cambios
+                          </button>
+                        </div>
+                      )}
+
+                      {editandoAccesos && confirmandoAccesos && borradorAccesos && (
+                        <div className="mt-3 rounded-lg border border-primary/30 bg-primary-dim/40 p-3">
+                          <p className="mb-2 text-xs font-medium text-foreground">Confirma el cambio de accesos:</p>
+                          <ul className="mb-2.5 space-y-1 text-xs text-foreground">
+                            {diferenciasAccesos(accesosActuales, borradorAccesos).map((d) => (
+                              <li key={d.nivel}>
+                                <span className="font-medium">{NIVEL_LABEL[d.nivel]}:</span> {d.de} → {d.a}
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setConfirmandoAccesos(false)}
+                              className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                            >
+                              Volver a editar
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (await accion("accesos", { accesos: borradorAccesos })) {
+                                  setEditandoAccesos(false);
+                                  setConfirmandoAccesos(false);
+                                  setBorradorAccesos(null);
+                                }
+                              }}
+                              disabled={procesando}
+                              className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                            >
+                              {procesando ? "Guardando…" : "Confirmar y guardar"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </Tarjeta>
                   )}
 
@@ -924,4 +1010,17 @@ function FilaDias({
       </div>
     </div>
   );
+}
+
+const NIVEL_LABEL: Record<keyof Accesos, string> = { general: "General", vip: "VIP", black: "Black Access" };
+
+function textoAccesoNivel(lista: Accesos[keyof Accesos]): string {
+  if (lista.length === 0) return "Sin acceso";
+  return lista.map((d) => `${d.cantidad}${d.variante ? ` · ${d.variante}` : ""}`).join(" + ");
+}
+
+function diferenciasAccesos(anterior: Accesos, nuevo: Accesos): { nivel: keyof Accesos; de: string; a: string }[] {
+  return (Object.keys(nuevo) as (keyof Accesos)[])
+    .filter((nivel) => JSON.stringify(anterior[nivel]) !== JSON.stringify(nuevo[nivel]))
+    .map((nivel) => ({ nivel, de: textoAccesoNivel(anterior[nivel]), a: textoAccesoNivel(nuevo[nivel]) }));
 }
