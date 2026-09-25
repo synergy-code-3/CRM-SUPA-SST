@@ -332,10 +332,10 @@ export default function CertificacionesPage() {
 
   const textoCriterios =
     criterios.length === CRITERIOS.length
-      ? `Buscar en: todo (${criterios.length})`
+      ? "Buscar en: todo"
       : criterios.length === 1
         ? `Buscar en: ${CRITERIOS.find((c) => c.value === criterios[0])?.label}`
-        : `Buscar en: (${criterios.length})`;
+        : "Buscar en:";
 
   const btnHerramienta =
     "flex items-center justify-center gap-2 rounded-full border border-silver-deep/60 bg-surface-2 px-5 py-2.5 text-sm font-medium text-muted transition-all duration-500 ease-spring hover:text-primary disabled:opacity-60";
@@ -392,6 +392,7 @@ export default function CertificacionesPage() {
             </div>
             <FilterMultiSelect
               label={textoCriterios}
+              ocultarContador={criterios.length === CRITERIOS.length}
               opciones={CRITERIOS}
               seleccionados={criterios}
               onChange={(v) => setCriterios(v.length ? v : CRITERIOS.map((c) => c.value))}

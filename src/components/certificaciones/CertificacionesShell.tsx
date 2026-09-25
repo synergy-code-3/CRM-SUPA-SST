@@ -44,7 +44,7 @@ function BarraCertificacion({ cantidadAvisos }: { cantidadAvisos: number }) {
   const { certificacionActual, setCertificacionActual } = useCertificacionActual();
   return (
     <div className="shell rounded-[1.75rem] p-2 diffused">
-      <div className="core flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden rounded-[calc(1.75rem-0.5rem)] p-2">
+      <div className="core flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden rounded-[calc(1.75rem-0.5rem)] p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {CERTIFICACIONES.map((cert) => {
           const activa = certificacionActual === cert.id;
           return (
@@ -72,10 +72,10 @@ function BarraCertificacion({ cantidadAvisos }: { cantidadAvisos: number }) {
         })}
         <span
           title="Agregar certificación (próximamente)"
-          className="flex h-11 flex-none cursor-not-allowed items-center gap-1.5 rounded-2xl border border-dashed border-silver-deep/60 px-3 py-2.5 text-xs font-medium text-muted/60"
+          className="flex h-11 flex-none cursor-not-allowed items-center gap-1.5 rounded-2xl border border-dashed border-silver-deep/60 px-2.5 py-2.5 text-xs font-medium text-muted/60 sm:px-3"
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-          Agregar
+          <span className="hidden sm:inline">Agregar</span>
         </span>
         <Link
           href="/certificaciones/avisos"

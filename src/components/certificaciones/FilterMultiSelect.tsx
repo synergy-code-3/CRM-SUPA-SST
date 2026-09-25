@@ -9,12 +9,15 @@ export function FilterMultiSelect({
   seleccionados,
   onChange,
   buscable = false,
+  ocultarContador = false,
 }: {
   label: string;
   opciones: { value: string; label: string }[];
   seleccionados: string[];
   onChange: (valores: string[]) => void;
   buscable?: boolean;
+  // Para etiquetas que ya dicen el estado (p. ej. "todo"): no agrega "(n)".
+  ocultarContador?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -35,7 +38,9 @@ export function FilterMultiSelect({
       ? label
       : seleccionados.length === 1
         ? (opciones.find((o) => o.value === seleccionados[0])?.label ?? label)
-        : `${label} (${seleccionados.length})`;
+        : ocultarContador
+          ? label
+          : `${label} (${seleccionados.length})`;
 
   return (
     <div className="relative w-full sm:w-auto">
