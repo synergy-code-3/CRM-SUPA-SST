@@ -30,7 +30,7 @@ import type {
   NuevoClientePendienteCertificacion,
   ResultadoSincronizacionCertificacion,
 } from "@/lib/certificaciones-tipos";
-import { REGION_CERTIFICACION_LABEL } from "@/lib/certificaciones-tipos";
+import { REGION_CERTIFICACION_LABEL, REGION_PAIS_DE_EVENTO, REGION_PAIS_LABEL, type RegionPais } from "@/lib/certificaciones-tipos";
 import {
   BIENVENIDA_LABEL,
   CERTIFICACION_LEGENDAR_IA,
@@ -166,7 +166,7 @@ export default function CertificacionesPage() {
     const tags = new Set<string>();
     const vendedores = new Set<string>();
     for (const { c } of conEstado) {
-      if (c.region) regiones.add(c.region);
+      if (c.region) regiones.add(REGION_PAIS_DE_EVENTO[c.region]);
       c.tags.forEach((t) => tags.add(t));
       if (c.vendedor) vendedores.add(c.vendedor);
     }
@@ -190,7 +190,7 @@ export default function CertificacionesPage() {
     const lista = conEstado.filter(({ c, estado }) => {
       if (idsBusqueda && !idsBusqueda.has(c.id)) return false;
       if (filtroEstado.length && !filtroEstado.includes(estado)) return false;
-      if (filtroRegion.length && (!c.region || !filtroRegion.includes(c.region))) return false;
+      if (filtroRegion.length && (!c.region || !filtroRegion.includes(REGION_PAIS_DE_EVENTO[c.region]))) return false;
       if (filtroBienvenida.length && !filtroBienvenida.includes(c.mensajeBienvenida)) return false;
       if (filtroTags.length && !c.tags.some((t) => filtroTags.includes(t))) return false;
       if (filtroVendedor.length && !(c.vendedor && filtroVendedor.includes(c.vendedor))) return false;
@@ -273,7 +273,7 @@ export default function CertificacionesPage() {
   }
 
   function descargar() {
-    const encabezados = ["Nombre", "Correo", "Teléfono", "Región", "Estado", "Ingreso", "Vence", "Vendedor", "Monto", "Tags"];
+    const encabezados = ["Nombre", "Correo", "Teléfono", "Evento", "Estado", "Ingreso", "Vence", "Vendedor", "Monto", "Tags"];
     const filas = ordenados.map(({ c, estado }) => [
       c.nombre,
       c.email ?? "",
@@ -391,7 +391,7 @@ export default function CertificacionesPage() {
             <FilterMultiSelect label="Todos los estados" opciones={OPCIONES_ESTADO} seleccionados={filtroEstado} onChange={setFiltroEstado} />
             <FilterMultiSelect
               label="Todas las regiones"
-              opciones={opciones.regiones.map((r) => ({ value: r, label: REGION_CERTIFICACION_LABEL[r as keyof typeof REGION_CERTIFICACION_LABEL] }))}
+              opciones={opciones.regiones.map((r) => ({ value: r, label: REGION_PAIS_LABEL[r as RegionPais] }))}
               seleccionados={filtroRegion}
               onChange={setFiltroRegion}
             />

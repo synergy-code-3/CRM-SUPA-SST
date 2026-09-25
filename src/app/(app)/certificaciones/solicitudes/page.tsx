@@ -186,7 +186,7 @@ El cliente quedó como Nuevo; puedes reintentar con "Enviar invitación".`);
                         {s.correo} · {s.telefono}
                       </p>
                       <p className="text-xs text-muted">
-                        {s.region ? REGION_CERTIFICACION_LABEL[s.region] : "Sin región"}
+                        {s.region ? REGION_CERTIFICACION_LABEL[s.region] : "Sin evento"}
                         {s.etiqueta ? ` · ${s.etiqueta}` : ""}
                         {s.monto ? ` · ${s.monto}` : ""} · solicitado por {s.solicitadoPorNombre}
                       </p>
@@ -249,7 +249,7 @@ El cliente quedó como Nuevo; puedes reintentar con "Enviar invitación".`);
                             className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
                           />
                         </Campo>
-                        <Campo label="Región">
+                        <Campo label="Evento">
                           <ComboboxBuscador
                             opciones={OPCIONES_REGION}
                             valor={formEdicion.region}
@@ -398,7 +398,7 @@ El cliente quedó como Nuevo; puedes reintentar con "Enviar invitación".`);
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <DatoSolicitud label="Correo" valor={verSolicitud.correo} />
               <DatoSolicitud label="Teléfono" valor={verSolicitud.telefono} />
-              <DatoSolicitud label="Región" valor={verSolicitud.region ? REGION_CERTIFICACION_LABEL[verSolicitud.region] : null} />
+              <DatoSolicitud label="Evento" valor={verSolicitud.region ? REGION_CERTIFICACION_LABEL[verSolicitud.region] : null} />
               <DatoSolicitud label="Monto" valor={verSolicitud.monto} />
               <DatoSolicitud label="Certificación" valor={verSolicitud.etiqueta} />
               <DatoSolicitud label="Enviada" valor={new Date(verSolicitud.creadoEn).toLocaleString("es-MX")} />

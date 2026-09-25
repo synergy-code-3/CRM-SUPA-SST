@@ -111,7 +111,7 @@ export default function NuevoClienteCertificacionPage() {
           </Campo>
 
           <div>
-            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted">Región</span>
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted">Evento</span>
             <div className="grid grid-cols-2 gap-2 rounded-2xl bg-surface-2 p-1">
               {REGIONES_CERTIFICACION.map((r) => (
                 <button

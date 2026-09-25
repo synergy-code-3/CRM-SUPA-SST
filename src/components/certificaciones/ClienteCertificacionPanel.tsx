@@ -598,20 +598,20 @@ export function ClienteCertificacionPanel({
                     <Tarjeta titulo="Accesos a Synergy Unlimited" icono={Ticket}>
                       {!editandoAccesos && cliente.accesos && (
                         <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-primary-dim/50 px-3 py-2 text-xs text-primary-deep">
-                          <span>Editados a mano — no siguen a la región.</span>
+                          <span>Editados a mano — no siguen al evento.</span>
                           {puedeGestionar && (
                             <button
                               onClick={() =>
                                 accion(
                                   "accesos",
                                   { restablecer: true },
-                                  "Esto vuelve a calcular los accesos según la región, reemplazando la corrección manual. ¿Confirmas?"
+                                  "Esto vuelve a calcular los accesos según el evento, reemplazando la corrección manual. ¿Confirmas?"
                                 )
                               }
                               disabled={procesando}
                               className="ease-spring flex-none font-medium underline decoration-dotted underline-offset-2 transition hover:text-primary disabled:opacity-50"
                             >
-                              Volver a calcular por región
+                              Volver a calcular por evento
                             </button>
                           )}
                         </div>
@@ -719,13 +719,13 @@ export function ClienteCertificacionPanel({
                           <input value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} className={INPUT} />
                         </Campo>
                         <div className="col-span-2">
-                          <Campo label="Región">
+                          <Campo label="Evento">
                             <ComboboxBuscador
                               opciones={OPCIONES_REGION}
                               valor={form.region}
                               onChange={(region) => setForm({ ...form, region })}
                               placeholder="Seleccionar…"
-                              etiquetaVacio="— Sin región —"
+                              etiquetaVacio="— Sin evento —"
                             />
                           </Campo>
                         </div>
@@ -746,7 +746,7 @@ export function ClienteCertificacionPanel({
                           <CampoValor label="Correo" valor={cliente.email} />
                         </div>
                         <CampoValor label="Teléfono" valor={cliente.telefono} />
-                        <CampoValor label="Región" valor={cliente.region ? REGION_CERTIFICACION_LABEL[cliente.region] : null} />
+                        <CampoValor label="Evento" valor={cliente.region ? REGION_CERTIFICACION_LABEL[cliente.region] : null} />
                         <CampoValor label="Agregado por" valor={cliente.creadoPor} />
                         {cliente.notas && (
                           <div className="col-span-2">

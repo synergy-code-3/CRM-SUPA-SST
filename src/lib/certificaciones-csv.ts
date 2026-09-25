@@ -77,6 +77,7 @@ const ALIAS_COLUMNAS: Record<string, CampoTexto> = {
   teléfono: "telefono",
   region: "region",
   región: "region",
+  evento: "region",
   notas: "notas",
   vendedor: "vendedor",
   fecha_inscripcion: "fechaInscripcionTexto",

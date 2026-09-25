@@ -43,6 +43,27 @@ export const REGION_CERTIFICACION_LABEL: Record<RegionCertificacion, string> = {
   VSL_LATAM: "VSL Legendar-IA LATAM",
 };
 
+// El campo "región" de antes ahora se llama "evento". La región (país) agrupa
+// los eventos de cada país y es lo que usa el filtro de la lista.
+export type RegionPais = "MX" | "US" | "LATAM" | "BLACK";
+export const REGION_PAIS_LABEL: Record<RegionPais, string> = {
+  MX: "México",
+  US: "Estados Unidos",
+  LATAM: "LATAM",
+  BLACK: "Black",
+};
+export const REGION_PAIS_DE_EVENTO: Record<RegionCertificacion, RegionPais> = {
+  MX: "MX",
+  PRES_MX: "MX",
+  VSL_MX: "MX",
+  US: "US",
+  PRES_USA: "US",
+  VSL_US: "US",
+  LATAM: "LATAM",
+  VSL_LATAM: "LATAM",
+  BLACK: "BLACK",
+};
+
 export type ClienteCertificacion = {
   id: string;
   // Accesos a Synergy Unlimited editados a mano; null = los que tocan por región.

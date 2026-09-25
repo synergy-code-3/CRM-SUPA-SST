@@ -464,7 +464,7 @@ export async function actualizarDatosCertificacion(
     { label: "Nombre", anterior: anterior.nombre, nuevo: cambios.nombre },
     { label: "Correo", anterior: anterior.email ?? "—", nuevo: cambios.email || "—" },
     { label: "Teléfono", anterior: anterior.telefono ?? "—", nuevo: telefono ?? "—" },
-    { label: "Región", anterior: anterior.region ?? "—", nuevo: cambios.region ?? "—" },
+    { label: "Evento", anterior: anterior.region ?? "—", nuevo: cambios.region ?? "—" },
     { label: "Notas", anterior: anterior.notas ?? "—", nuevo: cambios.notas || "—" },
     { label: "Monto", anterior: anterior.monto ?? "—", nuevo: cambios.monto || "—" },
   ];
@@ -809,6 +809,6 @@ export async function establecerAccesosCertificacion(id: string, accesos: Acceso
     autor,
     nuevo
       ? `Accesos a Synergy Unlimited editados: ${textoAccesos(anterior)} → ${textoAccesos(despues)}`
-      : `Accesos vueltos al cálculo por región: ${textoAccesos(despues)}`
+      : `Accesos vueltos al cálculo por evento: ${textoAccesos(despues)}`
   );
 }

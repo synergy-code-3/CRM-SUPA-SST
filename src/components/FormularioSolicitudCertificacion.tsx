@@ -133,12 +133,12 @@ export function FormularioSolicitudCertificacion({ onEnviada }: { onEnviada: () 
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Campo label="Región">
+            <Campo label="Evento">
               <ComboboxBuscador
                 opciones={OPCIONES_REGION}
                 valor={form.region}
                 onChange={(region) => setForm((f) => ({ ...f, region }))}
-                placeholder="Seleccionar región…"
+                placeholder="Seleccionar evento…"
               />
             </Campo>
             <Campo label="Monto">

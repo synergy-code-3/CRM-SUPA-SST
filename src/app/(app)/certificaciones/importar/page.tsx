@@ -32,8 +32,8 @@ export default function ImportarCertificacionesPage() {
   const [nombreArchivo, setNombreArchivo] = useState("");
   const [tagLote, setTagLote] = useState<string | null>(null);
   const [etiquetaLote, setEtiquetaLote] = useState(CERTIFICACION_LEGENDAR_IA);
-  // Oferta/región para todo el lote: si se elige, se le aplica a todos los
-  // clientes del CSV sin importar lo que traiga (o no) la columna "region".
+  // Evento para todo el lote: si se elige, se le aplica a todos los
+  // clientes del CSV sin importar lo que traiga (o no) la columna "evento".
   const [regionLote, setRegionLote] = useState<RegionCertificacion | "">("");
   const [importando, setImportando] = useState(false);
   const [progreso, setProgreso] = useState(0);
@@ -42,7 +42,7 @@ export default function ImportarCertificacionesPage() {
   function plantilla() {
     descargarCsv(
       "plantilla_certificaciones.csv",
-      ["nombre", "email", "telefono", "region", "fecha_inscripcion", "notas", "vendedor"],
+      ["nombre", "email", "telefono", "evento", "fecha_inscripcion", "notas", "vendedor"],
       [["Juan Pérez", "juan@correo.com", "555-1234", "MX", "2026-06-15", "Contactado en evento", "María López"]]
     );
   }
@@ -130,7 +130,7 @@ export default function ImportarCertificacionesPage() {
         </span>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Importar clientes por CSV</h1>
         <p className="text-sm text-muted">
-          Sube un archivo con columnas nombre, email, telefono, region ({REGIONES_CERTIFICACION.join(", ")}),
+          Sube un archivo con columnas nombre, email, telefono, evento ({REGIONES_CERTIFICACION.join(", ")}),
           fecha_inscripcion (AAAA-MM-DD), notas y vendedor (opcional). El correo es obligatorio.
         </p>
       </div>
@@ -171,7 +171,7 @@ export default function ImportarCertificacionesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-muted">Oferta de este lote</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-muted">Evento de este lote</span>
             <button type="button" onClick={() => setRegionLote("")} className={chip(regionLote === "")}>
               La que traiga el CSV
             </button>
