@@ -171,7 +171,7 @@ export default function UsuariosPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-silver">
+      <div className="overflow-x-auto rounded-2xl border border-silver">
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">
             <tr>

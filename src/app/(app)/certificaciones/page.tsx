@@ -665,9 +665,9 @@ ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? 
                       tabIndex={0}
                       onClick={() => abrirPanel(c.id)}
                       onKeyDown={(e) => e.key === "Enter" && abrirPanel(c.id)}
-                      className="group flex flex-1 cursor-pointer flex-wrap items-center justify-between gap-3 rounded-2xl py-4 outline-none transition-colors duration-300 hover:bg-surface-2"
+                      className="group flex min-w-0 flex-1 cursor-pointer flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-2xl py-4 outline-none transition-colors duration-300 hover:bg-surface-2"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 max-w-full">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate text-sm font-medium text-foreground">{c.nombre}</span>
                           <span
@@ -702,7 +702,7 @@ ${omitidos} seleccionado${omitidos === 1 ? "" : "s"} no tiene${omitidos === 1 ? 
                         )}
                       </div>
 
-                      <div className="flex flex-none items-center gap-2 sm:gap-3">
+                      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:flex-none sm:gap-3">
                         <StatusBadge estado={estado} />
                         {activo && dias !== null && (
                           <span className="text-xs text-muted">{dias <= 0 ? "Vence hoy" : `${dias} días restantes`}</span>

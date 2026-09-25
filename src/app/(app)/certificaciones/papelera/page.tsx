@@ -137,7 +137,7 @@ export default function PapeleraCertificacionesPage() {
                         Se elimina definitivamente en {restantes} día{restantes === 1 ? "" : "s"}
                       </p>
                     </div>
-                    <div className="flex flex-none items-center gap-2">
+                    <div className="flex max-w-full flex-wrap items-center gap-2">
                       <button
                         onClick={() => restaurar(c)}
                         disabled={procesando === c.id}

@@ -653,14 +653,14 @@ export default function SolicitudesPage() {
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-foreground">{puedeRevisar ? "Todas las solicitudes" : "Mis solicitudes"}</h2>
         {listaTabla.length === 0 && <p className="text-sm text-muted">Todavía no hay solicitudes.</p>}
-        <div className="overflow-hidden rounded-2xl border border-silver">
+        <div className="overflow-x-auto rounded-2xl border border-silver">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Correo de acceso</th>
                 <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Enviada</th>
+                <th className="hidden px-4 py-3 sm:table-cell">Enviada</th>
               </tr>
             </thead>
             <tbody>
@@ -671,7 +671,7 @@ export default function SolicitudesPage() {
                   className="ease-spring cursor-pointer border-t border-silver/60 transition hover:bg-surface-2"
                 >
                   <td className="px-4 py-3 font-medium text-foreground">{s.nombre}</td>
-                  <td className="px-4 py-3 text-muted">{s.correoAcceso}</td>
+                  <td className="px-4 py-3 text-muted [overflow-wrap:anywhere]">{s.correoAcceso}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTADO_ESTILO[s.estado]}`}>
                       {ESTADO_LABEL[s.estado]}
@@ -680,7 +680,7 @@ export default function SolicitudesPage() {
                       <p className="mt-1 text-xs text-muted">{s.notaRevision}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted">{new Date(s.creadoEn).toLocaleString("es-MX")}</td>
+                  <td className="hidden px-4 py-3 text-muted sm:table-cell">{new Date(s.creadoEn).toLocaleString("es-MX")}</td>
                 </tr>
               ))}
             </tbody>
