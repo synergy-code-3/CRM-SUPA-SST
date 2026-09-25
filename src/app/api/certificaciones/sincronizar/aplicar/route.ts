@@ -6,6 +6,7 @@ import {
   type CambioAAplicarCertificacion,
   type NuevoClientePendienteCertificacion,
 } from "@/lib/certificaciones-sync";
+import { sincronizarTagsClubCertificaciones } from "@/lib/certificaciones";
 
 export async function POST(req: NextRequest) {
   const permiso = await requerirPermiso("actualizarCertificaciones");
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
       aplicarCambiosPendientesCertificacion(cambios, permiso.usuario.nombre),
       aplicarNuevosPendientesCertificacion(nuevos, permiso.usuario.nombre, permiso.usuario.rol),
     ]);
+    // Los clientes nuevos o cambiados también reciben su tag del Club.
+    await sincronizarTagsClubCertificaciones().catch((err) => console.error("Tags del Club:", err));
     return NextResponse.json({
       cambiosAplicados: resultadoCambios.aplicados,
       erroresCambios: resultadoCambios.errores,

@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type { Accesos } from "./types";
 import { agregarOpcionCatalogo } from "./catalogo";
+import { finAccesoConEtiqueta } from "./fechas";
 import { normalizarEmail, normalizarTelefono } from "./db";
 import {
   accesosDeRegion,
@@ -811,4 +812,74 @@ export async function establecerAccesosCertificacion(id: string, accesos: Acceso
       ? `Accesos a Synergy Unlimited editados: ${textoAccesos(anterior)} → ${textoAccesos(despues)}`
       : `Accesos vueltos al cálculo por evento: ${textoAccesos(despues)}`
   );
+}
+
+export const TAG_CLUB_ACTIVO = "Club Sinergético: Activo";
+export const TAG_CLUB_VENCIDO = "Club Sinergético: Vencido";
+
+type FilaClubParaTag = {
+  email: string | null;
+  id: string;
+  acceso_plataforma: string | null;
+  pausado_en: string | null;
+  fecha_inscripcion: string | null;
+  fecha_renovacion: string | null;
+  etiqueta: string | null;
+  etiqueta_asignada_en: string | null;
+};
+
+// Pone a cada cliente de Certificaciones que también es cliente del Club el
+// tag "Club Sinergético: Activo" o "Club Sinergético: Vencido" (y le quita el
+// contrario). Activo = acceso a plataforma en "Si"/"Renovación", sin pausar y
+// con el fin de acceso del Club vigente (o vitalicio). Quien no está en el Club
+// no se toca. Devuelve cuántos cambió. Se corre en el cron y al aplicar la
+// sincronización con las hojas.
+export async function sincronizarTagsClubCertificaciones(): Promise<{ revisados: number; cambiados: number }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const traer = async <T,>(tabla: string, columnas: string, filtro: (q: any) => any): Promise<T[]> => {
+    const filas: T[] = [];
+    for (let desde = 0; ; desde += 1000) {
+      const { data, error } = await filtro(supabase.from(tabla).select(columnas)).range(desde, desde + 999);
+      if (error) throw error;
+      filas.push(...((data ?? []) as T[]));
+      if (!data || data.length < 1000) break;
+    }
+    return filas;
+  };
+
+  const [cert, club] = await Promise.all([
+    traer<{ id: string; email: string | null; tags: string[] | null }>("certificaciones_clientes", "id,email,tags", (q) => q.eq("eliminado", false)),
+    traer<FilaClubParaTag>(
+      "clientes",
+      "id,email,acceso_plataforma,pausado_en,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en",
+      (q) => q.is("eliminado_en", null)
+    ),
+  ]);
+
+  const ahora = Date.now();
+  const clubPorCorreo = new Map<string, FilaClubParaTag>();
+  for (const c of club) clubPorCorreo.set((c.email ?? c.id).trim().toLowerCase(), c);
+
+  let cambiados = 0;
+  for (const c of cert) {
+    const enClub = clubPorCorreo.get((c.email ?? c.id).trim().toLowerCase());
+    if (!enClub) continue;
+
+    const acceso = enClub.acceso_plataforma?.trim().toLowerCase();
+    const fin = finAccesoConEtiqueta(enClub.fecha_inscripcion, enClub.fecha_renovacion, enClub.etiqueta, enClub.etiqueta_asignada_en);
+    const vigente = fin.vitalicio || (!!fin.fecha && fin.fecha.getTime() > ahora);
+    const activo = (acceso === "si" || acceso === "renovación") && !enClub.pausado_en && vigente;
+
+    const deseado = activo ? TAG_CLUB_ACTIVO : TAG_CLUB_VENCIDO;
+    const contrario = activo ? TAG_CLUB_VENCIDO : TAG_CLUB_ACTIVO;
+    const tags = c.tags ?? [];
+    if (tags.includes(deseado) && !tags.includes(contrario)) continue;
+
+    const nuevos = [...tags.filter((t) => t !== contrario && t !== deseado), deseado];
+    const { error } = await supabase.from("certificaciones_clientes").update({ tags: nuevos }).eq("id", c.id);
+    if (error) throw error;
+    await registrarEventoCertificacion(c.id, "TAGS", "Sistema (Club)", `Tag del Club actualizado: ${deseado}`);
+    cambiados++;
+  }
+  return { revisados: cert.length, cambiados };
 }

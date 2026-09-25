@@ -15,6 +15,7 @@ import {
 import { altaEnGhl } from "@/lib/ghl";
 import { KAJABI_OFFER_ID_CLUB_SINERGETICO, KAJABI_TAG_MIEMBRO_DEL_CLUB, nuevosConOfertaDesde } from "@/lib/kajabi";
 import { invitarASkool } from "@/lib/skool";
+import { sincronizarTagsClubCertificaciones } from "@/lib/certificaciones";
 
 export const maxDuration = 60;
 
@@ -196,7 +197,16 @@ async function manejar(req: NextRequest) {
     console.error("Barrido de altas recientes falló, se reintenta en la siguiente corrida:", err);
   }
 
-  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion, barrido });
+  // Tags "Club Sinergético: Activo/Vencido" de los clientes de Certificaciones
+  // que también son del Club (best-effort).
+  let tagsClub: { revisados: number; cambiados: number } | null = null;
+  try {
+    tagsClub = await sincronizarTagsClubCertificaciones();
+  } catch (err) {
+    console.error("Tags del Club en Certificaciones fallaron, se reintenta en la siguiente corrida:", err);
+  }
+
+  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion, barrido, tagsClub });
 }
 
 export const GET = manejar;
