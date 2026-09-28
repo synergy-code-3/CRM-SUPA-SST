@@ -8,7 +8,14 @@ import {
   formatearFechaSkool,
   parsearFechaSkool,
 } from "./fechas";
-import { cargarInventarioBoletos, cargarPaisPorEvento, cargarTipoPorEvento, calcularAccesos, regionDeCliente } from "./boletos";
+import {
+  cargarInventarioBoletos,
+  cargarPaisPorEvento,
+  cargarTipoPorEvento,
+  calcularAccesos,
+  paisInfo,
+  regionDeCliente,
+} from "./boletos";
 import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialAxis } from "./axis";
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
 import {
@@ -21,6 +28,7 @@ import {
 import { invitarASkool } from "./skool";
 import { filaACliente, fechaSkoolADateOnly, normalizarAccesos, type ClienteRow } from "./supabase-map";
 import type {
+  AccesoDetalle,
   Accesos,
   Cliente,
   EstadoMensajeBienvenidaWa,
@@ -886,6 +894,89 @@ export async function renovarMembresia(id: string, autor: string): Promise<Clien
     id,
     "RENOVACION",
     `Membresía renovada — Fin de acceso: ${fin ? formatearFechaSkool(fin) : "—"}`,
+    autor
+  );
+  return filaACliente(data as ClienteRow);
+}
+
+// Botón "Registrar renovación anticipada" (perfil del cliente, solo visible
+// cuando la oferta SIGUE activa en Kajabi): el cliente ya pagó una
+// renovación real, pero como todavía no le llega su fecha de fin de acceso,
+// no tiene caso tocar Kajabi (revocar+re-otorgar lo que ya tiene activo, sin
+// motivo) — a diferencia de renovarMembresia(), esta función es solo CRM +
+// Skool, nunca llama a Kajabi. Dos diferencias más con una renovación normal:
+//  - El fin de acceso se comporta igual (anclaAlRenovar: como sigue activa,
+//    extiende +1 año desde donde ya iba, no reinicia desde hoy).
+//  - Los accesos de la renovación (regla fija por país, sección 4 de
+//    REGLAS-BOLETOS-SYNERGY.md) se SUMAN a los que ya tenía en vez de
+//    reemplazarlos — todavía no gastó los del periodo activo — y quedan
+//    congelados (accesos_editado_manual) para que la sincronización
+//    automática no los recalcule y se pierda la suma.
+export async function registrarRenovacionAnticipadaSinTocarKajabi(id: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+  const cliente = filaACliente(fila as ClienteRow);
+
+  const fechaRenovacion = anclaAlRenovar(cliente.fechaInscripcion, cliente.fechaRenovacion);
+  const fin = finAccesoCalculado(null, fechaRenovacion);
+
+  // Misma regla fija por país que usa una renovación normal (calcularAccesos,
+  // boletos.ts, rama accesoKey.includes("renov")): 2 Generales MX en México;
+  // 2 VIP MX + 2 Generales US en Estados Unidos/Canadá; 2 VIP MX en LATAM.
+  const { esMx, esUsCanada } = paisInfo(cliente.pais);
+  const extraGeneral: AccesoDetalle[] = [];
+  const extraVip: AccesoDetalle[] = [];
+  if (esMx) {
+    extraGeneral.push({ activo: true, cantidad: 2, variante: "MX" });
+  } else if (esUsCanada) {
+    extraVip.push({ activo: true, cantidad: 2, variante: "MX" });
+    extraGeneral.push({ activo: true, cantidad: 2, variante: "US" });
+  } else {
+    extraVip.push({ activo: true, cantidad: 2, variante: "MX" });
+  }
+
+  const sumarPorVariante = (base: AccesoDetalle[], extra: AccesoDetalle[]): AccesoDetalle[] => {
+    const porVariante = new Map<string, number>();
+    for (const d of [...base, ...extra]) {
+      const clave = d.variante ?? "";
+      porVariante.set(clave, (porVariante.get(clave) ?? 0) + d.cantidad);
+    }
+    return [...porVariante.entries()].map(([clave, cantidad]) => ({
+      activo: true,
+      cantidad,
+      variante: (clave || null) as Variante,
+    }));
+  };
+
+  const accesosAntes = cliente.accesos;
+  const nuevosAccesos: Accesos = {
+    general: sumarPorVariante(accesosAntes.general, extraGeneral),
+    vip: sumarPorVariante(accesosAntes.vip, extraVip),
+    black: accesosAntes.black,
+  };
+
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      etiqueta: "Renovacion",
+      tipo_membresia: "12 Meses",
+      acceso_plataforma: "Renovación",
+      fecha_renovacion: fechaRenovacion,
+      accesos: nuevosAccesos,
+      accesos_editado_manual: true,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const finTexto = fin ? formatearFechaSkool(fin) : "—";
+  await registrarEvento(
+    id,
+    "RENOVACION",
+    `Renovación anticipada registrada (la membresía todavía estaba activa, sin tocar Kajabi) — Fin de acceso: ${finTexto} · General: ${textoAcceso(accesosAntes.general)} → ${textoAcceso(nuevosAccesos.general)} · VIP: ${textoAcceso(accesosAntes.vip)} → ${textoAcceso(nuevosAccesos.vip)}`,
     autor
   );
   return filaACliente(data as ClienteRow);

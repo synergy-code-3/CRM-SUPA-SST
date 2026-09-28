@@ -148,7 +148,7 @@ export async function agruparEventosPorTipo(): Promise<{
   return { webinar, presencial, otro };
 }
 
-function paisInfo(pais: string | null): { esMx: boolean; esUsCanada: boolean } {
+export function paisInfo(pais: string | null): { esMx: boolean; esUsCanada: boolean } {
   const p = normalizar(pais);
   return {
     esMx: p.includes("méxico") || p.includes("mexico"),

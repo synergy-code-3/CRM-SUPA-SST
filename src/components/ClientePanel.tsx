@@ -235,6 +235,8 @@ export function ClientePanel({
   const [estadoKajabi, setEstadoKajabi] = useState<EstadoKajabi>("cargando");
   const [pasoRenovar, setPasoRenovar] = useState<0 | 1 | 2>(0);
   const [renovando, setRenovando] = useState(false);
+  const [pasoRenovacionAnticipada, setPasoRenovacionAnticipada] = useState<0 | 1 | 2>(0);
+  const [renovandoAnticipada, setRenovandoAnticipada] = useState(false);
   const [pasoActivarOferta, setPasoActivarOferta] = useState<0 | 1 | 2>(0);
   const [activandoOferta, setActivandoOferta] = useState(false);
   const [pasoEliminar, setPasoEliminar] = useState<0 | 1 | 2>(0);
@@ -685,6 +687,42 @@ export function ClientePanel({
     setForm(formDeCliente(data.cliente));
     onClienteActualizado(data.cliente);
     setEstadoKajabi(data.avisoKajabi ? "revocada" : "activa");
+    avisarActualizarFinAccesoEnKajabi(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
+      r.json()
+    );
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  // Para "Registrar renovación anticipada" — el cliente ya pagó, pero la
+  // oferta sigue activa en Kajabi (ver el aviso arriba del botón): a
+  // diferencia de confirmarRenovar(), esto NUNCA toca Kajabi, solo el fin de
+  // acceso, la suma de accesos por país (ver registrarRenovacionAnticipadaSinTocarKajabi
+  // en db.ts) y el reenvío de la invitación de Skool.
+  async function confirmarRenovacionAnticipada() {
+    if (!cliente || !puedeRenovar) return;
+    if (pasoRenovacionAnticipada < 2) {
+      setPasoRenovacionAnticipada((p) => (p + 1) as 0 | 1 | 2);
+      return;
+    }
+    setRenovandoAnticipada(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/renovacion-anticipada`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setRenovandoAnticipada(false);
+    setPasoRenovacionAnticipada(0);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo registrar la renovación anticipada");
+      return;
+    }
+    if (data.avisoSkool) {
+      window.alert(`Se registró la renovación en el CRM, pero hubo un problema con Skool:\n\n${data.avisoSkool}`);
+    }
+    setCliente(data.cliente);
+    setForm(formDeCliente(data.cliente));
+    onClienteActualizado(data.cliente);
     avisarActualizarFinAccesoEnKajabi(data.cliente);
     const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) =>
       r.json()
@@ -1722,39 +1760,38 @@ export function ClientePanel({
                               </div>
                             )}
                             {/* Renovación anticipada: el cliente ya pagó de verdad, pero su
-                                oferta en Kajabi sigue activa (no venció). El botón normal de
-                                "Renovar" solo aparece cuando Kajabi ya la revocó, a propósito
-                                (evita que un clic accidental le revoque y regrale la oferta sin
-                                razón) — este es el mismo flujo (confirmarRenovar/pasoRenovar),
-                                puesto aparte con su propio texto porque aquí SÍ hay que avisar
-                                que se le va a revocar y volver a otorgar la oferta en Kajabi. */}
-                            {!puedeRenovar || pasoPausar !== 0 ? null : pasoRenovar === 0 && (
+                                oferta en Kajabi sigue activa (no venció) — a diferencia del botón
+                                normal de "Renovar" (que sí revoca y vuelve a otorgar en Kajabi),
+                                esto NUNCA toca Kajabi: solo suma un año al fin de acceso actual,
+                                suma los accesos de la renovación a los que ya tenía, y reenvía la
+                                invitación de Skool (ver confirmarRenovacionAnticipada). */}
+                            {!puedeRenovar || pasoPausar !== 0 ? null : pasoRenovacionAnticipada === 0 && (
                               <button
-                                onClick={confirmarRenovar}
+                                onClick={confirmarRenovacionAnticipada}
                                 className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
                               >
                                 <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
                                 Registrar renovación anticipada
                               </button>
                             )}
-                            {pasoRenovar === 1 && (
+                            {pasoRenovacionAnticipada === 1 && (
                               <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
                                 <p className="mb-2.5 text-xs text-foreground">
-                                  Úsalo solo si ya pagó una renovación real antes de que le venciera. Va a
-                                  revocar y volver a otorgar la oferta en Kajabi (así reactiva todo el
-                                  paquete), reenviar la invitación de Skool, poner la etiqueta
-                                  &quot;Renovación&quot; y sumarle un año a su fin de acceso actual — no lo
-                                  reinicia desde hoy, no pierde lo que ya tenía pagado. ¿Confirmas?
+                                  Úsalo solo si ya pagó una renovación real antes de que le venciera. No
+                                  toca Kajabi (ya tiene la oferta activa, no hay nada que otorgar) — solo
+                                  le suma un año a su fin de acceso actual (no lo reinicia desde hoy),
+                                  suma los accesos de la renovación a los que ya tenía y reenvía la
+                                  invitación de Skool. ¿Confirmas?
                                 </p>
                                 <div className="flex gap-2">
                                   <button
-                                    onClick={() => setPasoRenovar(0)}
+                                    onClick={() => setPasoRenovacionAnticipada(0)}
                                     className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
                                   >
                                     Cancelar
                                   </button>
                                   <button
-                                    onClick={confirmarRenovar}
+                                    onClick={confirmarRenovacionAnticipada}
                                     className="ease-spring rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-white transition"
                                   >
                                     Sí, continuar
@@ -1762,24 +1799,24 @@ export function ClientePanel({
                                 </div>
                               </div>
                             )}
-                            {pasoRenovar === 2 && (
+                            {pasoRenovacionAnticipada === 2 && (
                               <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
                                 <p className="mb-2.5 text-xs font-medium text-danger">
                                   Última confirmación — esta acción no se puede deshacer fácilmente.
                                 </p>
                                 <div className="flex gap-2">
                                   <button
-                                    onClick={() => setPasoRenovar(0)}
+                                    onClick={() => setPasoRenovacionAnticipada(0)}
                                     className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
                                   >
                                     Cancelar
                                   </button>
                                   <button
-                                    onClick={confirmarRenovar}
-                                    disabled={renovando}
+                                    onClick={confirmarRenovacionAnticipada}
+                                    disabled={renovandoAnticipada}
                                     className="ease-spring rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
                                   >
-                                    {renovando ? "Renovando…" : "Confirmar renovación"}
+                                    {renovandoAnticipada ? "Renovando…" : "Confirmar renovación"}
                                   </button>
                                 </div>
                               </div>
