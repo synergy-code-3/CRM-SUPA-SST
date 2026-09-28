@@ -639,3 +639,12 @@ alter table clientes add column if not exists guarda_acceso_su27_en timestamptz;
 -- formato que clientes.accesos: {general, vip, black}). null = los que toquen
 -- por región (ver accesosDeRegion en certificaciones-tipos.ts).
 alter table certificaciones_clientes add column if not exists accesos jsonb;
+
+-- Etiquetas ADICIONALES a "etiqueta" (que sigue siendo un solo valor, con su
+-- fecha de asignación para el caso de los migrados del CSV) — para cuando un
+-- cliente necesita más de una a la vez (ej. ya era MÁS+ y compró Black
+-- Access encima). Este campo es enteramente nuevo, así que ninguna de sus
+-- etiquetas tiene el problema de los migrados: siempre aplican su bono de
+-- inmediato (ver calcularAccesos en boletos.ts y finAccesoConEtiqueta en
+-- fechas.ts).
+alter table clientes add column if not exists etiquetas_extra text[] not null default '{}';

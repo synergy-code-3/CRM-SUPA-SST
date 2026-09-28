@@ -120,6 +120,7 @@ async function main() {
       accesosEditadoManual: existente?.accesosEditadoManual ?? false,
       etiqueta: existente?.etiqueta ?? null,
       etiquetaAsignadaEn: existente?.etiquetaAsignadaEn ?? null,
+      etiquetasExtra: existente?.etiquetasExtra ?? [],
       tags: existente?.tags ?? [],
       kajabiContactId: existente?.kajabiContactId ?? null,
       eliminadoEn: existente?.eliminadoEn ?? null,

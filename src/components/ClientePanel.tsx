@@ -125,7 +125,7 @@ function formDeCliente(c: Cliente | null): Form {
     fechaRenovacion: isoAFechaInput(c?.fechaRenovacion ?? null),
     finAcceso: (() => {
       if (!c) return "";
-      const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+      const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn, c.etiquetasExtra);
       return info.vitalicio || !info.fecha ? "" : isoAFechaInput(info.fecha.toISOString());
     })(),
   };
@@ -165,7 +165,7 @@ function formatearCentavos(cents: number | null, currency: string | null): strin
 // "actualiza Kajabi a mano"): vitalicio para MÁS+, +1 año de bono para
 // Black Access, la fecha calculada normal para cualquier otro caso.
 function textoFinAcceso(c: Cliente): string {
-  const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+  const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn, c.etiquetasExtra);
   if (info.vitalicio) return "Vitalicio";
   return info.fecha ? formatearFechaSkool(info.fecha) : "—";
 }
@@ -232,6 +232,9 @@ export function ClientePanel({
   const [catalogoEventos, setCatalogoEventos] = useState<OpcionCombobox[]>([]);
   const [catalogoEtiquetas, setCatalogoEtiquetas] = useState<OpcionCombobox[]>([]);
   const [guardandoTag, setGuardandoTag] = useState<string | null>(null);
+  const [agregandoEtiquetaExtra, setAgregandoEtiquetaExtra] = useState(false);
+  const [quitandoEtiquetaExtra, setQuitandoEtiquetaExtra] = useState<string | null>(null);
+  const [nuevaEtiquetaExtra, setNuevaEtiquetaExtra] = useState("");
   const [estadoKajabi, setEstadoKajabi] = useState<EstadoKajabi>("cargando");
   const [pasoRenovar, setPasoRenovar] = useState<0 | 1 | 2>(0);
   const [renovando, setRenovando] = useState(false);
@@ -523,7 +526,8 @@ export function ClientePanel({
       cliente.fechaInscripcion,
       cliente.fechaRenovacion,
       cliente.etiqueta,
-      cliente.etiquetaAsignadaEn
+      cliente.etiquetaAsignadaEn,
+      cliente.etiquetasExtra
     );
     const finAccesoOriginal =
       infoFinAccesoOriginal.vitalicio || !infoFinAccesoOriginal.fecha
@@ -1023,6 +1027,51 @@ export function ClientePanel({
     setEventos(eventosRes.eventos ?? []);
   }
 
+  // Etiquetas EXTRA (además de la principal) — ver agregarEtiquetaExtra/
+  // quitarEtiquetaExtra en db.ts. Guardan solo (no dependen del botón
+  // "Guardar" de la tarjeta), igual que los tags de arriba.
+  async function agregarEtiquetaExtra(etiqueta: string) {
+    if (!cliente || !puedeEditar || !etiqueta.trim()) return;
+    setAgregandoEtiquetaExtra(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/etiquetas-extra`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ etiqueta }),
+    });
+    const data = await res.json();
+    setAgregandoEtiquetaExtra(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo agregar la etiqueta");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) => r.json());
+    setEventos(eventosRes.eventos ?? []);
+  }
+
+  async function quitarEtiquetaExtra(etiqueta: string) {
+    if (!cliente || !puedeEditar) return;
+    if (!window.confirm(`¿Quitar la etiqueta "${etiqueta}"?`)) return;
+    setQuitandoEtiquetaExtra(etiqueta);
+    setError(null);
+    const res = await fetch(
+      `/api/clientes/${encodeURIComponent(cliente.id)}/etiquetas-extra?etiqueta=${encodeURIComponent(etiqueta)}`,
+      { method: "DELETE" }
+    );
+    const data = await res.json();
+    setQuitandoEtiquetaExtra(null);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo quitar la etiqueta");
+      return;
+    }
+    setCliente(data.cliente);
+    onClienteActualizado(data.cliente);
+    const eventosRes = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/eventos`).then((r) => r.json());
+    setEventos(eventosRes.eventos ?? []);
+  }
+
   async function enviarNota() {
     if (!cliente || !puedeAgregarNota || !nota.trim()) return;
     setEnviandoNota(true);
@@ -1171,7 +1220,7 @@ export function ClientePanel({
   // actualizarla a mano en el perfil de Kajabi de la persona, con la fecha
   // exacta que le toca (misma que se calcula para "Fin de acceso" aquí).
   function avisarActualizarFinAccesoEnKajabi(c: Cliente) {
-    const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn);
+    const info = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn, c.etiquetasExtra);
     if (info.vitalicio || !info.fecha) return;
     window.alert(
       `No olvides ir a Kajabi y actualizar a mano la fecha de "Fin de acceso" en el perfil de ${c.nombre} a: ${info.fecha.toLocaleDateString("es-MX")}.`
@@ -1557,7 +1606,70 @@ export function ClientePanel({
                         <CampoValor label="Evento" valor={cliente.evento} />
                         <CampoValor label="Etiqueta" valor={cliente.etiqueta} />
                       </dl>
-                    ) : (
+                    ) : null}
+
+                    {/* Otras etiquetas: se guardan solas (no dependen del botón
+                        "Guardar" de arriba), igual que Tags — para cuando un
+                        cliente necesita más de una a la vez (ej. ya era MÁS+ y
+                        además compró Black Access). */}
+                    <div className={!editando ? "mt-3" : "mt-3 border-t border-silver/60 pt-3"}>
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted">
+                        Otras etiquetas
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {cliente.etiquetasExtra.map((e) => (
+                          <span
+                            key={e}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary-dim px-2.5 py-1 text-xs font-medium text-primary-deep"
+                          >
+                            {e}
+                            {puedeEditar && (
+                              <button
+                                onClick={() => quitarEtiquetaExtra(e)}
+                                disabled={quitandoEtiquetaExtra === e}
+                                aria-label={`Quitar etiqueta ${e}`}
+                                className="ease-spring rounded-full p-0.5 transition hover:bg-primary/20 disabled:opacity-50"
+                              >
+                                <X className="h-3 w-3" strokeWidth={2} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {cliente.etiquetasExtra.length === 0 && (
+                          <span className="text-xs text-muted">Ninguna</span>
+                        )}
+                      </div>
+                      {puedeEditar && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex-1">
+                            <ComboboxBuscador
+                              opciones={catalogoEtiquetas.filter(
+                                (o) =>
+                                  o.valor.trim().toLowerCase() !== (cliente.etiqueta?.trim().toLowerCase() ?? "") &&
+                                  !cliente.etiquetasExtra.some((e) => e.trim().toLowerCase() === o.valor.trim().toLowerCase())
+                              )}
+                              valor={nuevaEtiquetaExtra}
+                              onChange={setNuevaEtiquetaExtra}
+                              placeholder="Elegir etiqueta…"
+                              disabled={agregandoEtiquetaExtra}
+                            />
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const valor = nuevaEtiquetaExtra;
+                              setNuevaEtiquetaExtra("");
+                              await agregarEtiquetaExtra(valor);
+                            }}
+                            disabled={!nuevaEtiquetaExtra || agregandoEtiquetaExtra}
+                            className="ease-spring flex-none rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {agregandoEtiquetaExtra ? "Agregando…" : "+ Agregar"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {editando && (
                       <div className="space-y-3">
                         <Campo label="Nombre">
                           <Input value={form.nombre} onChange={(v) => setForm((f) => ({ ...f, nombre: v }))} />
@@ -2181,10 +2293,12 @@ export function ClientePanel({
                       cliente.fechaInscripcion,
                       cliente.fechaRenovacion,
                       cliente.etiqueta,
-                      cliente.etiquetaAsignadaEn
+                      cliente.etiquetaAsignadaEn,
+                      cliente.etiquetasExtra
                     );
                     const esBlackAccess =
-                      !!cliente.etiquetaAsignadaEn && cliente.etiqueta?.trim().toLowerCase() === "black access";
+                      (!!cliente.etiquetaAsignadaEn && cliente.etiqueta?.trim().toLowerCase() === "black access") ||
+                      cliente.etiquetasExtra.some((e) => e.trim().toLowerCase() === "black access");
                     return (
                       <Tarjeta titulo="Acceso a plataforma (histórico)">
                         {!editando ? (

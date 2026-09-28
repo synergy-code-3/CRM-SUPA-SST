@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } catch (err) {
           avisoSkool = err instanceof Error ? err.message : "No se pudo enviar la invitación a Skool";
         }
-        const fin = finAccesoConEtiqueta(cliente.fechaInscripcion, cliente.fechaRenovacion, cliente.etiqueta, cliente.etiquetaAsignadaEn);
+        const fin = finAccesoConEtiqueta(cliente.fechaInscripcion, cliente.fechaRenovacion, cliente.etiqueta, cliente.etiquetaAsignadaEn, cliente.etiquetasExtra);
         recordatorioKajabi =
           "Recuerda cambiar la fecha de fin de acceso en Kajabi" +
           (!fin.vitalicio && fin.fecha ? ` (nuevo fin de acceso: ${formatearFechaSkool(fin.fecha)}).` : ".");

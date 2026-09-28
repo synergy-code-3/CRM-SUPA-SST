@@ -66,6 +66,15 @@ export type Cliente = {
   // finAccesoConEtiqueta() en fechas.ts: el ajuste de "Fin de acceso" por
   // MÁS+/Black Access solo aplica cuando esto no es null.
   etiquetaAsignadaEn: string | null;
+  // Etiquetas ADICIONALES a la de arriba — para cuando un cliente necesita
+  // más de una a la vez (ej. ya tenía MÁS+ y además compró Black Access).
+  // A diferencia de "etiqueta" (la de toda la vida, un solo valor, con su
+  // propia fecha de asignación por el caso de los migrados del CSV), este
+  // campo es enteramente nuevo: nunca tuvo datos migrados, así que cada una
+  // de sus etiquetas siempre aplica sus bonos (MÁS+/Black Access) sin
+  // necesitar su propia fecha de asignación — ver calcularAccesos()
+  // (boletos.ts) y finAccesoConEtiqueta() (fechas.ts).
+  etiquetasExtra: string[];
 
   // Tags asignados desde el panel del cliente (catálogo "Biblioteca"),
   // distintos de "etiqueta": un cliente puede tener varios.

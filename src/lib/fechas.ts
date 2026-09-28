@@ -73,18 +73,23 @@ export function finAccesoConEtiqueta(
   fechaInscripcion: string | null,
   fechaRenovacion: string | null,
   etiqueta: string | null,
-  etiquetaAsignadaEn: string | null
+  etiquetaAsignadaEn: string | null,
+  // Etiquetas adicionales a la de arriba (ver Cliente.etiquetasExtra) — sin
+  // el problema de los migrados del CSV (el campo es enteramente nuevo), así
+  // que siempre aplican su bono, a diferencia de la etiqueta principal.
+  etiquetasExtra: string[] = []
 ): FinAccesoInfo {
   const fin = finAccesoCalculado(fechaInscripcion, fechaRenovacion);
   const etiquetaKey = etiquetaAsignadaEn ? (etiqueta?.trim().toLowerCase() ?? "") : "";
+  const etiquetasConBono = [etiquetaKey, ...etiquetasExtra.map((e) => e.trim().toLowerCase())].filter(Boolean);
 
-  if (etiquetaKey === "más+" || etiquetaKey === "más+ usa" || etiquetaKey === "mas") {
+  if (etiquetasConBono.some((e) => e === "más+" || e === "más+ usa" || e === "mas")) {
     return { vitalicio: true };
   }
 
   if (!fin) return { vitalicio: false, fecha: null };
 
-  if (etiquetaKey === "black access") {
+  if (etiquetasConBono.includes("black access")) {
     const finExtendido = new Date(fin);
     finExtendido.setFullYear(finExtendido.getFullYear() + 1);
     return { vitalicio: false, fecha: finExtendido };

@@ -827,6 +827,7 @@ type FilaClubParaTag = {
   fecha_renovacion: string | null;
   etiqueta: string | null;
   etiqueta_asignada_en: string | null;
+  etiquetas_extra: string[] | null;
 };
 
 // Pone a cada cliente de Certificaciones que también es cliente del Club el
@@ -860,7 +861,7 @@ export async function sincronizarTagsClubCertificaciones(): Promise<{ revisados:
   for (let i = 0; i < correos.length; i += 100) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("id,email,acceso_plataforma,pausado_en,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en")
+      .select("id,email,acceso_plataforma,pausado_en,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en,etiquetas_extra")
       .in("id", correos.slice(i, i + 100))
       .is("eliminado_en", null);
     if (error) throw error;
@@ -877,7 +878,7 @@ export async function sincronizarTagsClubCertificaciones(): Promise<{ revisados:
     if (!enClub) continue;
 
     const acceso = enClub.acceso_plataforma?.trim().toLowerCase();
-    const fin = finAccesoConEtiqueta(enClub.fecha_inscripcion, enClub.fecha_renovacion, enClub.etiqueta, enClub.etiqueta_asignada_en);
+    const fin = finAccesoConEtiqueta(enClub.fecha_inscripcion, enClub.fecha_renovacion, enClub.etiqueta, enClub.etiqueta_asignada_en, enClub.etiquetas_extra ?? []);
     const vigente = fin.vitalicio || (!!fin.fecha && fin.fecha.getTime() > ahora);
     const activo = (acceso === "si" || acceso === "renovación") && !enClub.pausado_en && vigente;
 

@@ -230,6 +230,10 @@ export function calcularAccesos(
     // desde el CSV (ver etiqueta_asignada_en en schema.sql), que ya traían
     // la fecha de inscripción ajustada a mano de origen.
     etiquetaAsignadaEn: string | null;
+    // Etiquetas adicionales a la de arriba (ver Cliente.etiquetasExtra,
+    // types.ts) — nunca tienen el problema de los migrados del CSV (el
+    // campo es enteramente nuevo), así que sus bonos siempre aplican.
+    etiquetasExtra?: string[];
   },
   inventario: Inventario
 ): ResultadoBoletos {
@@ -237,6 +241,20 @@ export function calcularAccesos(
   const etiquetaKey = normalizar(cliente.etiqueta);
   const accesoKey = normalizar(cliente.accesoPlataforma);
   const { esMx, esUsCanada } = paisInfo(cliente.pais);
+
+  // Todas las etiquetas del cliente (la principal + las extra), normalizadas
+  // — cada una aporta sus propios extras de VIP/Black, que se SUMAN entre
+  // sí (ver comentarios de MÁS+/Black Access más abajo).
+  const etiquetasExtraKeys = (cliente.etiquetasExtra ?? []).map(normalizar).filter(Boolean);
+  const todasLasEtiquetas = etiquetaKey ? [etiquetaKey, ...etiquetasExtraKeys] : etiquetasExtraKeys;
+  const tieneEtiqueta = (nombre: string) => todasLasEtiquetas.includes(nombre);
+  // Para el bono de +1 año de Black Access: la etiqueta principal solo
+  // cuenta si etiquetaAsignadaEn está lleno (ver el parámetro arriba); las
+  // extra siempre cuentan.
+  const etiquetasConBono = [
+    ...(cliente.etiquetaAsignadaEn && etiquetaKey ? [etiquetaKey] : []),
+    ...etiquetasExtraKeys,
+  ];
 
   // Regla previa (no está en el documento original, pero es sentido común de
   // control de acceso): si el CRM de origen marcó al cliente como
@@ -256,12 +274,10 @@ export function calcularAccesos(
   // vitalicia para este grupo — por eso se resuelve antes del filtro de
   // membresía activa de abajo. Ya no es un evento (antes vivía aquí como
   // caso fijo de evento) — ahora es la etiqueta la que decide.
-  const extraVip: AccesoDetalle[] =
-    etiquetaKey === "más+" || etiquetaKey === "mas"
-      ? [accesoDe(3, "MX")]
-      : etiquetaKey === "más+ usa"
-        ? [accesoDe(3, "US")]
-        : [];
+  const extraVip: AccesoDetalle[] = [
+    ...(tieneEtiqueta("más+") || tieneEtiqueta("mas") ? [accesoDe(3, "MX")] : []),
+    ...(tieneEtiqueta("más+ usa") ? [accesoDe(3, "US")] : []),
+  ];
 
   const fin = finAccesoCalculado(cliente.fechaInscripcion, cliente.fechaRenovacion);
   // Black Access trae su propio año extra de acceso al Club (mismo bono que
@@ -270,7 +286,7 @@ export function calcularAccesos(
   // cara al corte, así que el filtro de abajo lo suma antes de comparar. Sin
   // esto, alguien cuya membresía ya venció antes del corte se quedaba sin el
   // boleto Black aunque el año que trae Black Access ya lo cubriera.
-  const esBlackAccess = etiquetaKey === "black access" && !!cliente.etiquetaAsignadaEn;
+  const esBlackAccess = etiquetasConBono.includes("black access");
   const finConBonoBlack = esBlackAccess && fin ? new Date(fin.getFullYear() + 1, fin.getMonth(), fin.getDate()) : fin;
   if (!finConBonoBlack || finConBonoBlack < FECHA_CORTE) {
     // Sin membresía activa (ni siquiera con el bono de Black Access, si
@@ -283,7 +299,7 @@ export function calcularAccesos(
   // al corte normal de membresía activa (a diferencia de MÁS+ arriba).
   // Black nunca tiene variante MX/US. Ya no es un evento — ahora es la
   // etiqueta la que decide, igual que MÁS+.
-  const extraBlack: AccesoDetalle[] = etiquetaKey === "black access" ? [accesoDe(1, null)] : [];
+  const extraBlack: AccesoDetalle[] = tieneEtiqueta("black access") ? [accesoDe(1, null)] : [];
 
   // Black Access es un pase, no una cantidad de boletos a distintos eventos
   // (a diferencia de General/VIP, que sí tienen sentido en cantidad) — tener

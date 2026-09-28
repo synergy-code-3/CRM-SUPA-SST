@@ -146,6 +146,8 @@ export type FiltrosClientes = {
   guardaAccesoSu27?: boolean;
   // Interno: lo llena resolverBusquedaTimeline, no viene de la API.
   idsTimelinePorPalabra?: string[][];
+  // Interno: lo llena resolverEtiquetasExtra, no viene de la API.
+  idsEtiquetaExtra?: string[];
   limite?: number;
   pagina?: number;
 };
@@ -157,6 +159,21 @@ export type FiltrosClientes = {
 // se fuerza una lista con un nombre que no existe para que el `.in()` de
 // abajo no matchee nada, en vez de ignorarse (el guard `.length` de
 // aplicarFiltrosClientes solo aplica el filtro si el arreglo no está vacío).
+// Ids de clientes cuya lista etiquetas_extra se solapa con las etiquetas
+// elegidas en el filtro — se resuelve aparte (no en la misma query que
+// aplicarFiltrosClientes) para no armar a mano un literal de arreglo dentro
+// de un .or(), donde las comas internas romperían el parser de PostgREST.
+async function resolverEtiquetasExtra(opciones?: FiltrosClientes): Promise<FiltrosClientes | undefined> {
+  if (!opciones?.etiquetas?.length) return opciones;
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id")
+    .overlaps("etiquetas_extra", opciones.etiquetas)
+    .limit(2000);
+  if (error) throw error;
+  return { ...opciones, idsEtiquetaExtra: (data ?? []).map((d) => d.id as string) };
+}
+
 async function resolverFiltroTipoEvento(opciones?: FiltrosClientes): Promise<FiltrosClientes | undefined> {
   if (!opciones?.tipoEvento || opciones.tipoEvento === "todos") return opciones;
 
@@ -316,7 +333,18 @@ function aplicarFiltrosClientes<
   if (opciones?.membresias?.length) {
     query = query.or(opciones.membresias.map((m) => `tipo_membresia.ilike.${m}`).join(","));
   }
-  if (opciones?.etiquetas?.length) query = query.in("etiqueta", opciones.etiquetas);
+  if (opciones?.etiquetas?.length) {
+    // Coincide si la etiqueta PRINCIPAL está en la lista, o si su id está
+    // entre los que ya resolvió resolverEtiquetasExtra (etiquetas_extra se
+    // solapa con la lista) — ver ese resolver para el porqué de resolverlo
+    // aparte en vez de armarlo aquí mismo con un .or().
+    const idsExtra = opciones.idsEtiquetaExtra ?? [];
+    if (idsExtra.length) {
+      query = query.or(`etiqueta.in.(${opciones.etiquetas.join(",")}),id.in.(${idsExtra.join(",")})`);
+    } else {
+      query = query.in("etiqueta", opciones.etiquetas);
+    }
+  }
 
   if (opciones?.desde) query = query.gte("fecha_inscripcion", opciones.desde);
   if (opciones?.hasta) query = query.lte("fecha_inscripcion", opciones.hasta);
@@ -353,7 +381,7 @@ export async function listarClientes(opcionesCrudas?: FiltrosClientes): Promise<
   clientes: Cliente[];
   total: number;
 }> {
-  const opciones = await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas));
+  const opciones = await resolverEtiquetasExtra(await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas)));
   const limite = opciones?.limite ?? 100;
   const pagina = Math.max(1, opciones?.pagina ?? 1);
   const inicio = (pagina - 1) * limite;
@@ -375,7 +403,7 @@ const CAP_EXPORTACION = 50_000;
 // página actual. Usa el mismo traerTodo() que ya pagina de a 1000 filas
 // (límite de PostgREST) para las agregaciones del dashboard.
 export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promise<Cliente[]> {
-  const opciones = await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas));
+  const opciones = await resolverEtiquetasExtra(await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas)));
   const filas = await traerTodo<ClienteRow>((from, to) => {
     let query = supabase.from("clientes").select("*").is("eliminado_en", null);
     query = aplicarFiltrosClientes(query, opciones);
@@ -388,9 +416,12 @@ export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promis
 }
 
 export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membresias: string[]; etiquetas: string[] }> {
-  const filas = await traerTodo<{ evento: string | null; tipo_membresia: string | null; etiqueta: string | null }>(
-    (from, to) => supabase.from("clientes").select("evento,tipo_membresia,etiqueta").range(from, to)
-  );
+  const filas = await traerTodo<{
+    evento: string | null;
+    tipo_membresia: string | null;
+    etiqueta: string | null;
+    etiquetas_extra: string[] | null;
+  }>((from, to) => supabase.from("clientes").select("evento,tipo_membresia,etiqueta,etiquetas_extra").range(from, to));
   const eventos = new Set<string>();
   const membresias = new Set<string>();
   const etiquetas = new Set<string>();
@@ -398,6 +429,7 @@ export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membr
     if (f.evento) eventos.add(f.evento);
     if (f.tipo_membresia) membresias.add(normalizarTipoMembresia(f.tipo_membresia));
     if (f.etiqueta) etiquetas.add(f.etiqueta);
+    for (const e of f.etiquetas_extra ?? []) etiquetas.add(e);
   }
   return {
     eventos: Array.from(eventos).sort((a, b) => a.localeCompare(b)),
@@ -766,6 +798,7 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
       fechaRenovacion: cliente.fechaRenovacion,
       etiqueta: cliente.etiqueta,
       etiquetaAsignadaEn: cliente.etiquetaAsignadaEn,
+      etiquetasExtra: cliente.etiquetasExtra,
     },
     inventario
   );
@@ -778,6 +811,64 @@ export async function recalcularAccesos(id: string): Promise<Cliente> {
     .single();
   if (error) throw error;
   return filaACliente(data as ClienteRow);
+}
+
+// Agrega una etiqueta EXTRA (además de la principal, "etiqueta") a un
+// cliente — para cuando ya tiene una etiqueta puesta y necesita otra más
+// (ej. ya era MÁS+ y compró Black Access encima). No se puede repetir la
+// misma que ya trae de principal ni una que ya esté en la lista. Recalcula
+// los accesos al final (respeta accesosEditadoManual, como cualquier otro
+// cambio que afecte el cálculo).
+export async function agregarEtiquetaExtra(id: string, etiqueta: string, autor: string): Promise<Cliente> {
+  const limpia = etiqueta.trim();
+  if (!limpia) throw new Error("Falta la etiqueta");
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("etiqueta,etiquetas_extra")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+
+  const actuales: string[] = fila.etiquetas_extra ?? [];
+  if (fila.etiqueta?.trim().toLowerCase() === limpia.toLowerCase()) {
+    throw new Error(`Ya tiene "${limpia}" como etiqueta principal`);
+  }
+  if (actuales.some((e) => e.trim().toLowerCase() === limpia.toLowerCase())) {
+    throw new Error(`Ya tiene la etiqueta "${limpia}"`);
+  }
+
+  const { error } = await supabase
+    .from("clientes")
+    .update({ etiquetas_extra: [...actuales, limpia], actualizado_en: new Date().toISOString() })
+    .eq("id", id);
+  if (error) {
+    if (/etiquetas_extra/i.test(error.message ?? "")) {
+      throw new Error('Falta crear la columna "etiquetas_extra" en Supabase (ver supabase/schema.sql).');
+    }
+    throw error;
+  }
+  await registrarEvento(id, "EDICION_DATOS", `Se agregó la etiqueta "${limpia}"`, autor);
+  return recalcularAccesos(id);
+}
+
+export async function quitarEtiquetaExtra(id: string, etiqueta: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("etiquetas_extra")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+
+  const restantes = (fila.etiquetas_extra ?? []).filter((e: string) => e.trim().toLowerCase() !== etiqueta.trim().toLowerCase());
+  const { error } = await supabase
+    .from("clientes")
+    .update({ etiquetas_extra: restantes, actualizado_en: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEvento(id, "EDICION_DATOS", `Se quitó la etiqueta "${etiqueta}"`, autor);
+  return recalcularAccesos(id);
 }
 
 // Quita la traba de "editado a mano" y recalcula de inmediato — la forma
@@ -1421,7 +1512,8 @@ export async function actualizarDatosCliente(
             anterior.fechaInscripcion,
             anterior.fechaRenovacion,
             anterior.etiqueta,
-            anterior.etiquetaAsignadaEn
+            anterior.etiquetaAsignadaEn,
+            anterior.etiquetasExtra
           );
           return finAnterior.vitalicio || !finAnterior.fecha ? "—" : formatearFechaSkool(finAnterior.fecha);
         })()}" → "${formatearFechaSkool(new Date(finAccesoDeseadoTexto))}"`
