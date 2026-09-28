@@ -955,32 +955,20 @@ export async function aplicarCompraHotmartClubSinergetico(
   // Si la membresía sigue activa, esto EXTIENDE el fin actual +1 año en vez
   // de reiniciar desde hoy — ver anclaAlRenovar en fechas.ts.
   const fechaRenovacion = anclaAlRenovar(cliente.fechaInscripcion, cliente.fechaRenovacion);
-  const fin = finAccesoCalculado(null, fechaRenovacion);
 
-  // Si ya se le había invitado a Skool antes, su vencimiento ahí se extiende
-  // junto con el fin de acceso del Club — mismo criterio que
-  // otorgarAccesoKajabiYSkool para "Renovar membresía" (ver alta-cliente.ts):
-  // esta compra en Hotmart funciona igual de una renovación real, así que
-  // Skool no debe quedarse atrás con la fecha vieja. Si nunca se le había
-  // invitado, se deja como está — se invita por el flujo normal cuando
-  // corresponda, no aquí.
-  const skoolNorm = cliente.invitacionSkool?.trim().toLowerCase();
-  const yaInvitadoASkool = skoolNorm === "invitación enviada" || skoolNorm === "invitacion enviada";
-
-  const cambios: Record<string, unknown> = {
-    evento,
-    tipo_membresia: tipoMembresia,
-    acceso_plataforma: "Si",
-    fecha_renovacion: fechaRenovacion,
-    actualizado_en: new Date().toISOString(),
-  };
-  if (yaInvitadoASkool) {
-    cambios.vencimiento_skool = fin ? formatearFechaSkool(fin) : null;
-    cambios.vencimiento_skool_fecha = fechaSkoolADateOnly(fin);
-  }
-
-  const { error } = await supabase.from("clientes").update(cambios).eq("id", id);
+  const { error } = await supabase
+    .from("clientes")
+    .update({
+      evento,
+      tipo_membresia: tipoMembresia,
+      acceso_plataforma: "Si",
+      fecha_renovacion: fechaRenovacion,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", id);
   if (error) throw error;
+
+  const fin = finAccesoCalculado(null, fechaRenovacion);
   await registrarEvento(
     id,
     "COMPRA_HOTMART",
