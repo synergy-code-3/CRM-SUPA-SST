@@ -399,6 +399,25 @@ export async function obtenerCliente(id: string): Promise<Cliente | null> {
   return data ? filaACliente(data as ClienteRow) : null;
 }
 
+// clientes.id es el correo con el que se dio de alta la primera vez y NUNCA
+// se toca (es la llave técnica de URLs/Kajabi histórico/FKs) — si el cliente
+// después cambió de correo desde su perfil, solo se actualizó la columna
+// "email" (ver actualizarDatosCliente), y su id se queda con el correo
+// viejo. obtenerCliente(id) por sí solo no encuentra a esa persona si se le
+// busca por su correo ACTUAL: cualquier "¿ya existe este cliente?" que solo
+// mire el id puede terminar creando un registro duplicado, o dejando que
+// dos clientes compartan el mismo correo visible sin avisar. Esta función
+// revisa las dos cosas — úsala en vez de obtenerCliente() en cualquier
+// chequeo de "ya existe" antes de dar de alta o de cambiar un correo.
+export async function buscarClientePorCorreo(correo: string): Promise<Cliente | null> {
+  const normalizado = normalizarEmail(correo);
+  const porId = await obtenerCliente(normalizado);
+  if (porId) return porId;
+  const { data, error } = await supabase.from("clientes").select("*").eq("email", normalizado).limit(1).maybeSingle();
+  if (error) throw error;
+  return data ? filaACliente(data as ClienteRow) : null;
+}
+
 // Mismo criterio ya usado en varios lados sueltos (verificarPreAlta en
 // alta-cliente.ts, el foco de Kajabi en Clientes, el cuadro de "modo" al
 // aprobar una Solicitud sobre un cliente existente): "Si" o "Renovación" en
@@ -567,7 +586,8 @@ export async function crearCliente(input: {
   solicitadoPorNombre?: string | null;
 }): Promise<Cliente> {
   const id = normalizarEmail(input.email);
-  const { data: existente } = await supabase.from("clientes").select("id").eq("id", id).maybeSingle();
+  // También revisa la columna "email" (no solo el id) — ver buscarClientePorCorreo.
+  const existente = await buscarClientePorCorreo(id);
   if (existente) throw new Error("Ya existe un cliente con ese correo");
 
   const evento = input.evento?.trim() || null;
@@ -1185,7 +1205,7 @@ export async function actualizarDatosCliente(
   const nuevoEmail = cambios.email?.trim() ? normalizarEmail(cambios.email) : anterior.email;
   const emailCambio = nuevoEmail !== anterior.email;
   if (emailCambio) {
-    const colision = await obtenerCliente(nuevoEmail);
+    const colision = await buscarClientePorCorreo(nuevoEmail);
     if (colision && colision.id !== anterior.id) {
       throw new Error(`Ya existe un cliente con el correo "${nuevoEmail}"`);
     }

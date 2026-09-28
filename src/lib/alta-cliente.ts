@@ -1,10 +1,10 @@
 import {
+  buscarClientePorCorreo,
   crearCliente,
   marcarAccesoPlataforma,
   marcarInvitacionSkoolEnviada,
   marcarMensajeBienvenidaWa,
   normalizarEmail,
-  obtenerCliente,
   recalcularAccesos,
   registrarOfertaClienteClub,
   registrarTagKajabi,
@@ -39,7 +39,7 @@ export type PreAltaResultado =
 //    si quiere revocarla y otorgarle la nueva de todos modos
 //    ("Sobrescribir"), antes de dejar correr altaCompletaCliente().
 export async function verificarPreAlta(email: string): Promise<PreAltaResultado> {
-  const existente = await obtenerCliente(normalizarEmail(email));
+  const existente = await buscarClientePorCorreo(email);
   if (existente) {
     // Mismo criterio que el foco de "acceso a Kajabi" en Clientes
     // (EstadoOnboarding, clientes/page.tsx): "Si" o "Renovación" y sin
@@ -97,7 +97,7 @@ export async function altaCompletaCliente(input: AltaClienteInput, autor: string
   // caso gastar una llamada real a Kajabi para descubrirlo después —
   // crearCliente() vuelve a checarlo de todos modos, por si hay una
   // condición de carrera entre este chequeo y el insert real.
-  const yaExiste = await obtenerCliente(normalizarEmail(input.email));
+  const yaExiste = await buscarClientePorCorreo(input.email);
   if (yaExiste) throw new Error("Ya existe un cliente con ese correo");
 
   const kajabiContactId = await altaEnKajabi(input.nombre, input.email);

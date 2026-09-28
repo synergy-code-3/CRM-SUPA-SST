@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "./supabase";
 import { hashPassword } from "./auth";
-import { obtenerCliente } from "./db";
+import { buscarClientePorCorreo } from "./db";
 import { crearSolicitud, obtenerSolicitudPorLeadVsl } from "./solicitudes";
 import { obtenerClienteCertificacion } from "./certificaciones";
 import { crearSolicitudCertificacion, obtenerSolicitudCertificacionPorLeadVsl } from "./solicitudes-certificacion";
@@ -223,7 +223,7 @@ async function procesarConversionClub(c: ConvertidoVsl, resultado: ResultadoSinc
   // Si el correo ya es cliente aquí (alta manual, u otra vía), no hace
   // falta pasar por Solicitudes — solo se le avisa a VSL que ya tiene
   // acceso, para que deje de aparecer como pendiente de su lado.
-  const clienteExistente = await obtenerCliente(c.email.trim().toLowerCase());
+  const clienteExistente = await buscarClientePorCorreo(c.email);
   if (clienteExistente) {
     await marcarAccesoDadoVsl(c.leadId);
     resultado.yaEranClientes++;

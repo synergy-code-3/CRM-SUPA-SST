@@ -6,9 +6,8 @@ import {
   agregarNota,
   agregarNotaAlPerfil,
   aplicarSolicitudAClienteExistente,
+  buscarClientePorCorreo,
   marcarSoloInvitacionSkoolEnviada,
-  normalizarEmail,
-  obtenerCliente,
   renovarMembresia,
 } from "@/lib/db";
 import { finAccesoConEtiqueta, formatearFechaSkool } from "@/lib/fechas";
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // correoAcceso es el identificador del cliente en el CRM/Kajabi/Skool;
     // correoPago queda solo como referencia en las notas, para conciliar el
     // pago si hace falta.
-    const existente = await obtenerCliente(normalizarEmail(solicitud.correoAcceso));
+    const existente = await buscarClientePorCorreo(solicitud.correoAcceso);
 
     // Si ya es cliente y el front todavía no mandó el modo, se corta aquí
     // sin tocar nada — el front le pregunta al admin qué hacer (ver
