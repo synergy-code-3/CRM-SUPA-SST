@@ -765,7 +765,18 @@ export async function liberarAccesosEditadoManual(id: string, autor: string): Pr
 // partir de una fecha ancla + duración de la membresía. `fechaAncla` es la
 // fecha de inscripción en el alta normal, o el momento de la renovación
 // cuando se llama desde `renovarMembresia`.
-export async function marcarInvitacionSkoolEnviada(id: string, fechaAncla?: string): Promise<Cliente> {
+//
+// `vencimientoExplicito` (si se pasa, aunque sea null) se usa tal cual en
+// vez de calcularlo por meses de membresía — lo usa
+// otorgarAccesoKajabiYSkool en una renovación real para que el vencimiento
+// de Skool quede igual al fin de acceso del Club, no a los meses del tipo
+// de membresía (que en una renovación siempre queda en "12 Meses" aunque el
+// fin de acceso real pueda ser más adelante por una renovación anticipada).
+export async function marcarInvitacionSkoolEnviada(
+  id: string,
+  fechaAncla?: string,
+  vencimientoExplicito?: Date | null
+): Promise<Cliente> {
   const { data: fila, error: errLectura } = await supabase
     .from("clientes")
     .select("fecha_inscripcion,tipo_membresia")
@@ -774,8 +785,13 @@ export async function marcarInvitacionSkoolEnviada(id: string, fechaAncla?: stri
   if (errLectura) throw errLectura;
   if (!fila) throw new Error("Cliente no encontrado");
 
-  const ancla = fechaAncla ?? fila.fecha_inscripcion;
-  const vencimiento = ancla ? calcularVencimientoSkool(ancla, fila.tipo_membresia) : null;
+  const vencimiento =
+    vencimientoExplicito !== undefined
+      ? vencimientoExplicito
+      : (() => {
+          const ancla = fechaAncla ?? fila.fecha_inscripcion;
+          return ancla ? calcularVencimientoSkool(ancla, fila.tipo_membresia) : null;
+        })();
 
   const { data, error } = await supabase
     .from("clientes")

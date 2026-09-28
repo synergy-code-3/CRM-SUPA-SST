@@ -18,6 +18,7 @@ import {
   KAJABI_TAG_MIEMBRO_DEL_CLUB,
   otorgarOfertaArbitraria,
 } from "@/lib/kajabi";
+import { finAccesoCalculado } from "@/lib/fechas";
 import { invitarASkool } from "@/lib/skool";
 import type { Cliente } from "@/lib/types";
 
@@ -173,10 +174,23 @@ export async function otorgarAccesoKajabiYSkool(
   // hizo antes de llamar esta función, sin importar si Kajabi respondió.
   let clienteFinal = await recalcularAccesos(cliente.id);
 
+  // Renovación real ("Renovar membresía", acceso = "Renovación"): el
+  // vencimiento de Skool queda igual al fin de acceso del Club, no a los
+  // meses del tipo de membresía — evita que Skool venza antes o después que
+  // el Club por una renovación anticipada (ver anclaAlRenovar en fechas.ts).
+  // "Activar oferta" (acceso = "Si") sigue el cálculo de siempre, por meses
+  // desde hoy.
+  const esRenovacion = clienteFinal.accesoPlataforma?.trim().toLowerCase() === "renovación";
+  const vencimientoSkoolRenovacion = esRenovacion
+    ? finAccesoCalculado(null, clienteFinal.fechaRenovacion)
+    : undefined;
+
   let avisoSkool: string | null = null;
   try {
     await invitarASkool(clienteFinal.email);
-    clienteFinal = await marcarInvitacionSkoolEnviada(clienteFinal.id, new Date().toISOString());
+    clienteFinal = esRenovacion
+      ? await marcarInvitacionSkoolEnviada(clienteFinal.id, undefined, vencimientoSkoolRenovacion)
+      : await marcarInvitacionSkoolEnviada(clienteFinal.id, new Date().toISOString());
   } catch (err) {
     avisoSkool = err instanceof Error ? err.message : "No se pudo enviar la invitación a Skool";
   }
