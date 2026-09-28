@@ -1721,6 +1721,69 @@ export function ClientePanel({
                                 </div>
                               </div>
                             )}
+                            {/* Renovación anticipada: el cliente ya pagó de verdad, pero su
+                                oferta en Kajabi sigue activa (no venció). El botón normal de
+                                "Renovar" solo aparece cuando Kajabi ya la revocó, a propósito
+                                (evita que un clic accidental le revoque y regrale la oferta sin
+                                razón) — este es el mismo flujo (confirmarRenovar/pasoRenovar),
+                                puesto aparte con su propio texto porque aquí SÍ hay que avisar
+                                que se le va a revocar y volver a otorgar la oferta en Kajabi. */}
+                            {!puedeRenovar || pasoPausar !== 0 ? null : pasoRenovar === 0 && (
+                              <button
+                                onClick={confirmarRenovar}
+                                className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                Registrar renovación anticipada
+                              </button>
+                            )}
+                            {pasoRenovar === 1 && (
+                              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+                                <p className="mb-2.5 text-xs text-foreground">
+                                  Úsalo solo si ya pagó una renovación real antes de que le venciera. Va a
+                                  revocar y volver a otorgar la oferta en Kajabi (así reactiva todo el
+                                  paquete), reenviar la invitación de Skool, poner la etiqueta
+                                  &quot;Renovación&quot; y sumarle un año a su fin de acceso actual — no lo
+                                  reinicia desde hoy, no pierde lo que ya tenía pagado. ¿Confirmas?
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setPasoRenovar(0)}
+                                    className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={confirmarRenovar}
+                                    className="ease-spring rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-white transition"
+                                  >
+                                    Sí, continuar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {pasoRenovar === 2 && (
+                              <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
+                                <p className="mb-2.5 text-xs font-medium text-danger">
+                                  Última confirmación — esta acción no se puede deshacer fácilmente.
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setPasoRenovar(0)}
+                                    className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={confirmarRenovar}
+                                    disabled={renovando}
+                                    className="ease-spring rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                                  >
+                                    {renovando ? "Renovando…" : "Confirmar renovación"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         {estadoKajabi === "sin_contacto" && (
