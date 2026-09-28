@@ -285,6 +285,17 @@ export function calcularAccesos(
   // etiqueta la que decide, igual que MÁS+.
   const extraBlack: AccesoDetalle[] = etiquetaKey === "black access" ? [accesoDe(1, null)] : [];
 
+  // Black Access es un pase, no una cantidad de boletos a distintos eventos
+  // (a diferencia de General/VIP, que sí tienen sentido en cantidad) — tener
+  // "2" no significa nada distinto de tener "1". Si el evento del cliente
+  // YA le da un Black por su cuenta (hoy solo pasa con "BGI") y además tiene
+  // la etiqueta, se topa en 1 en vez de sumarlos — así la etiqueta nunca
+  // duplica el que ya traía por evento.
+  function toparBlackEn1(lista: AccesoDetalle[]): AccesoDetalle[] {
+    const total = lista.reduce((suma, d) => suma + d.cantidad, 0);
+    return total > 0 ? [accesoDe(1, null)] : [];
+  }
+
   // Junta los extras de etiqueta (si hay) con lo que le toque por evento —
   // usado en cada rama de abajo para no repetir la suma en cada return.
   function conExtras(base: Accesos, sinInformacion: boolean): ResultadoBoletos {
@@ -292,7 +303,7 @@ export function calcularAccesos(
       accesos: {
         general: base.general,
         vip: sumarChips(base.vip, extraVip),
-        black: sumarChips(base.black, extraBlack),
+        black: toparBlackEn1(sumarChips(base.black, extraBlack)),
       },
       sinInformacion,
     };
