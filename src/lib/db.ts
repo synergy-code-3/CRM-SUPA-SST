@@ -134,6 +134,7 @@ export type FiltrosClientes = {
   eventos?: string[];
   tipoEvento?: TipoEventoFiltro;
   membresias?: string[];
+  etiquetas?: string[];
   desde?: string;
   hasta?: string;
   vencidosAntesDe?: string;
@@ -315,6 +316,7 @@ function aplicarFiltrosClientes<
   if (opciones?.membresias?.length) {
     query = query.or(opciones.membresias.map((m) => `tipo_membresia.ilike.${m}`).join(","));
   }
+  if (opciones?.etiquetas?.length) query = query.in("etiqueta", opciones.etiquetas);
 
   if (opciones?.desde) query = query.gte("fecha_inscripcion", opciones.desde);
   if (opciones?.hasta) query = query.lte("fecha_inscripcion", opciones.hasta);
@@ -385,19 +387,22 @@ export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promis
   return filas.map(filaACliente);
 }
 
-export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membresias: string[] }> {
-  const filas = await traerTodo<{ evento: string | null; tipo_membresia: string | null }>((from, to) =>
-    supabase.from("clientes").select("evento,tipo_membresia").range(from, to)
+export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membresias: string[]; etiquetas: string[] }> {
+  const filas = await traerTodo<{ evento: string | null; tipo_membresia: string | null; etiqueta: string | null }>(
+    (from, to) => supabase.from("clientes").select("evento,tipo_membresia,etiqueta").range(from, to)
   );
   const eventos = new Set<string>();
   const membresias = new Set<string>();
+  const etiquetas = new Set<string>();
   for (const f of filas) {
     if (f.evento) eventos.add(f.evento);
     if (f.tipo_membresia) membresias.add(normalizarTipoMembresia(f.tipo_membresia));
+    if (f.etiqueta) etiquetas.add(f.etiqueta);
   }
   return {
     eventos: Array.from(eventos).sort((a, b) => a.localeCompare(b)),
     membresias: Array.from(membresias).sort((a, b) => a.localeCompare(b)),
+    etiquetas: Array.from(etiquetas).sort((a, b) => a.localeCompare(b)),
   };
 }
 

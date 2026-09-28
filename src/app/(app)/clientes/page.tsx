@@ -41,6 +41,7 @@ const FILTROS_VACIOS = {
   proceso: "todos" as Proceso,
   eventos: [] as string[],
   membresias: [] as string[],
+  etiquetas: [] as string[],
   desde: "",
   hasta: "",
   vencidosAntesDe: "",
@@ -114,9 +115,10 @@ function ClientesPageInner() {
   const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false);
   const { registrar: registrarFiltrosMovil } = useFiltrosMovil();
   const [filtrosVisibles, setFiltrosVisibles] = useState(true);
-  const [opciones, setOpciones] = useState<{ eventos: string[]; membresias: string[] }>({
+  const [opciones, setOpciones] = useState<{ eventos: string[]; membresias: string[]; etiquetas: string[] }>({
     eventos: [],
     membresias: [],
+    etiquetas: [],
   });
 
   // Deep-link desde el buscador del Dashboard (u otro lugar): ?cliente=<id>
@@ -176,6 +178,7 @@ function ClientesPageInner() {
     if (filtros.proceso !== "todos") params.set("proceso", filtros.proceso);
     if (filtros.eventos.length) params.set("eventos", filtros.eventos.join(","));
     if (filtros.membresias.length) params.set("membresias", filtros.membresias.join(","));
+    if (filtros.etiquetas.length) params.set("etiquetas", filtros.etiquetas.join(","));
     if (filtros.desde) params.set("desde", filtros.desde);
     if (filtros.hasta) params.set("hasta", filtros.hasta);
     if (filtros.vencidosAntesDe) params.set("vencidosAntesDe", filtros.vencidosAntesDe);
@@ -281,6 +284,7 @@ function ClientesPageInner() {
     filtros.proceso !== "todos" ||
     filtros.eventos.length > 0 ||
     filtros.membresias.length > 0 ||
+    filtros.etiquetas.length > 0 ||
     !!filtros.desde ||
     !!filtros.hasta ||
     !!filtros.vencidosAntesDe;
@@ -291,7 +295,8 @@ function ClientesPageInner() {
     filtros.tipoEvento !== "todos",
     filtros.proceso !== "todos",
     filtros.eventos.length > 0,
-    filtros.membresias.length > 0,
+    filtros.membresias.length > 0 ||
+    filtros.etiquetas.length > 0,
     !!filtros.desde,
     !!filtros.hasta,
     !!filtros.vencidosAntesDe,
@@ -454,6 +459,13 @@ function ClientesPageInner() {
               seleccion={filtros.membresias}
               onChange={(v) => setFiltros((f) => ({ ...f, membresias: v }))}
             />
+            <MultiSelect
+              label="etiquetas"
+              todasLabel="Todas las etiquetas"
+              opciones={opciones.etiquetas}
+              seleccion={filtros.etiquetas}
+              onChange={(v) => setFiltros((f) => ({ ...f, etiquetas: v }))}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-silver/60 pt-3">
@@ -585,6 +597,17 @@ function ClientesPageInner() {
                   opciones={opciones.membresias}
                   seleccion={filtros.membresias}
                   onChange={(v) => setFiltros((f) => ({ ...f, membresias: v }))}
+                  anchoCompleto
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted">Etiqueta</p>
+                <MultiSelect
+                  label="etiquetas"
+                  todasLabel="Todas las etiquetas"
+                  opciones={opciones.etiquetas}
+                  seleccion={filtros.etiquetas}
+                  onChange={(v) => setFiltros((f) => ({ ...f, etiquetas: v }))}
                   anchoCompleto
                 />
               </div>

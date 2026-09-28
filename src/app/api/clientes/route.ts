@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const eventos = searchParams.get("eventos")?.split(",").filter(Boolean) ?? undefined;
   const tipoEvento = (searchParams.get("tipoEvento") as TipoEventoFiltro | null) ?? undefined;
   const membresias = searchParams.get("membresias")?.split(",").filter(Boolean) ?? undefined;
+  const etiquetas = searchParams.get("etiquetas")?.split(",").filter(Boolean) ?? undefined;
   const desde = searchParams.get("desde") ?? undefined;
   const hasta = searchParams.get("hasta") ?? undefined;
   const vencidosAntesDe = searchParams.get("vencidosAntesDe") ?? undefined;
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     eventos,
     tipoEvento,
     membresias,
+    etiquetas,
     desde,
     hasta,
     vencidosAntesDe,
