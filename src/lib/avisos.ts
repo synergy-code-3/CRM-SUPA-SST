@@ -131,6 +131,13 @@ export async function eliminarAviso(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// Un aviso solo puede aparecer como ventana emergente durante estos días
+// desde que se creó — pasado ese plazo, quien no lo haya visto ya no lo ve
+// emergente (se queda nada más en la página "Avisos", donde siempre sigue
+// visible sin importar la vigencia). Evita que alguien nuevo reciba, de
+// golpe, todo el historial de avisos de meses atrás como si fueran de hoy.
+export const VIGENCIA_AVISO_DIAS = 5;
+
 // Avisos que "usuarioId" todavía no ha confirmado, sin contar los que él
 // mismo publicó — más viejo primero, para mostrarlos en ese orden en la
 // ventana emergente. Volumen bajo (avisos internos del equipo, no miles de
@@ -139,6 +146,7 @@ export async function eliminarAviso(id: string): Promise<void> {
 // automáticas de Kajabi) — ni le cuentan para la burbuja ni le abren la
 // ventana emergente a coordinador/abeja.
 export async function listarAvisosPendientes(usuarioId: string, esAdmin: boolean): Promise<Aviso[]> {
+  const limiteVigencia = new Date(Date.now() - VIGENCIA_AVISO_DIAS * 24 * 60 * 60 * 1000).toISOString();
   // .neq("autor_id", usuarioId) no basta sola: en SQL, NULL != x nunca da
   // verdadero, así que un aviso generado por el sistema (autor_id null, ver
   // crearAvisoAutomatico) quedaría invisible para todos si se usa un .neq
@@ -154,6 +162,7 @@ export async function listarAvisosPendientes(usuarioId: string, esAdmin: boolean
     .from("avisos")
     .select("*")
     .or(`${dirigidoAMi},and(${broadcast.join(",")})`)
+    .gte("creado_en", limiteVigencia)
     .order("creado_en", { ascending: true });
   const { data: avisos, error } = await query;
   if (error) throw error;
