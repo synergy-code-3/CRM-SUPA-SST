@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
@@ -24,8 +24,13 @@ import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
 import { estadoApartado50, estadoMembresia, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
+import { crearCacheDeVista } from "@/lib/cache-vista";
 
 const LIMITE = 100;
+
+// Una entrada por combinación exacta de filtros+página (la misma
+// querystring que ya se le manda a /api/clientes) — ver cache-vista.ts.
+const cacheClientes = crearCacheDeVista<{ clientes: Cliente[]; total: number }>();
 
 type Estado = "todos" | "activos" | "revocados";
 type Region = "todos" | "MX" | "US" | "LATAM";
@@ -185,18 +190,50 @@ function ClientesPageInner() {
     return params;
   }, [busqueda, filtros]);
 
+  // Clave exacta de esta combinación de filtros+página — la misma
+  // querystring que se le manda a /api/clientes, así cada combinación tiene
+  // su propia entrada de cache (ver cache-vista.ts).
+  const claveVista = useMemo(() => {
+    const params = paramsFiltros();
+    params.set("limite", String(LIMITE));
+    params.set("pagina", String(pagina));
+    return params.toString();
+  }, [paramsFiltros, pagina]);
+
+  // recargaKey fuerza un refresco de verdad (ej. tras importar un CSV) — ahí
+  // sí se descarta lo que hubiera en cache para no mostrar ni un instante
+  // datos que ya sabemos viejos.
+  const recargaKeyAnterior = useRef(recargaKey);
+  if (recargaKeyAnterior.current !== recargaKey) {
+    recargaKeyAnterior.current = recargaKey;
+    cacheClientes.limpiar();
+  }
+
   useEffect(() => {
-    setCargando(true);
+    // Primero lo que ya se vio (si esta combinación de filtros/página ya se
+    // había cargado antes en esta pestaña) — instantáneo, sin "Cargando…".
+    const enCache = cacheClientes.obtener(claveVista);
+    if (enCache) {
+      setClientes(enCache.clientes);
+      setTotal(enCache.total);
+      setCargando(false);
+    } else {
+      setCargando(true);
+    }
+
+    // Y, de todos modos, siempre se refresca de verdad — así un cambio
+    // hecho en otro dispositivo/pestaña se termina reflejando aquí también,
+    // el cache de arriba solo evita la espera, no sustituye el dato real.
     const controlador = new AbortController();
     const timeout = setTimeout(() => {
-      const params = paramsFiltros();
-      params.set("limite", String(LIMITE));
-      params.set("pagina", String(pagina));
-      fetch(`/api/clientes?${params}`, { signal: controlador.signal })
+      fetch(`/api/clientes?${claveVista}`, { signal: controlador.signal })
         .then((r) => r.json())
         .then((data) => {
-          setClientes(data.clientes ?? []);
-          setTotal(data.total ?? 0);
+          const clientes = data.clientes ?? [];
+          const total = data.total ?? 0;
+          cacheClientes.guardar(claveVista, { clientes, total });
+          setClientes(clientes);
+          setTotal(total);
           setCargando(false);
         })
         .catch(() => {});
@@ -205,7 +242,10 @@ function ClientesPageInner() {
       clearTimeout(timeout);
       controlador.abort();
     };
-  }, [paramsFiltros, pagina, recargaKey]);
+    // recargaKey no cambia claveVista pero sí debe forzar este efecto de
+    // nuevo (ej. tras importar un CSV) — la limpieza de cache de arriba ya
+    // se encarga de que no se alcance a mostrar un dato viejo.
+  }, [claveVista, recargaKey]);
 
   async function descargarClientes(conFiltros: boolean) {
     setDescargando(true);

@@ -50,6 +50,7 @@ import { CopyButton } from "@/components/certificaciones/CopyButton";
 import { FilterMultiSelect } from "@/components/certificaciones/FilterMultiSelect";
 import { BulkActionMenu } from "@/components/certificaciones/BulkActionMenu";
 import { ClienteCertificacionPanel } from "@/components/certificaciones/ClienteCertificacionPanel";
+import { crearCacheDeVista } from "@/lib/cache-vista";
 
 type Criterio = "nombre" | "correo" | "telefono" | "notas" | "historial";
 const CRITERIOS: { value: Criterio; label: string }[] = [
@@ -74,6 +75,11 @@ const OPCIONES_BIENVENIDA = (Object.keys(BIENVENIDA_LABEL) as MensajeBienvenidaC
   value: e,
   label: BIENVENIDA_LABEL[e],
 }));
+
+// /api/certificaciones no recibe filtros (todo el filtrado/orden es en
+// cliente) — una sola entrada de cache alcanza (ver cache-vista.ts).
+const CLAVE_CACHE_CERTIFICACIONES = "todos";
+const cacheCertificaciones = crearCacheDeVista<ClienteCertificacion[]>();
 
 export default function CertificacionesPage() {
   useColoresTags();
@@ -102,10 +108,16 @@ export default function CertificacionesPage() {
     const res = await fetch("/api/certificaciones");
     if (!res.ok) return;
     const data = await res.json();
+    cacheCertificaciones.guardar(CLAVE_CACHE_CERTIFICACIONES, data.clientes ?? []);
     setClientes(data.clientes);
   }, []);
 
   useEffect(() => {
+    // Lo que ya se vio en esta pestaña se pinta de inmediato (sin quedar en
+    // null → "Cargando…") y, de todos modos, se refresca de verdad aparte
+    // — así un cambio hecho en otro dispositivo/pestaña se sigue reflejando.
+    const enCache = cacheCertificaciones.obtener(CLAVE_CACHE_CERTIFICACIONES);
+    if (enCache) setClientes(enCache);
     cargar();
   }, [cargar]);
 
