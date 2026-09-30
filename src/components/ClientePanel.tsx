@@ -55,7 +55,7 @@ import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
 import { LOGO_NECESITA_FONDO_SOLIDO, RUTA_LOGO_EVENTO, logoParaCliente } from "@/lib/logo-eventos";
-import { finAccesoConEtiqueta, formatearFechaSkool } from "@/lib/fechas";
+import { estadoApartado50, finAccesoConEtiqueta, formatearFechaSkool } from "@/lib/fechas";
 import type { ConvertidoVsl } from "@/lib/vsl-soporte";
 import type { HistorialAxis } from "@/lib/axis";
 
@@ -240,6 +240,7 @@ export function ClientePanel({
   const [renovando, setRenovando] = useState(false);
   const [pasoRenovacionAnticipada, setPasoRenovacionAnticipada] = useState<0 | 1 | 2>(0);
   const [renovandoAnticipada, setRenovandoAnticipada] = useState(false);
+  const [apagandoApartado50, setApagandoApartado50] = useState(false);
   const [pasoActivarOferta, setPasoActivarOferta] = useState<0 | 1 | 2>(0);
   const [activandoOferta, setActivandoOferta] = useState(false);
   const [pasoEliminar, setPasoEliminar] = useState<0 | 1 | 2>(0);
@@ -732,6 +733,26 @@ export function ClientePanel({
       r.json()
     );
     setEventos(eventosRes.eventos ?? []);
+  }
+
+  // "Apagar el temporizador" de Apartado 50% — el cliente ya liquidó el
+  // otro 50%, se cancela la cuenta regresiva de 30 días sin tocar el acceso.
+  async function apagarApartado50() {
+    if (!cliente) return;
+    setApagandoApartado50(true);
+    setError(null);
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/apagar-apartado50`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setApagandoApartado50(false);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo apagar el temporizador");
+      return;
+    }
+    setCliente(data.cliente);
+    setForm(formDeCliente(data.cliente));
+    onClienteActualizado(data.cliente);
   }
 
   // Mismo flujo que confirmarRenovar, pero para "Activar oferta" — la
@@ -1839,6 +1860,34 @@ export function ClientePanel({
                               <Check className="h-4 w-4" strokeWidth={2} />
                               Oferta activa en Kajabi
                             </p>
+                            {cliente.apartado50 && (() => {
+                              const estado = estadoApartado50(cliente);
+                              if (!estado) return null;
+                              return (
+                                <div
+                                  className={`rounded-lg border p-3 ${
+                                    estado.vencido
+                                      ? "border-danger/40 bg-danger/10"
+                                      : "border-warning/30 bg-warning/10"
+                                  }`}
+                                >
+                                  <p className="mb-2 text-xs font-medium text-foreground">
+                                    {estado.vencido
+                                      ? `Apartado 50% vencido — pasaron ${-estado.diasRestantes} días desde el límite (${formatearFechaSkool(estado.fechaLimite)})`
+                                      : `Apartado 50% activo — faltan ${estado.diasRestantes} días para liquidar (límite: ${formatearFechaSkool(estado.fechaLimite)})`}
+                                  </p>
+                                  {puedeEditar && (
+                                    <button
+                                      onClick={apagarApartado50}
+                                      disabled={apagandoApartado50}
+                                      className="ease-spring rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
+                                    >
+                                      {apagandoApartado50 ? "Apagando…" : "Apagar temporizador (ya liquidó)"}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {!puedePausar ? null : pasoPausar === 0 && (
                               <button
                                 onClick={confirmarPausar}

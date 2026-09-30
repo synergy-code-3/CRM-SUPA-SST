@@ -73,6 +73,10 @@ export type AltaClienteInput = {
   // Nombre del vendedor que llenó la Solicitud original, si el alta viene
   // de ahí — ver POST /api/solicitudes/[id]/aprobar.
   solicitadoPorNombre?: string | null;
+  // "Apartado 50%" — ver crearCliente (db.ts): solo aplica de verdad cuando
+  // evento === EVENTO_APARTADO_50, esto es la casilla que el vendedor/admin
+  // marcó en el formulario.
+  apartado50?: boolean;
 };
 
 export type ResultadoAltaCliente = {

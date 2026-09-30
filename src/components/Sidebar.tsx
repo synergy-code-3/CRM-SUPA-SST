@@ -413,6 +413,109 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
   );
 }
 
+const INTERVALO_APARTADOS_MS = 60 * 1000;
+
+type ApartadoVencido = { id: string; nombre: string; email: string; apartado50En: string };
+
+// Clientes con "Apartado 50%" cuyo temporizador de 30 días ya venció — ver
+// listarApartadosVencidos (db.ts). A diferencia de los avisos, esto solo lo
+// ve quien puede revocar acceso (admin), y no bloquea el uso del CRM: se
+// puede cerrar y sigue apareciendo en el siguiente poll mientras no se
+// resuelva (revocar o apagar el temporizador desde el perfil).
+function useApartadosVencidos(usuario: UsuarioSesion | null) {
+  const [vencidos, setVencidos] = useState<ApartadoVencido[]>([]);
+
+  useEffect(() => {
+    if (!usuario || !tienePermiso(usuario.rol, "revocarAccesoCliente")) return;
+    let cancelado = false;
+    async function cargar() {
+      try {
+        const res = await fetch("/api/clientes/apartados-vencidos");
+        if (!res.ok || cancelado) return;
+        const data = await res.json();
+        if (!cancelado) setVencidos(data.vencidos ?? []);
+      } catch {
+        // Sin novedades esta vez — se reintenta en el próximo intervalo.
+      }
+    }
+    cargar();
+    const intervalo = setInterval(cargar, INTERVALO_APARTADOS_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [usuario]);
+
+  return { vencidos, quitarDeLaLista: (id: string) => setVencidos((v) => v.filter((c) => c.id !== id)) };
+}
+
+function ApartadosVencidosModal({
+  vencidos,
+  onRevocado,
+  onCerrar,
+}: {
+  vencidos: ApartadoVencido[];
+  onRevocado: (id: string) => void;
+  onCerrar: () => void;
+}) {
+  const [revocando, setRevocando] = useState<string | null>(null);
+
+  async function revocar(id: string) {
+    setRevocando(id);
+    try {
+      const res = await fetch(`/api/clientes/${encodeURIComponent(id)}/revocar-acceso`, { method: "POST" });
+      if (res.ok) onRevocado(id);
+    } finally {
+      setRevocando(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-danger/20 p-6 backdrop-blur-[2px]">
+      <div className="shell w-full max-w-md rounded-[2rem] p-2 diffused-lg animate-fade-in ring-2 ring-danger/60">
+        <div className="core rounded-[calc(2rem-0.5rem)] p-6">
+          <div className="mb-3 flex items-center gap-2 text-danger">
+            <AlertTriangle className="h-5 w-5 flex-none" strokeWidth={1.75} />
+            <h2 className="text-base font-semibold text-foreground">
+              Apartado 50% vencido{vencidos.length > 1 ? ` (${vencidos.length})` : ""}
+            </h2>
+          </div>
+          <p className="mb-4 text-sm text-foreground">
+            Pasaron 30 días desde que se les dio acceso completo y nadie apagó el temporizador — hay que darlos de
+            baja o, si ya liquidaron, apagar el temporizador desde su perfil.
+          </p>
+          <ul className="mb-4 max-h-64 space-y-2 overflow-y-auto">
+            {vencidos.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{c.nombre}</p>
+                  <p className="truncate text-xs text-muted">{c.email}</p>
+                </div>
+                <button
+                  onClick={() => revocar(c.id)}
+                  disabled={revocando === c.id}
+                  className="ease-spring flex-none rounded-lg bg-danger px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-danger/90 disabled:opacity-40"
+                >
+                  {revocando === c.id ? "Revocando…" : "Revocar acceso"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={onCerrar}
+            className="ease-spring w-full rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface"
+          >
+            Cerrar por ahora
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { usuario } = useSesion();
@@ -421,6 +524,11 @@ export function Sidebar() {
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const conteos = useConteosPendientes(usuario);
   const { avisoActual, quitarDeLaCola } = useAvisosPendientes(usuario);
+  const { vencidos: apartadosVencidos, quitarDeLaLista: quitarApartadoVencido } = useApartadosVencidos(usuario);
+  // "Cerrar por ahora" solo oculta hasta el siguiente poll (60s) — no se
+  // puede descartar para siempre mientras el temporizador siga vencido.
+  const [apartadosCerrado, setApartadosCerrado] = useState(false);
+  useEffect(() => setApartadosCerrado(false), [apartadosVencidos]);
 
   // Cierra el drawer solo con la navegación (no al abrirlo), para que un
   // clic en un link de menú no deje el drawer abierto detrás de la página
@@ -555,6 +663,13 @@ export function Sidebar() {
 
       {mostrarPerfil && <MiPerfilModal onClose={() => setMostrarPerfil(false)} />}
       {avisoActual && <AvisoPendienteModal aviso={avisoActual} onCerrar={() => quitarDeLaCola(avisoActual.id)} />}
+      {apartadosVencidos.length > 0 && !apartadosCerrado && (
+        <ApartadosVencidosModal
+          vencidos={apartadosVencidos}
+          onRevocado={quitarApartadoVencido}
+          onCerrar={() => setApartadosCerrado(true)}
+        />
+      )}
     </>
   );
 }

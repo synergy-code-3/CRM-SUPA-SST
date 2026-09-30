@@ -8,6 +8,9 @@ import type { Cliente } from "@/lib/types";
 
 const OPCIONES_PAIS = PAISES_AMERICA.map((p) => ({ valor: p.nombre, etiqueta: p.nombre, nota: p.lada }));
 const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
+// Mismo valor que EVENTO_APARTADO_50 en src/lib/boletos.ts (ese archivo es
+// server-only — usa fs/path — por eso aquí va literal).
+const EVENTO_APARTADO_50 = "USA-WJS";
 
 // Cuando el correo ya tiene algún estado previo que "Nuevo cliente" no
 // debe pisar a ciegas — ver verificarPreAlta() en src/lib/alta-cliente.ts.
@@ -35,6 +38,7 @@ export function NuevoClienteModal({
     tipoMembresia: "",
     etiqueta: "",
     ofertaAdicionalId: "",
+    apartado50: false,
   });
   const [eventos, setEventos] = useState<{ valor: string; etiqueta: string }[]>([]);
   const [etiquetas, setEtiquetas] = useState<{ valor: string; etiqueta: string }[]>([]);
@@ -182,10 +186,27 @@ export function NuevoClienteModal({
               <ComboboxBuscador
                 opciones={eventos}
                 valor={form.evento}
-                onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                onChange={(evento) =>
+                  setForm((f) => ({
+                    ...f,
+                    evento,
+                    apartado50: evento === EVENTO_APARTADO_50 ? f.apartado50 : false,
+                  }))
+                }
                 placeholder="Seleccionar evento…"
               />
             </Campo>
+            {form.evento === EVENTO_APARTADO_50 && (
+              <label className="ease-spring flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm font-medium text-foreground">
+                <input
+                  type="checkbox"
+                  checked={form.apartado50}
+                  onChange={(e) => setForm((f) => ({ ...f, apartado50: e.target.checked }))}
+                  className="h-4 w-4 flex-none rounded border-silver"
+                />
+                Apartado 50% — dar acceso completo ahora con temporizador de 30 días para liquidar el resto
+              </label>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Campo label="Tipo de membresía">
                 <ComboboxBuscador

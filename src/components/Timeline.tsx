@@ -19,6 +19,8 @@ import {
   ShoppingCart,
   Lock,
   Unlock,
+  Timer,
+  TimerOff,
 } from "lucide-react";
 import { TIPO_EVENTO_LABEL, type EventoTimeline, type TipoEvento } from "@/lib/types";
 
@@ -45,6 +47,8 @@ const ICONS: Record<TipoEvento, typeof UserPlus> = {
   COMPRA_HOTMART: ShoppingCart,
   SU27_ACTIVADO: Lock,
   SU27_DESACTIVADO: Unlock,
+  APARTADO50_ACTIVADO: Timer,
+  APARTADO50_APAGADO: TimerOff,
 };
 
 const LABEL = TIPO_EVENTO_LABEL;

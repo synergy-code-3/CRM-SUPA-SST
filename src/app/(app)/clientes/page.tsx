@@ -22,7 +22,7 @@ import { ImportarClientesModal } from "@/components/ImportarClientesModal";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
-import { estadoMembresia, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
+import { estadoApartado50, estadoMembresia, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 
 const LIMITE = 100;
@@ -662,12 +662,17 @@ function ClientesPageInner() {
                     indicadores de estado — el resto de los datos (teléfono,
                     evento, membresía) solo se ve al entrar al perfil. */}
                 <ul className="divide-y divide-silver/60 md:hidden">
-                  {clientes.map((c) => (
+                  {clientes.map((c) => {
+                    const apartadoVencido = estadoApartado50(c)?.vencido ?? false;
+                    return (
                     <li key={c.id}>
                       <button
                         onClick={() => setSeleccionado(c.id)}
                         aria-label={`Ver perfil de ${c.nombre}`}
-                        className="ease-spring flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-2"
+                        title={apartadoVencido ? "Apartado 50% vencido — pasaron 30 días sin liquidar" : undefined}
+                        className={`ease-spring flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-2 ${
+                          apartadoVencido ? "bg-danger/10" : ""
+                        }`}
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-foreground">{c.nombre}</p>
@@ -676,7 +681,8 @@ function ClientesPageInner() {
                         <EstadoOnboarding cliente={c} enEsperaWa={clientesEsperandoWa.has(c.id)} />
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
 
                 <table className="hidden w-full min-w-[1100px] table-fixed text-sm md:table">
@@ -699,7 +705,9 @@ function ClientesPageInner() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clientes.map((c) => (
+                    {clientes.map((c) => {
+                      const apartadoVencido = estadoApartado50(c)?.vencido ?? false;
+                      return (
                       <tr
                         key={c.id}
                         onClick={() => setSeleccionado(c.id)}
@@ -707,7 +715,10 @@ function ClientesPageInner() {
                         tabIndex={0}
                         role="button"
                         aria-label={`Ver perfil de ${c.nombre}`}
-                        className="ease-spring cursor-pointer border-b border-silver/60 outline-none transition last:border-0 hover:bg-surface-2 focus-visible:bg-primary-dim"
+                        title={apartadoVencido ? "Apartado 50% vencido — pasaron 30 días sin liquidar" : undefined}
+                        className={`ease-spring cursor-pointer border-b border-silver/60 outline-none transition last:border-0 hover:bg-surface-2 focus-visible:bg-primary-dim ${
+                          apartadoVencido ? "bg-danger/10" : ""
+                        }`}
                       >
                         <td className="truncate px-5 py-2.5 font-medium text-foreground" title={c.nombre}>
                           {c.nombre}
@@ -726,7 +737,8 @@ function ClientesPageInner() {
                           <EstadoOnboarding cliente={c} enEsperaWa={clientesEsperandoWa.has(c.id)} />
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

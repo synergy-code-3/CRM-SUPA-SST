@@ -18,6 +18,11 @@ const INVENTARIO_PATH = path.join(process.cwd(), "Asignacion de boletos.csv");
 // según desde dónde se ejecutara el recálculo.
 export const FECHA_CORTE = new Date(Date.UTC(2026, 8, 19));
 
+// Único evento que habilita "Apartado 50%" (ver crearCliente en db.ts y
+// FormularioSolicitudCliente/NuevoClienteModal): nombre exacto tal como vive
+// en el catálogo de eventos de Supabase.
+export const EVENTO_APARTADO_50 = "USA-WJS";
+
 type FilaInventario = {
   evento: string;
   gral_mx: [number, number, number]; // [3m, 6m, 12m]

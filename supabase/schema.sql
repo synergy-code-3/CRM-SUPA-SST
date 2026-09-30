@@ -648,3 +648,18 @@ alter table certificaciones_clientes add column if not exists accesos jsonb;
 -- inmediato (ver calcularAccesos en boletos.ts y finAccesoConEtiqueta en
 -- fechas.ts).
 alter table clientes add column if not exists etiquetas_extra text[] not null default '{}';
+
+-- "Apartado 50%" (solo evento USA-WJS): al darlo de alta con ese evento se
+-- le otorga el acceso completo de una vez, pero arranca un temporizador de
+-- 30 días para liquidar el otro 50%. Mientras apartado_50 sea true, la fila
+-- se pinta en rojo pasados los 30 días desde apartado_50_en y aparece en la
+-- ventana emergente de "apartados vencidos" (ver listarApartadosVencidos en
+-- db.ts) hasta que un admin lo revoque o "apague" el temporizador a mano
+-- (porque ya liquidó) — cualquiera de los dos limpia estos dos campos.
+alter table clientes add column if not exists apartado_50 boolean not null default false;
+alter table clientes add column if not exists apartado_50_en timestamptz;
+
+-- Casilla del formulario de Solicitud (visible solo cuando evento =
+-- "USA-WJS"): si el vendedor la marca, al aprobar la solicitud el alta
+-- nueva se crea con apartado_50 activo — ver crearCliente en db.ts.
+alter table solicitudes_cliente add column if not exists apartado_50 boolean not null default false;

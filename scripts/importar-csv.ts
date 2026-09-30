@@ -128,6 +128,8 @@ async function main() {
       finAccesoAlPausar: existente?.finAccesoAlPausar ?? null,
       guardaAccesoSu27: existente?.guardaAccesoSu27 ?? false,
       guardaAccesoSu27En: existente?.guardaAccesoSu27En ?? null,
+      apartado50: existente?.apartado50 ?? false,
+      apartado50En: existente?.apartado50En ?? null,
       creadoEn: existente?.creadoEn ?? ahora,
       actualizadoEn: ahora,
     };

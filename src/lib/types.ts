@@ -102,6 +102,15 @@ export type Cliente = {
   guardaAccesoSu27: boolean;
   guardaAccesoSu27En: string | null;
 
+  // "Apartado 50%" — solo se activa solo al dar de alta con evento
+  // "USA-WJS": se le da el acceso completo de una vez, pero arranca un
+  // temporizador de 30 días desde apartado50En para liquidar el resto. Se
+  // apaga (queda en false) al revocarle el acceso o al "apagar el
+  // temporizador" a mano porque ya liquidó — ver activarApartado50/
+  // apagarApartado50/listarApartadosVencidos (db.ts).
+  apartado50: boolean;
+  apartado50En: string | null;
+
   creadoEn: string; // ISO
   actualizadoEn: string; // ISO
 };
@@ -128,7 +137,9 @@ export type TipoEvento =
   | "OFERTA_REVOCADA"
   | "COMPRA_HOTMART"
   | "SU27_ACTIVADO"
-  | "SU27_DESACTIVADO";
+  | "SU27_DESACTIVADO"
+  | "APARTADO50_ACTIVADO"
+  | "APARTADO50_APAGADO";
 
 // Tipos "activos": los que el buscador de Actividad ofrece para filtrar. Los
 // marcados como legado arriba solo existen en eventos viejos ya guardados —
@@ -153,6 +164,8 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "COMPRA_HOTMART",
   "SU27_ACTIVADO",
   "SU27_DESACTIVADO",
+  "APARTADO50_ACTIVADO",
+  "APARTADO50_APAGADO",
 ];
 
 export type EventoTimeline = {
@@ -189,6 +202,8 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   COMPRA_HOTMART: "Compra detectada (Hotmart)",
   SU27_ACTIVADO: "Guardó acceso para SU27",
   SU27_DESACTIVADO: "Quitó la reserva de SU27",
+  APARTADO50_ACTIVADO: "Apartado 50% activado (temporizador de 30 días)",
+  APARTADO50_APAGADO: "Apartado 50% liquidado / temporizador apagado",
 };
 
 export type Db = {
@@ -225,6 +240,9 @@ export type SolicitudCliente = {
   evento: string;
   tipoMembresia: string;
   etiqueta: string | null;
+  // "Apartado 50%" — casilla que solo se habilita en el formulario cuando
+  // evento === EVENTO_APARTADO_50 ("USA-WJS"). Ver crearCliente (db.ts).
+  apartado50: boolean;
   // Nota libre del vendedor al llenar la solicitud — se le muestra al admin
   // que la revisa y, al aprobarla, se agrega a las Notas del cliente.
   notas: string | null;

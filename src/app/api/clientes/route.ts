@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
         evento: body.evento,
         tipoMembresia: body.tipoMembresia,
         etiqueta: body.etiqueta,
+        apartado50: !!body.apartado50,
         ofertaAdicionalId: body.ofertaAdicionalId,
         ofertaAdicionalTitulo: body.ofertaAdicionalTitulo,
       },

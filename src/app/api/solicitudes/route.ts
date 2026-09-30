@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
   const evento = String(form.get("evento") ?? "").trim();
   const tipoMembresia = String(form.get("tipoMembresia") ?? "").trim();
   const etiqueta = String(form.get("etiqueta") ?? "").trim();
+  const apartado50 = String(form.get("apartado50") ?? "") === "true";
   const notas = String(form.get("notas") ?? "").trim();
   const archivos = form.getAll("comprobantes").filter((v): v is File => v instanceof File && v.size > 0);
 
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
       evento,
       tipoMembresia,
       etiqueta: etiqueta || null,
+      apartado50,
       notas: notas || null,
       comprobantes: rutas,
       solicitadoPorId: permiso.usuario.id,

@@ -13,6 +13,7 @@ import {
   cargarPaisPorEvento,
   cargarTipoPorEvento,
   calcularAccesos,
+  EVENTO_APARTADO_50,
   paisInfo,
   regionDeCliente,
 } from "./boletos";
@@ -629,6 +630,11 @@ export async function crearCliente(input: {
   // de ahí (ver POST /api/solicitudes/[id]/aprobar) — queda aparte de
   // "autor" (quien aprobó) para que la timeline distinga a los dos.
   solicitadoPorNombre?: string | null;
+  // "Apartado 50%": casilla que solo aparece en el formulario cuando el
+  // vendedor elige el evento EVENTO_APARTADO_50 ("USA-WJS") — la
+  // revalidamos aquí contra el evento por si acaso, para no activar el
+  // temporizador en un alta que no es de ese evento.
+  apartado50?: boolean;
 }): Promise<Cliente> {
   const id = normalizarEmail(input.email);
   // También revisa la columna "email" (no solo el id) — ver buscarClientePorCorreo.
@@ -639,6 +645,11 @@ export async function crearCliente(input: {
   const etiqueta = input.etiqueta?.trim() || null;
   const region = await regionParaCrearOEditar(evento, input.pais ?? null);
   const ahora = new Date().toISOString();
+  // "Apartado 50%" (ver EVENTO_APARTADO_50 en boletos.ts): solo aplica si el
+  // vendedor marcó la casilla Y el evento es justo ese — da el acceso
+  // completo de una vez, pero arranca aquí mismo el temporizador de 30 días
+  // para liquidar el resto.
+  const apartado50 = evento === EVENTO_APARTADO_50 && !!input.apartado50;
 
   const { data, error } = await supabase
     .from("clientes")
@@ -669,6 +680,8 @@ export async function crearCliente(input: {
       // Default al crear — "No" hasta que alguien lo mueva a mano en el
       // desplegable de Seguimiento (Sí / No / No contestó).
       llamada: "No",
+      apartado_50: apartado50,
+      apartado_50_en: apartado50 ? ahora : null,
     })
     .select("*")
     .single();
@@ -678,6 +691,14 @@ export async function crearCliente(input: {
     ? `Cliente creado por ${input.autor} — solicitud enviada por ${input.solicitadoPorNombre}`
     : `Cliente creado por ${input.autor}`;
   await registrarEvento(id, "CREACION", detalleCreacion, input.autor);
+  if (apartado50) {
+    await registrarEvento(
+      id,
+      "APARTADO50_ACTIVADO",
+      "Apartado 50% (evento USA-WJS) — acceso completo otorgado, temporizador de 30 días para liquidar el resto",
+      input.autor
+    );
+  }
   return filaACliente(data as ClienteRow);
 }
 
@@ -1225,6 +1246,10 @@ export async function revocarAccesoCliente(id: string, autor: string): Promise<C
       acceso_plataforma: "Revocado",
       pausado_en: null,
       fin_acceso_al_pausar: null,
+      // Si tenía un Apartado 50% corriendo, revocar el acceso lo resuelve
+      // por completo — deja de contar y sale de la ventana de "vencidos".
+      apartado_50: false,
+      apartado_50_en: null,
       actualizado_en: ahora,
     })
     .eq("id", id);
@@ -1232,6 +1257,47 @@ export async function revocarAccesoCliente(id: string, autor: string): Promise<C
 
   await registrarEvento(id, "REVOCACION_ACCESO", `Acceso revocado por ${autor}`, autor);
   return recalcularAccesos(id);
+}
+
+// "Apaga" el temporizador de Apartado 50% sin tocar el acceso — para cuando
+// el cliente ya liquidó el otro 50% a tiempo. El cliente se queda con su
+// acceso normal, ya no vuelve a aparecer en la ventana de "vencidos" ni con
+// la fila en rojo.
+export async function apagarApartado50(id: string, autor: string): Promise<Cliente> {
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({ apartado_50: false, apartado_50_en: null, actualizado_en: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(id, "APARTADO50_APAGADO", `Apartado 50% liquidado — temporizador apagado por ${autor}`, autor);
+  return filaACliente(data as ClienteRow);
+}
+
+export type ApartadoVencido = { id: string; nombre: string; email: string; apartado50En: string };
+
+// Clientes con Apartado 50% activo cuyo temporizador de 30 días ya se
+// cumplió sin que nadie lo haya apagado ni revocado — alimenta la ventana
+// emergente que aparece al cargar el CRM (ver useApartadosVencidos en
+// Sidebar.tsx) y el semáforo rojo de la lista de Clientes.
+export async function listarApartadosVencidos(): Promise<ApartadoVencido[]> {
+  const limite = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id, nombre, email, apartado_50_en")
+    .eq("apartado_50", true)
+    .lte("apartado_50_en", limite)
+    .is("eliminado_en", null)
+    .order("apartado_50_en", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    nombre: r.nombre as string,
+    email: r.email as string,
+    apartado50En: r.apartado_50_en as string,
+  }));
 }
 
 export type ResultadoReanudar = { cliente: Cliente; fechaCalculada: string; diasRestantes: number };

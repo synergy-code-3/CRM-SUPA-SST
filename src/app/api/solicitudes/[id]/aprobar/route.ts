@@ -133,6 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           evento: solicitud.evento,
           tipoMembresia: solicitud.tipoMembresia,
           etiqueta: solicitud.etiqueta,
+          apartado50: solicitud.apartado50,
           notas: [
             `Correo de pago: ${solicitud.correoPago} — solicitud enviada por ${solicitud.solicitadoPorNombre}, aprobada por ${permiso.usuario.nombre}.`,
             notaSolicitud,

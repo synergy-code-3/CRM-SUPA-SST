@@ -1,4 +1,5 @@
 import { crearAviso } from "@/lib/avisos";
+import { EVENTO_APARTADO_50 } from "@/lib/boletos";
 import { supabase } from "@/lib/supabase";
 import type { EstadoSolicitud, SolicitudCliente } from "@/lib/types";
 
@@ -12,6 +13,7 @@ type SolicitudRow = {
   evento: string;
   tipo_membresia: string;
   etiqueta: string | null;
+  apartado_50: boolean;
   notas: string | null;
   comprobantes: string[] | null;
   estado: EstadoSolicitud;
@@ -36,6 +38,7 @@ function filaASolicitud(row: SolicitudRow): SolicitudCliente {
     evento: row.evento,
     tipoMembresia: row.tipo_membresia,
     etiqueta: row.etiqueta,
+    apartado50: row.apartado_50,
     notas: row.notas,
     comprobantes: row.comprobantes ?? [],
     estado: row.estado,
@@ -60,12 +63,14 @@ export async function crearSolicitud(input: {
   evento: string;
   tipoMembresia: string;
   etiqueta?: string | null;
+  apartado50?: boolean;
   notas?: string | null;
   comprobantes: string[];
   solicitadoPorId: string;
   solicitadoPorNombre: string;
   leadIdVsl?: string | null;
 }): Promise<SolicitudCliente> {
+  const evento = input.evento.trim();
   const { data, error } = await supabase
     .from("solicitudes_cliente")
     .insert({
@@ -75,9 +80,12 @@ export async function crearSolicitud(input: {
       correo_acceso: input.correoAcceso.trim().toLowerCase(),
       telefono: input.telefono.trim(),
       pais: input.pais?.trim() || null,
-      evento: input.evento.trim(),
+      evento,
       tipo_membresia: input.tipoMembresia.trim(),
       etiqueta: input.etiqueta?.trim() || null,
+      // Revalidado contra el evento (igual que crearCliente en db.ts): la
+      // casilla solo debe pegar si de verdad es el evento correcto.
+      apartado_50: evento === EVENTO_APARTADO_50 && !!input.apartado50,
       notas: input.notas?.trim() || null,
       comprobantes: input.comprobantes,
       solicitado_por_id: input.solicitadoPorId,
@@ -115,10 +123,11 @@ export async function editarSolicitud(
     evento?: string;
     tipoMembresia?: string;
     etiqueta?: string | null;
+    apartado50?: boolean;
     notas?: string | null;
   }
 ): Promise<SolicitudCliente> {
-  const patch: Record<string, string | null> = {};
+  const patch: Record<string, string | boolean | null> = {};
   if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim();
   if (cambios.correoPago !== undefined) patch.correo_pago = cambios.correoPago.trim().toLowerCase();
   if (cambios.correoAcceso !== undefined) patch.correo_acceso = cambios.correoAcceso.trim().toLowerCase();
@@ -127,6 +136,12 @@ export async function editarSolicitud(
   if (cambios.evento !== undefined) patch.evento = cambios.evento.trim();
   if (cambios.tipoMembresia !== undefined) patch.tipo_membresia = cambios.tipoMembresia.trim();
   if (cambios.etiqueta !== undefined) patch.etiqueta = cambios.etiqueta?.trim() || null;
+  if (cambios.apartado50 !== undefined) patch.apartado_50 = cambios.apartado50;
+
+  // Si el evento resultante ya no es EVENTO_APARTADO_50, la casilla no
+  // puede seguir marcada (misma revalidación que crearSolicitud).
+  const eventoResultante = (cambios.evento ?? "").trim();
+  if (eventoResultante && eventoResultante !== EVENTO_APARTADO_50) patch.apartado_50 = false;
   if (cambios.notas !== undefined) patch.notas = cambios.notas?.trim() || null;
 
   const { data, error } = await supabase

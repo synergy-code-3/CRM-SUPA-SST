@@ -164,3 +164,20 @@ export function estadoMembresia(cliente: {
   const nivel: NivelMembresia = dias < 0 ? "vencida" : dias <= 15 ? "critica" : dias <= 30 ? "por_vencer" : "activa";
   return { nivel, dias, fecha };
 }
+
+export const DIAS_LIMITE_APARTADO_50 = 30;
+
+// Estado del temporizador de "Apartado 50%" (ver apartado50/apartado50En en
+// types.ts) — null si el cliente no tiene uno activo.
+export function estadoApartado50(cliente: {
+  apartado50: boolean;
+  apartado50En: string | null;
+}): { vencido: boolean; diasRestantes: number; fechaLimite: Date } | null {
+  if (!cliente.apartado50 || !cliente.apartado50En) return null;
+  const inicio = new Date(cliente.apartado50En);
+  if (Number.isNaN(inicio.getTime())) return null;
+  const fechaLimite = new Date(inicio);
+  fechaLimite.setDate(fechaLimite.getDate() + DIAS_LIMITE_APARTADO_50);
+  const diasRestantes = Math.ceil((fechaLimite.getTime() - Date.now()) / 86400000);
+  return { vencido: diasRestantes < 0, diasRestantes, fechaLimite };
+}

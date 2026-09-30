@@ -22,6 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       evento: body.evento,
       tipoMembresia: body.tipoMembresia,
       etiqueta: body.etiqueta,
+      apartado50: body.apartado50,
       notas: body.notas,
     });
     return NextResponse.json({ solicitud });

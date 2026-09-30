@@ -9,6 +9,9 @@ import { ComboboxBuscador } from "./ComboboxBuscador";
 const OPCIONES_PAIS = PAISES_AMERICA.map((p) => ({ valor: p.nombre, etiqueta: p.nombre, nota: p.lada }));
 const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
 const MAX_COMPROBANTES = 5;
+// Mismo valor que EVENTO_APARTADO_50 en src/lib/boletos.ts (ese archivo es
+// server-only — usa fs/path — por eso aquí va literal).
+const EVENTO_APARTADO_50 = "USA-WJS";
 
 type Slot = { key: number; archivo: File | null };
 type CategoriaEvento = "presencial" | "webinar" | "otro";
@@ -33,6 +36,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
     evento: "",
     tipoMembresia: "",
     etiqueta: "",
+    apartado50: false,
     notas: "",
   });
   const [eventosPorTipo, setEventosPorTipo] = useState<EventosPorTipo>({ webinar: [], presencial: [], otro: [] });
@@ -68,6 +72,10 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
   }, []);
 
   const todosLosEventos = [...eventosPorTipo.presencial, ...eventosPorTipo.webinar, ...eventosPorTipo.otro];
+
+  function onCambiarEvento(evento: string) {
+    setForm((f) => ({ ...f, evento, apartado50: evento === EVENTO_APARTADO_50 ? f.apartado50 : false }));
+  }
 
   function onCambiarPais(pais: string) {
     const lada = PAISES_AMERICA.find((p) => p.nombre === pais)?.lada ?? "";
@@ -119,6 +127,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
       body.set("evento", form.evento);
       body.set("tipoMembresia", form.tipoMembresia);
       if (form.etiqueta) body.set("etiqueta", form.etiqueta);
+      if (form.apartado50) body.set("apartado50", "true");
       if (form.notas) body.set("notas", form.notas);
       for (const slot of slots) {
         if (slot.archivo) body.append("comprobantes", slot.archivo);
@@ -131,7 +140,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
         return;
       }
 
-      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "", etiqueta: "", notas: "" });
+      setForm({ nombre: "", correoPago: "", correoAcceso: "", telefono: "", pais: "", evento: "", tipoMembresia: "", etiqueta: "", apartado50: false, notas: "" });
       setCategoriaEvento(null);
       setSlots([
         { key: 0, archivo: null },
@@ -232,7 +241,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                 onClick={() => {
                   setModoDirecto((m) => !m);
                   setCategoriaEvento(null);
-                  setForm((f) => ({ ...f, evento: "" }));
+                  onCambiarEvento("");
                 }}
                 className="ease-spring mb-1.5 block text-xs font-medium text-primary transition hover:text-primary-deep"
               >
@@ -243,7 +252,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
               <ComboboxBuscador
                 opciones={todosLosEventos.map((e) => ({ valor: e, etiqueta: e }))}
                 valor={form.evento}
-                onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                onChange={onCambiarEvento}
                 placeholder="Seleccionar evento…"
               />
             ) : (
@@ -253,7 +262,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                   valor={categoriaEvento ?? ""}
                   onChange={(v) => {
                     setCategoriaEvento((v as CategoriaEvento) || null);
-                    setForm((f) => ({ ...f, evento: "" }));
+                    onCambiarEvento("");
                   }}
                   placeholder="Categoría del evento…"
                 />
@@ -261,7 +270,7 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
                   <ComboboxBuscador
                     opciones={eventosPorTipo[categoriaEvento].map((e) => ({ valor: e, etiqueta: e }))}
                     valor={form.evento}
-                    onChange={(evento) => setForm((f) => ({ ...f, evento }))}
+                    onChange={onCambiarEvento}
                     placeholder="Seleccionar evento…"
                   />
                 ) : (
@@ -272,6 +281,18 @@ export function FormularioSolicitudCliente({ onEnviada }: { onEnviada: () => voi
               </div>
             )}
           </Campo>
+
+          {form.evento === EVENTO_APARTADO_50 && (
+            <label className="ease-spring flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm font-medium text-foreground">
+              <input
+                type="checkbox"
+                checked={form.apartado50}
+                onChange={(e) => setForm((f) => ({ ...f, apartado50: e.target.checked }))}
+                className="h-4 w-4 flex-none rounded border-silver"
+              />
+              Apartado 50% — dar acceso completo ahora con temporizador de 30 días para liquidar el resto
+            </label>
+          )}
 
           <Campo label="Notas (opcional)">
             <textarea
