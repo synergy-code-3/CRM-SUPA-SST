@@ -139,7 +139,8 @@ export type TipoEvento =
   | "SU27_ACTIVADO"
   | "SU27_DESACTIVADO"
   | "APARTADO50_ACTIVADO"
-  | "APARTADO50_APAGADO";
+  | "APARTADO50_APAGADO"
+  | "UPGRADE_MEMBRESIA";
 
 // Tipos "activos": los que el buscador de Actividad ofrece para filtrar. Los
 // marcados como legado arriba solo existen en eventos viejos ya guardados —
@@ -166,6 +167,7 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "SU27_DESACTIVADO",
   "APARTADO50_ACTIVADO",
   "APARTADO50_APAGADO",
+  "UPGRADE_MEMBRESIA",
 ];
 
 export type EventoTimeline = {
@@ -204,6 +206,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   SU27_DESACTIVADO: "Quitó la reserva de SU27",
   APARTADO50_ACTIVADO: "Apartado 50% activado (temporizador de 30 días)",
   APARTADO50_APAGADO: "Apartado 50% liquidado / temporizador apagado",
+  UPGRADE_MEMBRESIA: "Upgrade de membresía a 12 Meses",
 };
 
 export type Db = {
@@ -258,6 +261,32 @@ export type SolicitudCliente = {
   // Id del lead en el CRM de VSL cuando esta solicitud se creó sola por la
   // sincronización automática — null si la llenó un vendedor a mano.
   leadIdVsl: string | null;
+};
+
+export const ESTADOS_SOLICITUD_UPGRADE = ["pendiente", "aprobada", "rechazada"] as const;
+export type EstadoSolicitudUpgrade = (typeof ESTADOS_SOLICITUD_UPGRADE)[number];
+
+// Solicitud de "upgrade" de un cliente ya existente (3/6 Meses → 12 Meses de
+// Skool) — ver botón "Solicitar upgrade a 12 meses" en ClientePanel.tsx,
+// pensado para quien no puede editar clientes directo (abeja, y
+// coordinador en el Club). Aprobarla solo cambia tipoMembresia + recalcula
+// el vencimiento de Skool (aprobarUpgradeMembresia en db.ts) — sin tocar
+// Kajabi ni accesos.
+export type SolicitudUpgradeMembresia = {
+  id: string;
+  clienteId: string;
+  // Foto del tipo de membresía al momento de solicitar, por si cambia antes
+  // de revisarla.
+  membresiaActual: string;
+  comprobantes: string[]; // rutas en el bucket privado "comprobantes-pago"
+  notas: string | null;
+  estado: EstadoSolicitudUpgrade;
+  solicitadoPorId: string;
+  solicitadoPorNombre: string;
+  notaRevision: string | null;
+  revisadoPor: string | null;
+  revisadoEn: string | null;
+  creadoEn: string;
 };
 
 // "Otras Ofertas": roster independiente de Clientes (Club Sinergético). Ver

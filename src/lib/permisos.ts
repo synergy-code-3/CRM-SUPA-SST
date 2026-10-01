@@ -25,6 +25,10 @@ export const PERMISOS = {
   pausarMembresia: ["admin"],
   revocarAccesoCliente: ["admin"], // "Revocar acceso" — reembolsos u otros casos que deben quitar el acceso ya
   solicitarCliente: ["admin", "coordinador", "abeja"],
+  // Botón "Solicitar upgrade a 12 meses" en el perfil — cualquiera que vea
+  // Clientes puede pedirlo; el filtro real de "quién lo necesita" lo hace el
+  // UI (solo se muestra a quien no puede editar directo, ver ClientePanel.tsx).
+  solicitarUpgradeMembresia: ["admin", "coordinador", "abeja"],
   revisarSolicitudes: ["admin"],
   agregarNota: ["admin", "coordinador"],
   exportarCsv: ["admin", "coordinador"],

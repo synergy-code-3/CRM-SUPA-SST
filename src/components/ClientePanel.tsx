@@ -46,7 +46,7 @@ import {
   Award,
   Lock,
 } from "lucide-react";
-import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada } from "@/lib/types";
+import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada, SolicitudUpgradeMembresia } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
@@ -286,6 +286,16 @@ export function ClientePanel({
   const [otorgandoOferta, setOtorgandoOferta] = useState(false);
   const [confirmandoRevocarId, setConfirmandoRevocarId] = useState<string | null>(null);
   const [revocandoOfertaId, setRevocandoOfertaId] = useState<string | null>(null);
+  const puedeSolicitarUpgrade = !!usuario && tienePermiso(usuario.rol, "solicitarUpgradeMembresia");
+  const [solicitudUpgrade, setSolicitudUpgrade] = useState<
+    (SolicitudUpgradeMembresia & { comprobantesUrl: string[] }) | null
+  >(null);
+  const [mostrarFormUpgrade, setMostrarFormUpgrade] = useState(false);
+  const [archivoUpgrade, setArchivoUpgrade] = useState<File | null>(null);
+  const [notaUpgrade, setNotaUpgrade] = useState("");
+  const [enviandoUpgrade, setEnviandoUpgrade] = useState(false);
+  const [errorUpgrade, setErrorUpgrade] = useState<string | null>(null);
+  const [resolviendoUpgrade, setResolviendoUpgrade] = useState<"aprobar" | "rechazar" | null>(null);
 
   const mostrandoEnviandoWa = enviandoWa || esperandoConfirmacionWa;
   useEffect(() => {
@@ -360,29 +370,37 @@ export function ClientePanel({
     setConfirmandoRevocarId(null);
     setError(null);
     setUltimoCambioDatos(null);
+    setSolicitudUpgrade(null);
+    setMostrarFormUpgrade(false);
+    setArchivoUpgrade(null);
+    setNotaUpgrade("");
+    setErrorUpgrade(null);
     Promise.all([
       fetch(`/api/clientes/${encodeURIComponent(clienteId)}`),
       fetch(`/api/clientes/${encodeURIComponent(clienteId)}/eventos`),
       fetch(`/api/clientes/${encodeURIComponent(clienteId)}/ofertas`),
+      fetch(`/api/clientes/${encodeURIComponent(clienteId)}/solicitudes-upgrade`),
     ])
-      .then(async ([clienteResRaw, eventosResRaw, ofertasResRaw]) => {
+      .then(async ([clienteResRaw, eventosResRaw, ofertasResRaw, upgradeResRaw]) => {
         if (cancelado) return;
         if (!clienteResRaw.ok) {
           const data = await clienteResRaw.json().catch(() => ({}));
           throw new Error(data.error ?? "No se pudo cargar el cliente");
         }
-        // eventos/ofertas son secundarios: si fallan, el panel igual se abre
-        // con el cliente (listas vacías) en vez de tumbarse por completo.
-        const [clienteRes, eventosRes, ofertasRes] = await Promise.all([
+        // eventos/ofertas/upgrade son secundarios: si fallan, el panel igual
+        // se abre con el cliente (listas vacías) en vez de tumbarse por completo.
+        const [clienteRes, eventosRes, ofertasRes, upgradeRes] = await Promise.all([
           clienteResRaw.json(),
           eventosResRaw.ok ? eventosResRaw.json() : Promise.resolve({ eventos: [] }),
           ofertasResRaw.ok ? ofertasResRaw.json() : Promise.resolve({ ofertas: [] }),
+          upgradeResRaw.ok ? upgradeResRaw.json() : Promise.resolve({ solicitud: null }),
         ]);
         if (cancelado) return;
         setCliente(clienteRes.cliente);
         setEsMiembroLegendaria(!!clienteRes.esMiembroLegendaria);
         setEventos(eventosRes.eventos ?? []);
         setOfertasClub(ofertasRes.ofertas ?? []);
+        setSolicitudUpgrade(upgradeRes.solicitud ?? null);
         setForm(formDeCliente(clienteRes.cliente));
         setCargando(false);
         // La fila de la lista se queda con la foto de cuando se cargó (o de
@@ -753,6 +771,55 @@ export function ClientePanel({
     setCliente(data.cliente);
     setForm(formDeCliente(data.cliente));
     onClienteActualizado(data.cliente);
+  }
+
+  // "Solicitar upgrade a 12 meses" — para quien no puede editar el cliente
+  // directo (el botón solo se muestra en ese caso, ver el render). Requiere
+  // comprobante de pago, igual que la Solicitud de alta.
+  async function enviarSolicitudUpgrade() {
+    if (!cliente || !archivoUpgrade) return;
+    setEnviandoUpgrade(true);
+    setErrorUpgrade(null);
+    const body = new FormData();
+    body.append("comprobantes", archivoUpgrade);
+    if (notaUpgrade.trim()) body.set("notas", notaUpgrade.trim());
+    const res = await fetch(`/api/clientes/${encodeURIComponent(cliente.id)}/solicitudes-upgrade`, {
+      method: "POST",
+      body,
+    });
+    const data = await res.json();
+    setEnviandoUpgrade(false);
+    if (!res.ok) {
+      setErrorUpgrade(data.error ?? "No se pudo enviar la solicitud");
+      return;
+    }
+    setMostrarFormUpgrade(false);
+    setArchivoUpgrade(null);
+    setNotaUpgrade("");
+    // No tenemos aquí la URL firmada del comprobante recién subido — no hace
+    // falta: en este punto quien lo ve es quien mismo lo acaba de solicitar,
+    // ya sabe qué adjuntó. El admin la ve completa al recargar/entrar él.
+    setSolicitudUpgrade({ ...data.solicitud, comprobantesUrl: [] });
+  }
+
+  async function resolverUpgrade(accion: "aprobar" | "rechazar") {
+    if (!cliente || !solicitudUpgrade) return;
+    if (accion === "rechazar" && !window.confirm("¿Rechazar esta solicitud de upgrade?")) return;
+    setResolviendoUpgrade(accion);
+    setErrorUpgrade(null);
+    const res = await fetch(`/api/solicitudes-upgrade/${solicitudUpgrade.id}/${accion}`, { method: "POST" });
+    const data = await res.json();
+    setResolviendoUpgrade(null);
+    if (!res.ok) {
+      setErrorUpgrade(data.error ?? "No se pudo resolver la solicitud");
+      return;
+    }
+    setSolicitudUpgrade(null);
+    if (accion === "aprobar" && data.cliente) {
+      setCliente(data.cliente);
+      setForm(formDeCliente(data.cliente));
+      onClienteActualizado(data.cliente);
+    }
   }
 
   // Mismo flujo que confirmarRenovar, pero para "Activar oferta" — la
@@ -2418,6 +2485,110 @@ export function ClientePanel({
                       <DatoFila icon={PartyPopper} label="Evento" valor={cliente.evento} />
                       <DatoFila icon={CalendarClock} label="Fecha del evento" valor={cliente.fechaEvento} />
                       <DatoFila icon={Ticket} label="Tipo de membresía" valor={cliente.tipoMembresia} />
+                      {(() => {
+                        const membresiaActual = cliente.tipoMembresia?.trim().toLowerCase();
+                        const esUpgradeable = membresiaActual === "3 meses" || membresiaActual === "6 meses";
+
+                        if (solicitudUpgrade?.estado === "pendiente") {
+                          return (
+                            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+                              <p className="mb-1 text-xs font-medium text-foreground">
+                                Upgrade a 12 Meses solicitado por {solicitudUpgrade.solicitadoPorNombre}
+                              </p>
+                              {solicitudUpgrade.notas && (
+                                <p className="mb-2 text-xs text-muted">Nota: {solicitudUpgrade.notas}</p>
+                              )}
+                              {solicitudUpgrade.comprobantesUrl.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                  {solicitudUpgrade.comprobantesUrl.map((url, i) => (
+                                    <a
+                                      key={url}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="ease-spring text-xs font-medium text-primary underline transition hover:text-primary-deep"
+                                    >
+                                      Ver comprobante{solicitudUpgrade.comprobantesUrl.length > 1 ? ` ${i + 1}` : ""}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                              {puedeEditar ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => resolverUpgrade("rechazar")}
+                                    disabled={!!resolviendoUpgrade}
+                                    className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-50"
+                                  >
+                                    {resolviendoUpgrade === "rechazar" ? "Rechazando…" : "Rechazar"}
+                                  </button>
+                                  <button
+                                    onClick={() => resolverUpgrade("aprobar")}
+                                    disabled={!!resolviendoUpgrade}
+                                    className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+                                  >
+                                    {resolviendoUpgrade === "aprobar" ? "Aprobando…" : "Aceptar upgrade"}
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted">Pendiente de revisión.</p>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (!puedeEditar && puedeSolicitarUpgrade && esUpgradeable) {
+                          return mostrarFormUpgrade ? (
+                            <div className="space-y-2 rounded-lg border border-silver bg-surface-2 p-3">
+                              <label className="block text-xs font-medium text-muted">
+                                Comprobante de pago *
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  onChange={(e) => setArchivoUpgrade(e.target.files?.[0] ?? null)}
+                                  className="mt-1 block w-full text-xs"
+                                />
+                              </label>
+                              <textarea
+                                value={notaUpgrade}
+                                onChange={(e) => setNotaUpgrade(e.target.value)}
+                                placeholder="Nota (opcional)"
+                                rows={2}
+                                className="w-full resize-none rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                              />
+                              {errorUpgrade && <p className="text-xs text-danger">{errorUpgrade}</p>}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setMostrarFormUpgrade(false);
+                                    setArchivoUpgrade(null);
+                                    setErrorUpgrade(null);
+                                  }}
+                                  className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={enviarSolicitudUpgrade}
+                                  disabled={!archivoUpgrade || enviandoUpgrade}
+                                  className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-40"
+                                >
+                                  {enviandoUpgrade ? "Enviando…" : "Enviar solicitud"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setMostrarFormUpgrade(true)}
+                              className="ease-spring text-xs font-medium text-primary transition hover:text-primary-deep"
+                            >
+                              Solicitar upgrade a 12 meses
+                            </button>
+                          );
+                        }
+
+                        return null;
+                      })()}
                       <DatoFila
                         icon={CalendarClock}
                         label="Vencimiento Skool"

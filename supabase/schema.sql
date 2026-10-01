@@ -300,6 +300,34 @@ create index if not exists idx_solicitudes_estado on solicitudes_cliente (estado
 create index if not exists idx_solicitudes_solicitado_por on solicitudes_cliente (solicitado_por_id);
 alter table solicitudes_cliente enable row level security;
 
+-- Solicitud de "upgrade" de un cliente YA existente (3/6 Meses → 12 Meses de
+-- Skool) — a diferencia de solicitudes_cliente (alta de un cliente nuevo),
+-- esta es la que dispara el botón "Solicitar upgrade a 12 meses" del perfil
+-- (ClientePanel.tsx), pensado para quien no puede editar clientes
+-- directamente (abeja, y coordinador en el Club). Al aprobarla solo se
+-- cambia tipo_membresia + se recalcula vencimiento_skool — ver
+-- aprobarUpgradeMembresia (db.ts) — sin tocar Kajabi ni accesos.
+create table if not exists solicitudes_upgrade_membresia (
+  id uuid primary key default gen_random_uuid(),
+  cliente_id text not null references clientes (id),
+  -- Foto del tipo de membresía al momento de solicitar — por si cambia antes
+  -- de que se revise, para que quede claro qué se estaba pidiendo.
+  membresia_actual text not null,
+  -- Rutas dentro del bucket privado "comprobantes-pago" (mismo bucket que
+  -- solicitudes_cliente), no URLs públicas — se firman al vuelo al revisar.
+  comprobantes text[] not null default '{}',
+  notas text,
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'aprobada', 'rechazada')),
+  solicitado_por_id uuid not null references usuarios (id),
+  solicitado_por_nombre text not null,
+  nota_revision text,
+  revisado_por text,
+  revisado_en timestamptz,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_solicitudes_upgrade_cliente on solicitudes_upgrade_membresia (cliente_id, estado);
+alter table solicitudes_upgrade_membresia enable row level security;
+
 -- "Otras Ofertas": roster independiente de clientes (Club Sinergético). Un
 -- registro por persona (correo normalizado como id) — mismo criterio que
 -- clientes.id, pero en su propio espacio: la misma persona puede existir en

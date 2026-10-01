@@ -967,6 +967,46 @@ export async function marcarSoloInvitacionSkoolEnviada(id: string): Promise<Clie
   return filaACliente(data as ClienteRow);
 }
 
+// Aprobar una solicitud de "upgrade" (ver solicitudes-upgrade.ts): SOLO
+// cambia tipoMembresia a "12 Meses" y recalcula el vencimiento de Skool
+// desde el mismo ancla que ya tenía (fecha_renovacion si renovó, si no
+// fecha_inscripcion) — a propósito no toca Kajabi, accesos, ni
+// invitacion_skool (no se reenvía nada, ya tiene acceso dado).
+export async function aprobarUpgradeMembresia(clienteId: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("fecha_inscripcion, fecha_renovacion, tipo_membresia")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+
+  const membresiaAnterior = fila.tipo_membresia as string | null;
+  const ancla = (fila.fecha_renovacion as string | null) || (fila.fecha_inscripcion as string | null);
+  const vencimiento = ancla ? calcularVencimientoSkool(ancla, "12 Meses") : null;
+
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      tipo_membresia: "12 Meses",
+      vencimiento_skool: vencimiento ? formatearFechaSkool(vencimiento) : null,
+      vencimiento_skool_fecha: fechaSkoolADateOnly(vencimiento),
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", clienteId)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(
+    clienteId,
+    "UPGRADE_MEMBRESIA",
+    `Upgrade a 12 Meses aprobado por ${autor} (antes: ${membresiaAnterior ?? "—"})`,
+    autor
+  );
+  return filaACliente(data as ClienteRow);
+}
+
 export function finDeAccesoDentroDeUnAnio(): string {
   const ahora = new Date();
   return new Date(Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 365)).toISOString();
