@@ -111,6 +111,15 @@ export type Cliente = {
   apartado50: boolean;
   apartado50En: string | null;
 
+  // Landing de bienvenida (popup embebido en GHL) — ver POST
+  // /api/webhooks/landing. null = nunca entró (o entró pero no se pudo
+  // emparejar con este cliente por correo/teléfono). landingRegistradoEn
+  // conserva la PRIMERA vez; landingUltimoEnvio se actualiza en cada envío
+  // nuevo (puede volver a llenar el popup más de una vez).
+  landingRegistradoEn: string | null;
+  landingUltimoEnvio: string | null;
+  landingEnvios: number;
+
   creadoEn: string; // ISO
   actualizadoEn: string; // ISO
 };

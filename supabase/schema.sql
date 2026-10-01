@@ -706,3 +706,44 @@ update avisos set destinatarios_ids = array[destinatario_id]
 -- criterio que avatares: no es información sensible, se guarda la URL
 -- pública directo, sin firmar).
 alter table avisos add column if not exists imagen_url text;
+
+-- Landing de bienvenida (popup embebido en GHL): registra cada envío y, si
+-- encuentra coincidencia por correo o por teléfono contra un cliente ya
+-- existente, marca en clientes que esa persona ya entró — ver
+-- POST /api/webhooks/landing. telefono_norm (últimos 10 dígitos, sin
+-- importar el formato con que haya quedado guardado el teléfono — con/sin
+-- "+", con espacios, etc.) es lo que permite emparejar por teléfono con un
+-- índice, en vez de comparar formato por formato en cada consulta.
+alter table clientes add column if not exists telefono_norm text
+  generated always as (right(regexp_replace(coalesce(telefono, ''), '\D', '', 'g'), 10)) stored;
+create index if not exists idx_clientes_telefono_norm on clientes (telefono_norm);
+
+alter table clientes add column if not exists landing_registrado_en timestamptz;
+alter table clientes add column if not exists landing_ultimo_envio timestamptz;
+alter table clientes add column if not exists landing_envios integer not null default 0;
+
+create table if not exists landing_registros (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  email text not null,
+  telefono text not null,
+  telefono_norm text not null,
+  -- Se llena solo si hubo una única coincidencia (ver estado) — si no, se
+  -- deja null a propósito: no hay forma segura de adivinar a cuál cliente
+  -- pertenece.
+  cliente_id text references clientes (id),
+  estado text not null default 'sin_coincidencia'
+    check (estado in ('enlazado', 'sin_coincidencia', 'revision')),
+  pagina text,
+  ip text,
+  user_agent text,
+  envios integer not null default 1,
+  creado_en timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
+  -- Mismo correo+teléfono que vuelve a enviar el popup actualiza su propio
+  -- registro (sube "envios") en vez de duplicarse.
+  unique (email, telefono_norm)
+);
+create index if not exists idx_landing_registros_cliente on landing_registros (cliente_id);
+create index if not exists idx_landing_registros_estado on landing_registros (estado);
+alter table landing_registros enable row level security;

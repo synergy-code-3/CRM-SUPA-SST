@@ -45,6 +45,7 @@ import {
   Undo2,
   Award,
   Lock,
+  Globe,
 } from "lucide-react";
 import type { Accesos, Cliente, EventoTimeline, OfertaOtorgada, SolicitudUpgradeMembresia } from "@/lib/types";
 import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
@@ -2625,6 +2626,17 @@ export function ClientePanel({
                         </div>
                       )}
                       <DatoFila icon={PhoneCall} label="Llamada" valor={cliente.llamada} />
+                      <DatoFila
+                        icon={Globe}
+                        label="Landing de bienvenida"
+                        valor={
+                          cliente.landingRegistradoEn
+                            ? `Sí — ${new Date(cliente.landingRegistradoEn).toLocaleDateString("es-MX")}${
+                                cliente.landingEnvios > 1 ? ` (${cliente.landingEnvios} envíos)` : ""
+                              }`
+                            : "No"
+                        }
+                      />
                     </dl>
                   ) : (
                     <div className="space-y-3">

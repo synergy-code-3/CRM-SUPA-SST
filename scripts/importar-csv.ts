@@ -130,6 +130,9 @@ async function main() {
       guardaAccesoSu27En: existente?.guardaAccesoSu27En ?? null,
       apartado50: existente?.apartado50 ?? false,
       apartado50En: existente?.apartado50En ?? null,
+      landingRegistradoEn: existente?.landingRegistradoEn ?? null,
+      landingUltimoEnvio: existente?.landingUltimoEnvio ?? null,
+      landingEnvios: existente?.landingEnvios ?? 0,
       creadoEn: existente?.creadoEn ?? ahora,
       actualizadoEn: ahora,
     };

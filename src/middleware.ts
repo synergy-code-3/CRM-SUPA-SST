@@ -14,6 +14,9 @@ const PREFIJOS_PUBLICOS_API = [
   "/api/webhooks/kajabi",
   "/api/webhooks/hotmart",
   "/api/webhooks/ghl-bienvenida-wa",
+  // El popup de la landing (fuera del CRM, en GHL) no manda cookie de
+  // sesión — se autentica con su propio LANDING_PUBLIC_TOKEN en el body.
+  "/api/webhooks/landing",
   "/api/cron/sincronizar-kajabi",
   "/api/cron/sincronizar-vsl",
   // Consumido por synergy-axis (repo hermano), no por el navegador — se
