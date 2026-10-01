@@ -822,6 +822,124 @@ export function ClientePanel({
     }
   }
 
+  // Bloque de "Solicitar upgrade a 12 meses" / tarjeta de revisión del
+  // admin — reutilizado en la tarjeta "Accesos y Membresías" (resumen, como
+  // botón) y en "Seguimiento y soporte" (como enlace de texto), para no
+  // duplicar esta lógica en dos lados.
+  function bloqueUpgrade({ comoBoton = false }: { comoBoton?: boolean } = {}) {
+    if (!cliente) return null;
+    const membresiaActual = cliente.tipoMembresia?.trim().toLowerCase();
+    const esUpgradeable = membresiaActual === "3 meses" || membresiaActual === "6 meses";
+
+    if (solicitudUpgrade?.estado === "pendiente") {
+      return (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+          <p className="mb-1 text-xs font-medium text-foreground">
+            Upgrade a 12 Meses solicitado por {solicitudUpgrade.solicitadoPorNombre}
+          </p>
+          {solicitudUpgrade.notas && <p className="mb-2 text-xs text-muted">Nota: {solicitudUpgrade.notas}</p>}
+          {solicitudUpgrade.comprobantesUrl.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {solicitudUpgrade.comprobantesUrl.map((url, i) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ease-spring text-xs font-medium text-primary underline transition hover:text-primary-deep"
+                >
+                  Ver comprobante{solicitudUpgrade.comprobantesUrl.length > 1 ? ` ${i + 1}` : ""}
+                </a>
+              ))}
+            </div>
+          )}
+          {puedeEditar ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => resolverUpgrade("rechazar")}
+                disabled={!!resolviendoUpgrade}
+                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-50"
+              >
+                {resolviendoUpgrade === "rechazar" ? "Rechazando…" : "Rechazar"}
+              </button>
+              <button
+                onClick={() => resolverUpgrade("aprobar")}
+                disabled={!!resolviendoUpgrade}
+                className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+              >
+                {resolviendoUpgrade === "aprobar" ? "Aprobando…" : "Aceptar upgrade"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">Pendiente de revisión.</p>
+          )}
+        </div>
+      );
+    }
+
+    if (!puedeEditar && puedeSolicitarUpgrade && esUpgradeable) {
+      if (mostrarFormUpgrade) {
+        return (
+          <div className="space-y-2 rounded-lg border border-silver bg-surface-2 p-3">
+            <label className="block text-xs font-medium text-muted">
+              Comprobante de pago *
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setArchivoUpgrade(e.target.files?.[0] ?? null)}
+                className="mt-1 block w-full text-xs"
+              />
+            </label>
+            <textarea
+              value={notaUpgrade}
+              onChange={(e) => setNotaUpgrade(e.target.value)}
+              placeholder="Nota (opcional)"
+              rows={2}
+              className="w-full resize-none rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+            />
+            {errorUpgrade && <p className="text-xs text-danger">{errorUpgrade}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setMostrarFormUpgrade(false);
+                  setArchivoUpgrade(null);
+                  setErrorUpgrade(null);
+                }}
+                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={enviarSolicitudUpgrade}
+                disabled={!archivoUpgrade || enviandoUpgrade}
+                className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-40"
+              >
+                {enviandoUpgrade ? "Enviando…" : "Enviar solicitud"}
+              </button>
+            </div>
+          </div>
+        );
+      }
+      return comoBoton ? (
+        <button
+          onClick={() => setMostrarFormUpgrade(true)}
+          className="ease-spring w-full rounded-lg border border-primary/30 bg-primary-dim px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/15"
+        >
+          Solicitar upgrade a 12 meses
+        </button>
+      ) : (
+        <button
+          onClick={() => setMostrarFormUpgrade(true)}
+          className="ease-spring text-xs font-medium text-primary transition hover:text-primary-deep"
+        >
+          Solicitar upgrade a 12 meses
+        </button>
+      );
+    }
+
+    return null;
+  }
+
   // Mismo flujo que confirmarRenovar, pero para "Activar oferta" — la
   // persona pagó de nuevo sin que se trate como renovación (sin etiqueta,
   // boletos calculados por su evento, no por la regla fija de país).
@@ -1611,6 +1729,7 @@ export function ClientePanel({
                       <CampoValor label="Membresía Skool" valor={cliente.tipoMembresia} />
                       <CampoValor label="Vence Skool" valor={cliente.vencimientoSkool} />
                       <CampoValor label="Fecha de fin de acceso" valor={textoFinAcceso(cliente)} />
+                      <div className="flex items-end">{bloqueUpgrade({ comoBoton: true })}</div>
                     </dl>
                     <button
                       onClick={() => setTab("accesos")}
@@ -2485,110 +2604,7 @@ export function ClientePanel({
                       <DatoFila icon={PartyPopper} label="Evento" valor={cliente.evento} />
                       <DatoFila icon={CalendarClock} label="Fecha del evento" valor={cliente.fechaEvento} />
                       <DatoFila icon={Ticket} label="Tipo de membresía" valor={cliente.tipoMembresia} />
-                      {(() => {
-                        const membresiaActual = cliente.tipoMembresia?.trim().toLowerCase();
-                        const esUpgradeable = membresiaActual === "3 meses" || membresiaActual === "6 meses";
-
-                        if (solicitudUpgrade?.estado === "pendiente") {
-                          return (
-                            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
-                              <p className="mb-1 text-xs font-medium text-foreground">
-                                Upgrade a 12 Meses solicitado por {solicitudUpgrade.solicitadoPorNombre}
-                              </p>
-                              {solicitudUpgrade.notas && (
-                                <p className="mb-2 text-xs text-muted">Nota: {solicitudUpgrade.notas}</p>
-                              )}
-                              {solicitudUpgrade.comprobantesUrl.length > 0 && (
-                                <div className="mb-2 flex flex-wrap gap-2">
-                                  {solicitudUpgrade.comprobantesUrl.map((url, i) => (
-                                    <a
-                                      key={url}
-                                      href={url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="ease-spring text-xs font-medium text-primary underline transition hover:text-primary-deep"
-                                    >
-                                      Ver comprobante{solicitudUpgrade.comprobantesUrl.length > 1 ? ` ${i + 1}` : ""}
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                              {puedeEditar ? (
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => resolverUpgrade("rechazar")}
-                                    disabled={!!resolviendoUpgrade}
-                                    className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground disabled:opacity-50"
-                                  >
-                                    {resolviendoUpgrade === "rechazar" ? "Rechazando…" : "Rechazar"}
-                                  </button>
-                                  <button
-                                    onClick={() => resolverUpgrade("aprobar")}
-                                    disabled={!!resolviendoUpgrade}
-                                    className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
-                                  >
-                                    {resolviendoUpgrade === "aprobar" ? "Aprobando…" : "Aceptar upgrade"}
-                                  </button>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted">Pendiente de revisión.</p>
-                              )}
-                            </div>
-                          );
-                        }
-
-                        if (!puedeEditar && puedeSolicitarUpgrade && esUpgradeable) {
-                          return mostrarFormUpgrade ? (
-                            <div className="space-y-2 rounded-lg border border-silver bg-surface-2 p-3">
-                              <label className="block text-xs font-medium text-muted">
-                                Comprobante de pago *
-                                <input
-                                  type="file"
-                                  accept="image/*,application/pdf"
-                                  onChange={(e) => setArchivoUpgrade(e.target.files?.[0] ?? null)}
-                                  className="mt-1 block w-full text-xs"
-                                />
-                              </label>
-                              <textarea
-                                value={notaUpgrade}
-                                onChange={(e) => setNotaUpgrade(e.target.value)}
-                                placeholder="Nota (opcional)"
-                                rows={2}
-                                className="w-full resize-none rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
-                              />
-                              {errorUpgrade && <p className="text-xs text-danger">{errorUpgrade}</p>}
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    setMostrarFormUpgrade(false);
-                                    setArchivoUpgrade(null);
-                                    setErrorUpgrade(null);
-                                  }}
-                                  className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
-                                >
-                                  Cancelar
-                                </button>
-                                <button
-                                  onClick={enviarSolicitudUpgrade}
-                                  disabled={!archivoUpgrade || enviandoUpgrade}
-                                  className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-40"
-                                >
-                                  {enviandoUpgrade ? "Enviando…" : "Enviar solicitud"}
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setMostrarFormUpgrade(true)}
-                              className="ease-spring text-xs font-medium text-primary transition hover:text-primary-deep"
-                            >
-                              Solicitar upgrade a 12 meses
-                            </button>
-                          );
-                        }
-
-                        return null;
-                      })()}
+                      {bloqueUpgrade()}
                       <DatoFila
                         icon={CalendarClock}
                         label="Vencimiento Skool"
