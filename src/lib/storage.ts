@@ -56,6 +56,45 @@ async function asegurarBucketAvatares(): Promise<void> {
   bucketAvataresListo = true;
 }
 
+// Imagen opcional adjunta a un Aviso — pública (igual criterio que
+// avatares): no es información sensible, se muestra a todo el que vea el
+// aviso.
+export const BUCKET_AVISOS_IMAGENES = "avisos-imagenes";
+
+const TAMANO_MAXIMO_IMAGEN_AVISO_BYTES = 8 * 1024 * 1024;
+
+let bucketAvisosListo = false;
+
+async function asegurarBucketAvisos(): Promise<void> {
+  if (bucketAvisosListo) return;
+  const { error } = await supabase.storage.createBucket(BUCKET_AVISOS_IMAGENES, { public: true });
+  if (error && !/already exists/i.test(error.message ?? "")) throw error;
+  bucketAvisosListo = true;
+}
+
+export async function subirImagenAviso(avisoId: string, archivo: File): Promise<string> {
+  if (archivo.size > TAMANO_MAXIMO_IMAGEN_AVISO_BYTES) {
+    throw new Error("La imagen pesa más de 8 MB");
+  }
+  if (archivo.type && !TIPOS_IMAGEN_PERMITIDOS.includes(archivo.type)) {
+    throw new Error("Debe ser una imagen JPG, PNG o WEBP");
+  }
+
+  await asegurarBucketAvisos();
+
+  const extension = archivo.type === "image/png" ? "png" : archivo.type === "image/webp" ? "webp" : "jpg";
+  const ruta = `${avisoId}/imagen.${extension}`;
+  const buffer = Buffer.from(await archivo.arrayBuffer());
+
+  const { error } = await supabase.storage
+    .from(BUCKET_AVISOS_IMAGENES)
+    .upload(ruta, buffer, { contentType: archivo.type || "image/jpeg", upsert: true });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(BUCKET_AVISOS_IMAGENES).getPublicUrl(ruta);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
 export async function subirAvatar(usuarioId: string, archivo: File): Promise<string> {
   if (archivo.size > TAMANO_MAXIMO_AVATAR_BYTES) {
     throw new Error("La imagen pesa más de 4 MB");

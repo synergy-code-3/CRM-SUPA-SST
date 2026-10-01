@@ -380,7 +380,11 @@ function AvisoPendienteModal({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =
           <p className="mb-2 text-xs text-muted">
             {aviso.autorNombre} · {new Date(aviso.creadoEn).toLocaleString("es-MX")}
           </p>
-          <p className="mb-5 whitespace-pre-wrap text-sm text-foreground">{aviso.mensaje}</p>
+          <p className="mb-3 whitespace-pre-wrap text-sm text-foreground">{aviso.mensaje}</p>
+          {aviso.imagenUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- bucket público, URL externa a Supabase Storage.
+            <img src={aviso.imagenUrl} alt="" className="mb-5 max-h-60 w-full rounded-xl object-contain" />
+          )}
 
           <label
             className={`ease-spring mb-4 flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium text-foreground ${

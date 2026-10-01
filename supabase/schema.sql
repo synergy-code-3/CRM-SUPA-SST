@@ -691,3 +691,18 @@ alter table clientes add column if not exists apartado_50_en timestamptz;
 -- "USA-WJS"): si el vendedor la marca, al aprobar la solicitud el alta
 -- nueva se crea con apartado_50 activo — ver crearCliente en db.ts.
 alter table solicitudes_cliente add column if not exists apartado_50 boolean not null default false;
+
+-- Reemplaza destinatario_id (un solo usuario) por una lista — permite elegir
+-- "General" (arreglo vacío, se transmite por rol como antes) o "Personal"
+-- (uno o varios usuarios elegidos a mano) al crear un aviso. destinatario_id
+-- se deja de usar pero no se borra (legado, por si algo viejo lo referencia);
+-- se migra su valor una sola vez (el update es idempotente: una vez que
+-- destinatarios_ids ya tiene algo, no lo vuelve a tocar).
+alter table avisos add column if not exists destinatarios_ids uuid[] not null default '{}';
+update avisos set destinatarios_ids = array[destinatario_id]
+  where destinatario_id is not null and destinatarios_ids = '{}';
+
+-- Imagen opcional adjunta al aviso (bucket público "avisos-imagenes", igual
+-- criterio que avatares: no es información sensible, se guarda la URL
+-- pública directo, sin firmar).
+alter table avisos add column if not exists imagen_url text;

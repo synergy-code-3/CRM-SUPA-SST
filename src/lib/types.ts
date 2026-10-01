@@ -352,11 +352,14 @@ export type Aviso = {
   // resto de los roles ni lo lista en /avisos ni les cuenta para la ventana
   // emergente de "Enterado".
   soloAdmin: boolean;
-  // null = transmitido por rol (comportamiento normal, ver soloAdmin arriba).
-  // Si no es null, el aviso es solo para ESE usuario — ignora soloAdmin y no
-  // le aparece a nadie más, ni siquiera a otro admin. Ver ej. "correo
-  // inválido" en solicitudes.ts (marcarSolicitudCorreoInvalido).
-  destinatarioId: string | null;
+  // [] = "General" — transmitido por rol (comportamiento normal, ver
+  // soloAdmin arriba). Si trae ids, el aviso es "Personal" — solo le
+  // aparece a esos usuarios (ignora soloAdmin); admin sigue viendo todos los
+  // avisos de todas formas (supervisión), sin importar este campo. Ver ej.
+  // "correo inválido" en solicitudes.ts (marcarSolicitudCorreoInvalido).
+  destinatariosIds: string[];
+  // URL pública de la imagen adjunta, si tiene (bucket "avisos-imagenes").
+  imagenUrl: string | null;
   // true = la ventana emergente se muestra en tonos rojo/urgente en vez del
   // estilo neutro normal (ver AvisoPendienteModal, Sidebar.tsx).
   urgente: boolean;

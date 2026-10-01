@@ -267,7 +267,7 @@ export async function marcarSolicitudCorreoInvalido(
     `La solicitud de ${solicitud.nombre} tiene un correo inválido: "${nota}". Corrígelo desde Solicitudes → "Solicitudes inválidas".`,
     revisor.id,
     revisor.nombre,
-    { destinatarioId: solicitud.solicitadoPorId, urgente: true }
+    { destinatariosIds: [solicitud.solicitadoPorId], urgente: true }
   );
 
   return solicitud;

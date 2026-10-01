@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Megaphone, Plus, Pencil, Trash2, X, ChevronDown, UserCheck } from "lucide-react";
+import { Megaphone, Plus, Pencil, Trash2, X, ChevronDown, UserCheck, Users } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import type { Aviso } from "@/lib/types";
+
+type UsuarioOpcion = { id: string; nombre: string; email: string };
 
 export default function AvisosPage() {
   const { usuario } = useSesion();
@@ -84,6 +86,12 @@ export default function AvisosPage() {
                   {a.autorNombre} · {new Date(a.creadoEn).toLocaleString("es-MX")}
                   {a.editadoEn && " · editado"}
                   {a.soloAdmin && " · solo admin"}
+                  {a.destinatariosIds.length > 0 && (
+                    <>
+                      {" "}
+                      · personal ({a.destinatariosIds.length} usuario{a.destinatariosIds.length === 1 ? "" : "s"})
+                    </>
+                  )}
                 </p>
               </div>
               {puedeGestionar && (
@@ -106,6 +114,10 @@ export default function AvisosPage() {
               )}
             </div>
             <p className="mt-2.5 whitespace-pre-wrap text-sm text-foreground">{a.mensaje}</p>
+            {a.imagenUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- bucket público, URL externa a Supabase Storage.
+              <img src={a.imagenUrl} alt="" className="mt-3 max-h-80 w-full rounded-xl object-contain" />
+            )}
 
             {a.confirmaciones && (
               <div className="mt-3 border-t border-silver/60 pt-2.5">
@@ -171,17 +183,50 @@ function AvisoModal({
 }) {
   const [titulo, setTitulo] = useState(aviso?.titulo ?? "");
   const [mensaje, setMensaje] = useState(aviso?.mensaje ?? "");
+  const [audiencia, setAudiencia] = useState<"general" | "personal">(
+    aviso && aviso.destinatariosIds.length > 0 ? "personal" : "general"
+  );
+  const [destinatarios, setDestinatarios] = useState<Set<string>>(new Set(aviso?.destinatariosIds ?? []));
+  const [usuarios, setUsuarios] = useState<UsuarioOpcion[]>([]);
+  const [imagen, setImagen] = useState<File | null>(null);
+  const [quitarImagenExistente, setQuitarImagenExistente] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
+  useEffect(() => {
+    fetch("/api/usuarios")
+      .then((r) => r.json())
+      .then((data) => setUsuarios((data.usuarios ?? []).map((u: UsuarioOpcion) => ({ id: u.id, nombre: u.nombre, email: u.email }))))
+      .catch(() => setUsuarios([]));
+  }, []);
+
+  function alternarDestinatario(id: string) {
+    setDestinatarios((d) => {
+      const copia = new Set(d);
+      if (copia.has(id)) copia.delete(id);
+      else copia.add(id);
+      return copia;
+    });
+  }
+
   async function guardar() {
+    if (audiencia === "personal" && destinatarios.size === 0) {
+      setError("Elige al menos un usuario, o cambia a General");
+      return;
+    }
     setEnviando(true);
     setError(null);
     try {
+      const body = new FormData();
+      body.set("titulo", titulo);
+      body.set("mensaje", mensaje);
+      body.set("destinatariosIds", audiencia === "personal" ? Array.from(destinatarios).join(",") : "");
+      if (imagen) body.set("imagen", imagen);
+      if (aviso && quitarImagenExistente && !imagen) body.set("quitarImagen", "true");
+
       const res = await fetch(aviso ? `/api/avisos/${aviso.id}` : "/api/avisos", {
         method: aviso ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titulo, mensaje }),
+        body,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -196,7 +241,7 @@ function AvisoModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-foreground/30 p-6 backdrop-blur-[2px]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
@@ -224,6 +269,74 @@ function AvisoModal({
             rows={5}
             className="w-full resize-none rounded-xl border border-silver bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none ring-primary/30 focus:ring-2"
           />
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Imagen (opcional)</span>
+            {aviso?.imagenUrl && !imagen && !quitarImagenExistente && (
+              <div className="mb-2 flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- bucket público */}
+                <img src={aviso.imagenUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                <button
+                  onClick={() => setQuitarImagenExistente(true)}
+                  className="ease-spring text-xs font-medium text-danger transition hover:text-danger/80"
+                >
+                  Quitar imagen
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImagen(e.target.files?.[0] ?? null)}
+              className="block w-full text-xs"
+            />
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Para</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAudiencia("general")}
+                className={`ease-spring flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  audiencia === "general"
+                    ? "border-primary/40 bg-primary-dim text-primary"
+                    : "border-silver text-muted hover:text-foreground"
+                }`}
+              >
+                General (todos)
+              </button>
+              <button
+                onClick={() => setAudiencia("personal")}
+                className={`ease-spring flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  audiencia === "personal"
+                    ? "border-primary/40 bg-primary-dim text-primary"
+                    : "border-silver text-muted hover:text-foreground"
+                }`}
+              >
+                Personal (elegir)
+              </button>
+            </div>
+            {audiencia === "personal" && (
+              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-silver p-2">
+                {usuarios.length === 0 && <p className="text-xs text-muted">Cargando usuarios…</p>}
+                {usuarios.map((u) => (
+                  <label
+                    key={u.id}
+                    className="ease-spring flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-foreground transition hover:bg-surface-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={destinatarios.has(u.id)}
+                      onChange={() => alternarDestinatario(u.id)}
+                      className="h-3.5 w-3.5 flex-none rounded border-silver"
+                    />
+                    <Users className="h-3 w-3 flex-none text-muted" strokeWidth={1.75} />
+                    <span className="truncate">{u.nombre}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-xs text-danger">{error}</p>}
 
