@@ -19,12 +19,17 @@ async function buscarClientesPorTelefonoNorm(telefonoNorm: string): Promise<{ id
 
 // Registra un envío del popup de la landing: lo guarda en landing_registros
 // (actualiza el mismo registro si el correo+teléfono ya habían mandado
-// antes) y, si encuentra una única coincidencia con un cliente existente
-// (por correo o por teléfono), marca en ese cliente que ya entró a la
-// landing. 0 coincidencias → sin_coincidencia (puede que aún no sea
-// cliente). 2+ coincidencias DISTINTAS (ej. el correo es de alguien y el
-// teléfono es de otra persona) → revisión manual, no se adivina a cuál de
-// los dos pertenece.
+// antes) y, si encuentra al cliente, marca en su perfil que ya entró a la
+// landing.
+//
+// El correo manda: el popup le pide explícitamente "el correo con el que
+// te registraste", así que si coincide con un cliente, se usa ese —
+// aunque el teléfono que haya escrito también le pegue a otros clientes
+// (pasa seguido: números compartidos en familia, o varias cuentas de
+// prueba con el mismo teléfono). El teléfono solo decide cuando el correo
+// no coincidió con nadie (typo o cambió de correo pero sigue teniendo el
+// mismo número) — y ahí sí, si le pega a 2+ clientes DISTINTOS, no se
+// adivina: queda en revisión manual.
 export async function registrarEnvioLanding(input: {
   nombre: string;
   email: string;
@@ -36,22 +41,22 @@ export async function registrarEnvioLanding(input: {
   const email = normalizarEmail(input.email);
   const telefonoNorm = normalizarTelefonoLanding(input.telefono);
 
-  const [porEmail, porTelefono] = await Promise.all([
-    buscarClientePorCorreo(email),
-    buscarClientesPorTelefonoNorm(telefonoNorm),
-  ]);
-
-  const idsEncontrados = new Set<string>();
-  if (porEmail) idsEncontrados.add(porEmail.id);
-  for (const c of porTelefono) idsEncontrados.add(c.id);
+  const porEmail = await buscarClientePorCorreo(email);
 
   let estado: EstadoLandingRegistro = "sin_coincidencia";
   let clienteId: string | null = null;
-  if (idsEncontrados.size === 1) {
+  if (porEmail) {
     estado = "enlazado";
-    clienteId = [...idsEncontrados][0];
-  } else if (idsEncontrados.size > 1) {
-    estado = "revision";
+    clienteId = porEmail.id;
+  } else {
+    const porTelefono = await buscarClientesPorTelefonoNorm(telefonoNorm);
+    const idsPorTelefono = new Set(porTelefono.map((c) => c.id));
+    if (idsPorTelefono.size === 1) {
+      estado = "enlazado";
+      clienteId = [...idsPorTelefono][0];
+    } else if (idsPorTelefono.size > 1) {
+      estado = "revision";
+    }
   }
 
   const ahora = new Date().toISOString();
