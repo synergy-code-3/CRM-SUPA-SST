@@ -6,7 +6,10 @@ export type Rol = "admin" | "coordinador" | "abeja";
 export const ROLES: Rol[] = ["admin", "coordinador", "abeja"];
 
 // admin: control total.
-// coordinador: ver todo + agregar notas/llamadas + exportar CSV.
+// coordinador: en el Club, ver todo + agregar notas/llamadas + exportar CSV
+//   (no puede crear/editar clientes ni renovar/pausar/revocar/eliminar). En
+//   Certificaciones sí tiene control total (gestionarCertificaciones), igual
+//   que admin.
 // abeja: solo lectura de clientes y sus perfiles/timeline.
 export const PERMISOS = {
   verClientes: ["admin", "coordinador", "abeja"],
@@ -36,7 +39,7 @@ export const PERMISOS = {
   verCertificaciones: ["admin", "coordinador", "abeja"],
   actualizarCertificaciones: ["admin", "coordinador"], // botón "Actualizar" (sync desde la hoja de ventas)
   agregarNotaCertificaciones: ["admin", "coordinador"],
-  gestionarCertificaciones: ["admin"], // crear, editar datos, pausar/renovar, papelera
+  gestionarCertificaciones: ["admin", "coordinador"], // crear, editar datos, pausar/renovar, papelera
   solicitarCertificacion: ["admin", "coordinador", "abeja"], // igual criterio que solicitarCliente
   revisarSolicitudesCertificacion: ["admin"], // igual criterio que revisarSolicitudes
 } as const satisfies Record<string, readonly Rol[]>;
