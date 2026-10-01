@@ -878,48 +878,10 @@ export function ClientePanel({
     }
 
     if (!puedeEditar && puedeSolicitarUpgrade && esUpgradeable) {
-      if (mostrarFormUpgrade) {
-        return (
-          <div className="space-y-2 rounded-lg border border-silver bg-surface-2 p-3">
-            <label className="block text-xs font-medium text-muted">
-              Comprobante de pago *
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => setArchivoUpgrade(e.target.files?.[0] ?? null)}
-                className="mt-1 block w-full text-xs"
-              />
-            </label>
-            <textarea
-              value={notaUpgrade}
-              onChange={(e) => setNotaUpgrade(e.target.value)}
-              placeholder="Nota (opcional)"
-              rows={2}
-              className="w-full resize-none rounded-lg border border-silver bg-surface px-3 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
-            />
-            {errorUpgrade && <p className="text-xs text-danger">{errorUpgrade}</p>}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setMostrarFormUpgrade(false);
-                  setArchivoUpgrade(null);
-                  setErrorUpgrade(null);
-                }}
-                className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-muted transition hover:text-foreground"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={enviarSolicitudUpgrade}
-                disabled={!archivoUpgrade || enviandoUpgrade}
-                className="ease-spring rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-40"
-              >
-                {enviandoUpgrade ? "Enviando…" : "Enviar solicitud"}
-              </button>
-            </div>
-          </div>
-        );
-      }
+      // El formulario en sí es una ventana emergente (SolicitarUpgradeModal,
+      // más abajo) — mientras está abierta no hace falta repetir el botón
+      // aquí.
+      if (mostrarFormUpgrade) return null;
       return comoBoton ? (
         <button
           onClick={() => setMostrarFormUpgrade(true)}
@@ -3148,6 +3110,115 @@ export function ClientePanel({
             </div>
           </>
         )}
+      </div>
+      {mostrarFormUpgrade && cliente && (
+        <SolicitarUpgradeModal
+          cliente={cliente}
+          archivo={archivoUpgrade}
+          onCambiarArchivo={setArchivoUpgrade}
+          nota={notaUpgrade}
+          onCambiarNota={setNotaUpgrade}
+          error={errorUpgrade}
+          enviando={enviandoUpgrade}
+          onCancelar={() => {
+            setMostrarFormUpgrade(false);
+            setArchivoUpgrade(null);
+            setNotaUpgrade("");
+            setErrorUpgrade(null);
+          }}
+          onEnviar={enviarSolicitudUpgrade}
+        />
+      )}
+    </div>
+  );
+}
+
+// Ventana emergente de "Solicitar upgrade a 12 meses" — los datos del
+// cliente van pre-llenados (de solo lectura, no se editan aquí) y solo
+// falta adjuntar el comprobante de pago y, si quiere, una nota.
+function SolicitarUpgradeModal({
+  cliente,
+  archivo,
+  onCambiarArchivo,
+  nota,
+  onCambiarNota,
+  error,
+  enviando,
+  onCancelar,
+  onEnviar,
+}: {
+  cliente: Cliente;
+  archivo: File | null;
+  onCambiarArchivo: (archivo: File | null) => void;
+  nota: string;
+  onCambiarNota: (nota: string) => void;
+  error: string | null;
+  enviando: boolean;
+  onCancelar: () => void;
+  onEnviar: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
+      onClick={(e) => e.target === e.currentTarget && onCancelar()}
+    >
+      <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
+        <div className="core rounded-[calc(2rem-0.5rem)] p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-foreground">Solicitar upgrade a 12 meses</h2>
+            <button
+              onClick={onCancelar}
+              className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2"
+            >
+              <XCircle className="h-4.5 w-4.5" strokeWidth={1.75} />
+            </button>
+          </div>
+
+          <div className="mb-4 space-y-2 rounded-xl border border-silver bg-surface-2 p-3 text-sm">
+            <CampoValor label="Cliente" valor={cliente.nombre} />
+            <CampoValor label="Correo" valor={cliente.email} />
+            <CampoValor label="Membresía actual" valor={cliente.tipoMembresia} />
+          </div>
+
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Comprobante de pago *</span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => onCambiarArchivo(e.target.files?.[0] ?? null)}
+                className="block w-full text-xs"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Nota (opcional)</span>
+              <textarea
+                value={nota}
+                onChange={(e) => onCambiarNota(e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+              />
+            </label>
+          </div>
+
+          {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+
+          <div className="mt-5 flex gap-2">
+            <button
+              onClick={onCancelar}
+              className="ease-spring flex-1 rounded-xl border border-silver px-4 py-2.5 text-sm font-medium text-muted transition hover:text-foreground"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onEnviar}
+              disabled={!archivo || enviando}
+              className="ease-spring flex-1 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-40"
+            >
+              {enviando ? "Enviando…" : "Enviar solicitud"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
