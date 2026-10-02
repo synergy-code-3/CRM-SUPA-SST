@@ -46,6 +46,10 @@ export const PERMISOS = {
   gestionarCertificaciones: ["admin", "coordinador"], // crear, editar datos, pausar/renovar, papelera
   solicitarCertificacion: ["admin", "coordinador", "abeja"], // igual criterio que solicitarCliente
   revisarSolicitudesCertificacion: ["admin"], // igual criterio que revisarSolicitudes
+  // Nueva sección "Community Manager" — todos pueden entrar a la ruta, pero
+  // mientras se construye solo admin ve contenido real; coordinador/abeja
+  // ven "En construcción" (ver community-manager/layout.tsx).
+  verCommunityManager: ["admin", "coordinador", "abeja"],
 } as const satisfies Record<string, readonly Rol[]>;
 
 export type Accion = keyof typeof PERMISOS;

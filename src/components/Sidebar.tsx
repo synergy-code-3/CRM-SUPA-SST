@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, Share2 } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -38,6 +38,7 @@ const NAV_CLUB: ItemNav[] = [
   { href: "/eliminados", label: "Eliminados", icon: Trash2, permiso: "verEliminados" },
   { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
   { href: "/avisos", label: "Avisos", icon: Megaphone, permiso: "verAvisos", contador: "avisos" },
+  { href: "/community-manager", label: "Community Manager", icon: Share2, permiso: "verCommunityManager" },
 ];
 
 // Sección "Certificaciones" (Legendar-IA) — workspace aparte, se cambia con
