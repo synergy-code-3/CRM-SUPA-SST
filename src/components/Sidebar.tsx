@@ -4,8 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock } from "lucide-react";
 import type { Aviso } from "@/lib/types";
+import type { ItemReciente, Plataforma } from "@/lib/community-manager";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
 import type { UsuarioSesion } from "@/lib/auth";
@@ -55,6 +56,10 @@ const REDES_COMMUNITY_MANAGER: { id: string; label: string; icon: typeof LayoutD
   { id: "tiktok", label: "TikTok", icon: Music2 },
   { id: "skool", label: "Skool", icon: GraduationCap },
 ];
+
+const ICONO_POR_PLATAFORMA: Record<Plataforma, typeof LayoutDashboard> = Object.fromEntries(
+  REDES_COMMUNITY_MANAGER.map((r) => [r.id, r.icon])
+) as Record<Plataforma, typeof LayoutDashboard>;
 
 const GRUPOS_COMMUNITY_MANAGER: GrupoNav[] = [
   {
@@ -652,6 +657,60 @@ function NavGruposCommunityManager({ pathname, grande = false }: { pathname: str
   );
 }
 
+// "Recientes": las últimas 3 adiciones de TODO Community Manager
+// (publicaciones de redes + atenciones de Skool, mezcladas por fecha),
+// debajo del grupo Moderación — ver obtenerRecientesCommunityManager en
+// src/lib/community-manager.ts. Se recarga con cada navegación dentro del
+// workspace (no hace falta polling: es solo para encontrar rápido lo
+// último que se agregó, no una bandeja de pendientes).
+function RecientesCommunityManager({ pathname, grande = false }: { pathname: string; grande?: boolean }) {
+  const [items, setItems] = useState<ItemReciente[] | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    fetch("/api/community-manager/recientes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelado) setItems(data.recientes ?? []);
+      })
+      .catch(() => {
+        if (!cancelado) setItems([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [pathname]);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className={grande ? "mt-4" : "mt-3"}>
+      <p className={`flex items-center gap-1.5 px-3 font-semibold text-muted ${grande ? "mb-1.5 text-sm" : "mb-1 text-xs"}`}>
+        <Clock className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} strokeWidth={1.9} />
+        Recientes
+      </p>
+      <div className="flex flex-col gap-0.5">
+        {items.map((item) => {
+          const Icono = ICONO_POR_PLATAFORMA[item.plataforma];
+          return (
+            <Link
+              key={item.id}
+              href={item.href}
+              title={item.descripcion}
+              className={`ease-spring flex items-center gap-2.5 rounded-lg px-3 text-muted transition hover:bg-surface-2 hover:text-foreground ${
+                grande ? "py-2 text-sm" : "py-1.5 text-xs"
+              }`}
+            >
+              <Icono className={grande ? "h-4 w-4 flex-none" : "h-3.5 w-3.5 flex-none"} strokeWidth={1.75} />
+              <span className="truncate">{item.descripcion}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { usuario } = useSesion();
@@ -694,7 +753,10 @@ export function Sidebar() {
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {esCommunityManager ? (
-            <NavGruposCommunityManager pathname={pathname} />
+            <>
+              <NavGruposCommunityManager pathname={pathname} />
+              <RecientesCommunityManager pathname={pathname} />
+            </>
           ) : (
             items.map(({ href, label, icon: Icon, contador }, i) => {
               const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
@@ -756,7 +818,10 @@ export function Sidebar() {
             </div>
             <nav className="flex flex-1 flex-col gap-1">
               {esCommunityManager ? (
-                <NavGruposCommunityManager pathname={pathname} grande />
+                <>
+                  <NavGruposCommunityManager pathname={pathname} grande />
+                  <RecientesCommunityManager pathname={pathname} grande />
+                </>
               ) : (
                 items.map(({ href, label, icon: Icon, contador }, i) => {
                   const activo = pathname === href && items.findIndex((it) => it.href === href) === i;

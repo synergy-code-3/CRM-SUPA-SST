@@ -276,3 +276,50 @@ export async function obtenerEstadisticasSkool(): Promise<EstadisticasSkool> {
     preguntasComunes: extraerPalabrasClave(filas.map((f) => f.pregunta)),
   };
 }
+
+// --- "Recientes" del menú lateral ------------------------------------
+// Últimas adiciones de TODO Community Manager (publicaciones de
+// Facebook/Instagram/TikTok + atenciones de Skool), mezcladas y
+// recortadas a las 3 más nuevas por creado_en.
+
+export type ItemReciente = {
+  id: string;
+  plataforma: Plataforma;
+  descripcion: string;
+  creadoEn: string;
+  href: string;
+};
+
+export async function obtenerRecientesCommunityManager(limite = 3): Promise<ItemReciente[]> {
+  const [{ data: pubs, error: errPub }, { data: skool, error: errSkool }] = await Promise.all([
+    supabase
+      .from("cm_publicaciones")
+      .select("id, plataforma, tipo_publicacion, enlace, creado_en")
+      .order("creado_en", { ascending: false })
+      .limit(limite),
+    supabase
+      .from("cm_skool_atenciones")
+      .select("id, pregunta, creado_en")
+      .order("creado_en", { ascending: false })
+      .limit(limite),
+  ]);
+  if (errPub) throw errPub;
+  if (errSkool) throw errSkool;
+
+  const itemsPubs: ItemReciente[] = (pubs ?? []).map((p) => ({
+    id: p.id,
+    plataforma: p.plataforma as Plataforma,
+    descripcion: `${p.tipo_publicacion} — ${p.enlace}`,
+    creadoEn: p.creado_en,
+    href: `/community-manager/moderacion/${p.plataforma}`,
+  }));
+  const itemsSkool: ItemReciente[] = (skool ?? []).map((s) => ({
+    id: s.id,
+    plataforma: "skool" as const,
+    descripcion: s.pregunta,
+    creadoEn: s.creado_en,
+    href: "/community-manager/moderacion/skool",
+  }));
+
+  return [...itemsPubs, ...itemsSkool].sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1)).slice(0, limite);
+}
