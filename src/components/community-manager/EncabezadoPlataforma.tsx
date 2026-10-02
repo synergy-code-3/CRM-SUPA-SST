@@ -9,10 +9,11 @@ const ICONO_PLATAFORMA: Record<Plataforma, typeof LayoutGrid> = {
 };
 
 // Encabezado compartido de Estadísticas/Moderación: se queda fijo arriba
-// al hacer scroll (sticky, no se mueve) y no deja ver nada "detrás" — el
-// -mx/-mt lo estira hasta el borde de <main> (que trae su propio padding,
-// ver src/app/(app)/layout.tsx) y bg-background + z-30 + border-b lo
-// pintan sólido por encima de las tarjetas que pasan debajo al scrollear.
+// al hacer scroll (sticky, no se mueve) sin dejar ver nada "detrás" — bg
+// sólido + z alto bastan. (Antes se intentó estirarlo con márgenes
+// negativos hasta el borde de <main>, pero eso descolocaba el sticky —
+// quedaba "pegado" de más, tapando mal el contenido. Así, simple, es lo
+// que de verdad funciona.)
 export function EncabezadoPlataforma({
   plataforma,
   titulo,
@@ -26,7 +27,7 @@ export function EncabezadoPlataforma({
 }) {
   const Icono = plataforma ? ICONO_PLATAFORMA[plataforma] : LayoutGrid;
   return (
-    <div className="sticky top-0 z-30 -mx-4 -mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-silver/70 bg-background px-4 pb-4 pt-5 sm:-mx-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8 md:pt-8">
+    <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-silver/70 bg-background pb-4">
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-primary-dim text-primary-deep">
           <Icono className="h-5 w-5" strokeWidth={1.75} />
