@@ -15,6 +15,10 @@ import {
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import type { Cliente } from "@/lib/types";
+import { ChartCard } from "@/components/charts/ChartCard";
+import { Kpi } from "@/components/charts/Kpi";
+import { DonutChart } from "@/components/charts/DonutChart";
+import { BarChart } from "@/components/charts/BarChart";
 type Resumen = {
   totalClientes: number;
   conAcceso: number;
@@ -107,13 +111,33 @@ export default function DashboardPage() {
         </ChartCard>
 
         <ChartCard title="Acceso a Plataforma" subtitle="Distribución de acceso activo">
-          {resumen ? <Dona datos={resumen.distribucionAcceso} total={resumen.totalClientes} /> : <Cargando />}
+          {resumen ? (
+            <DonutChart
+              datos={resumen.distribucionAcceso}
+              total={resumen.totalClientes}
+              colores={COLORES_DONA}
+              centro={{
+                valor: `${
+                  resumen.totalClientes > 0
+                    ? Math.round(
+                        ((resumen.distribucionAcceso.find((d) => d.nombre.toLowerCase() === "si")?.cantidad ?? 0) /
+                          resumen.totalClientes) *
+                          100
+                      )
+                    : 0
+                }%`,
+                etiqueta: "activos",
+              }}
+            />
+          ) : (
+            <Cargando />
+          )}
         </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ChartCard icon={GraduationCap} iconTone="text-primary" title="Top Membresías Skool" subtitle="Por número de registros">
-          {resumen ? <BarrasMembresia datos={resumen.topMembresias} /> : <Cargando />}
+          {resumen ? <BarChart datos={resumen.topMembresias} /> : <Cargando />}
         </ChartCard>
 
         <ChartCard icon={TrendingUp} iconTone="text-success" title="Crecimiento acumulado" subtitle="Total de contactos registrados en el tiempo">
@@ -219,82 +243,6 @@ function BuscadorClientesDashboard() {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function ChartCard({
-  icon: Icon,
-  iconTone = "text-primary",
-  title,
-  subtitle,
-  className = "",
-  children,
-}: {
-  icon?: typeof TrendingUp;
-  iconTone?: string;
-  title: string;
-  subtitle: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`shell rounded-[2rem] p-2 diffused-lg ${className}`}>
-      <div className="core rounded-[calc(2rem-0.5rem)] p-6">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          {Icon && <Icon className={`h-4 w-4 ${iconTone}`} strokeWidth={1.75} />}
-          {title}
-        </h3>
-        <p className="mb-4 text-xs text-muted">{subtitle}</p>
-        <div className="h-64">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Kpi({
-  icon: Icon,
-  label,
-  sub,
-  value,
-  tone,
-}: {
-  icon: typeof Users;
-  label: string;
-  sub: string;
-  value: number | undefined;
-  tone: "primary" | "success" | "danger" | "teal" | "warning" | "purple";
-}) {
-  const toneClass = {
-    primary: "bg-primary-dim text-primary",
-    success: "bg-success/15 text-success",
-    danger: "bg-danger/15 text-danger",
-    teal: "bg-teal-500/15 text-teal-600",
-    warning: "bg-warning/15 text-amber-600",
-    purple: "bg-violet-500/15 text-violet-600",
-  }[tone];
-  const subToneClass = {
-    primary: "bg-primary-dim text-primary-deep",
-    success: "bg-success/15 text-success",
-    danger: "bg-danger/15 text-danger",
-    teal: "bg-teal-500/15 text-teal-700",
-    warning: "bg-warning/15 text-amber-700",
-    purple: "bg-violet-500/15 text-violet-700",
-  }[tone];
-  return (
-    <div className="shell rounded-[1.25rem] p-1.5 diffused">
-      <div className="core rounded-[calc(1.25rem-0.375rem)] p-3.5">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneClass}`}>
-          <Icon className="h-4 w-4" strokeWidth={1.75} />
-        </div>
-        <p className="mt-2 text-xl font-semibold text-foreground">
-          {value !== undefined ? value.toLocaleString("es-MX") : "—"}
-        </p>
-        <p className="text-[11px] text-muted">{label}</p>
-        <span className={`mt-1.5 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium ${subToneClass}`}>
-          {sub}
-        </span>
-      </div>
     </div>
   );
 }
@@ -432,109 +380,3 @@ function LineChart({
   );
 }
 
-function Dona({ datos, total }: { datos: { nombre: string; cantidad: number }[]; total: number }) {
-  const [hover, setHover] = useState<number | null>(null);
-  let acumulado = 0;
-  const segmentos = datos.map((d, i) => {
-    const pct = total > 0 ? d.cantidad / total : 0;
-    const seg = { ...d, color: COLORES_DONA[i % COLORES_DONA.length], pct, offset: acumulado };
-    acumulado += pct;
-    return seg;
-  });
-  const activos = datos.find((d) => d.nombre.toLowerCase() === "si")?.cantidad ?? 0;
-  const pctActivos = total > 0 ? Math.round((activos / total) * 100) : 0;
-
-  const R = 70;
-  const STROKE = 20;
-  const C = 2 * Math.PI * R;
-  const activo = hover !== null ? segmentos[hover] : null;
-
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <div className="relative aspect-square h-[68%] max-h-[68%]">
-        <svg viewBox="0 0 160 160" className="h-full w-full -rotate-90">
-          <circle cx={80} cy={80} r={R} fill="none" stroke="var(--surface-2)" strokeWidth={STROKE} />
-          {segmentos.map((s, i) => {
-            const arco = s.pct * C;
-            return (
-              <circle
-                key={s.nombre}
-                cx={80}
-                cy={80}
-                r={R}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={hover === i ? STROKE + 5 : STROKE}
-                strokeDasharray={`${arco} ${C - arco}`}
-                strokeDashoffset={-s.offset * C}
-                strokeLinecap="butt"
-                className="cursor-pointer transition-all"
-                opacity={hover !== null && hover !== i ? 0.45 : 1}
-                onMouseEnter={() => setHover(i)}
-                onMouseLeave={() => setHover(null)}
-              />
-            );
-          })}
-        </svg>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          {activo ? (
-            <>
-              <span className="text-3xl font-bold text-foreground">{activo.cantidad.toLocaleString("es-MX")}</span>
-              <span className="text-xs text-muted">{activo.nombre}</span>
-            </>
-          ) : (
-            <>
-              <span className="text-4xl font-bold text-foreground">{pctActivos}%</span>
-              <span className="text-xs text-muted">activos</span>
-            </>
-          )}
-        </div>
-      </div>
-      <ul className="flex flex-wrap justify-center gap-x-3 gap-y-1">
-        {segmentos.map((s, i) => (
-          <li
-            key={s.nombre}
-            onMouseEnter={() => setHover(i)}
-            onMouseLeave={() => setHover(null)}
-            className={`ease-spring flex cursor-pointer items-center gap-1.5 text-xs transition ${
-              hover === i ? "font-semibold text-foreground" : "text-muted"
-            }`}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
-            {s.nombre}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function BarrasMembresia({ datos }: { datos: { nombre: string; cantidad: number }[] }) {
-  const [hover, setHover] = useState<number | null>(null);
-  if (datos.length === 0) return <p className="text-sm text-muted">Sin datos de membresía.</p>;
-  const max = Math.max(...datos.map((d) => d.cantidad));
-  const total = datos.reduce((s, d) => s + d.cantidad, 0);
-  return (
-    <ul className="flex h-full flex-col justify-center gap-2.5 overflow-y-auto">
-      {datos.map((d, i) => (
-        <li key={d.nombre} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} className="cursor-pointer">
-          <div className="mb-1 flex items-center justify-between text-xs">
-            <span className={`ease-spring font-medium transition ${hover === i ? "text-primary" : "text-foreground"}`}>
-              {d.nombre}
-            </span>
-            <span className="text-muted">
-              {d.cantidad.toLocaleString("es-MX")}
-              {hover === i && total > 0 && <span className="ml-1 text-primary">({Math.round((d.cantidad / total) * 100)}%)</span>}
-            </span>
-          </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
-            <div
-              className={`ease-spring h-full rounded-full brand-plate transition-all ${hover === i ? "shadow-[0_0_8px_var(--color-primary)]" : ""}`}
-              style={{ width: `${(d.cantidad / max) * 100}%` }}
-            />
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}

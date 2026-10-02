@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, Share2 } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso, type Accion, type Rol } from "@/lib/permisos";
@@ -41,11 +41,11 @@ const NAV_CLUB: ItemNav[] = [
 ];
 
 // Nav de cada workspace cuando se cambia desde el switcher del logo (ver
-// WORKSPACES/Marca más abajo) — Community Manager arranca con un solo
-// ítem (su propia home), listo para agregarle más páginas después, mismo
-// patrón que NAV_CERTIFICACIONES.
+// WORKSPACES/Marca más abajo) — listo para agregarle más páginas después,
+// mismo patrón que NAV_CERTIFICACIONES.
 const NAV_COMMUNITY_MANAGER: ItemNav[] = [
-  { href: "/community-manager", label: "Community Manager", icon: Share2, permiso: "verCommunityManager" },
+  { href: "/community-manager", label: "Estadísticas", icon: BarChart3, permiso: "verCommunityManager" },
+  { href: "/community-manager/moderacion", label: "Moderación", icon: Flag, permiso: "verCommunityManager" },
 ];
 
 // Workspaces disponibles en el switcher del logo — agregar uno nuevo aquí
