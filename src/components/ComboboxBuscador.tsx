@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, Plus } from "lucide-react";
 
 export type OpcionCombobox = { valor: string; etiqueta: string; nota?: string };
 
@@ -13,6 +13,7 @@ export function ComboboxBuscador({
   placeholder = "Seleccionar…",
   disabled,
   etiquetaVacio,
+  onCrearOpcion,
 }: {
   opciones: OpcionCombobox[];
   valor: string;
@@ -21,9 +22,15 @@ export function ComboboxBuscador({
   disabled?: boolean;
   // Si se pasa, agrega una primera opción que limpia la selección (valor "").
   etiquetaVacio?: string;
+  // Si se pasa, cuando lo buscado no coincide con ninguna opción aparece
+  // "+ Agregar “texto”" al fondo del menú (ej. Motivo en Moderación de
+  // Community Manager, para que cada quien pueda sumar motivos nuevos sin
+  // tocar código). onChange ya recibe el valor nuevo apenas se crea.
+  onCrearOpcion?: (valor: string) => Promise<void> | void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [creando, setCreando] = useState(false);
   const [posicion, setPosicion] = useState<{ top: number; left: number; width: number } | null>(null);
   const raiz = useRef<HTMLDivElement>(null);
   const boton = useRef<HTMLButtonElement>(null);
@@ -70,6 +77,22 @@ export function ComboboxBuscador({
   const filtradas = busqueda.trim()
     ? conVacio.filter((o) => o.etiqueta.toLowerCase().includes(busqueda.trim().toLowerCase()))
     : conVacio;
+  const textoNuevo = busqueda.trim();
+  const puedeCrear =
+    !!onCrearOpcion && textoNuevo.length > 0 && !conVacio.some((o) => o.etiqueta.toLowerCase() === textoNuevo.toLowerCase());
+
+  async function crearOpcion() {
+    if (!onCrearOpcion || !textoNuevo || creando) return;
+    setCreando(true);
+    try {
+      await onCrearOpcion(textoNuevo);
+      onChange(textoNuevo);
+      setAbierto(false);
+      setBusqueda("");
+    } finally {
+      setCreando(false);
+    }
+  }
 
   return (
     <div ref={raiz} className="relative">
@@ -126,6 +149,17 @@ export function ComboboxBuscador({
                 </button>
               ))}
             </div>
+            {puedeCrear && (
+              <button
+                type="button"
+                onClick={crearOpcion}
+                disabled={creando}
+                className="flex w-full items-center gap-1.5 border-t border-silver px-3 py-1.5 text-left text-sm font-medium text-primary transition hover:bg-surface-2 disabled:opacity-50"
+              >
+                <Plus className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+                <span className="truncate">{creando ? "Agregando…" : `Agregar "${textoNuevo}"`}</span>
+              </button>
+            )}
           </div>,
           document.body
         )}

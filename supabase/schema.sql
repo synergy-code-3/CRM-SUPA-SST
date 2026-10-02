@@ -599,6 +599,12 @@ alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_c
 alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
   check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones'));
 
+-- "Motivo" en Moderación de Community Manager: lista base fija en el
+-- componente (Spam/Ofensas/...) + lo que cada usuario vaya agregando acá.
+alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
+alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
+  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones', 'motivo_cm'));
+
 -- Solicitudes de alta para Certificaciones — mismo patrón que
 -- solicitudes_cliente (Club), pero sin la separación correo de pago/acceso
 -- (Certificaciones solo tiene un correo) ni evento (usa region en su

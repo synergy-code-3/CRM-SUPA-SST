@@ -81,7 +81,7 @@ export async function crearRegistroPublicacion(input: {
         usuario: c.usuario.trim(),
         comentario: c.comentario.trim(),
         accion: c.accion,
-        motivo: c.motivo === "—" ? null : c.motivo,
+        motivo: c.motivo.trim() ? c.motivo.trim() : null,
         captura_url: c.capturaUrl ?? null,
       }))
     );

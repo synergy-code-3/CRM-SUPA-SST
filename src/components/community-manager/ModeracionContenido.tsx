@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, ImagePlus, Check } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
+import { EncabezadoPlataforma } from "@/components/community-manager/EncabezadoPlataforma";
 import type { Plataforma } from "@/lib/community-manager";
 
 const TITULO_PLATAFORMA: Record<Plataforma, string> = {
@@ -25,10 +26,10 @@ const OPCIONES_TIPO_PUBLICACION = ["Publicación normal", "Reel / Video corto", 
 }));
 const OPCIONES_SI_NO = ["Sí", "No"].map((v) => ({ valor: v, etiqueta: v }));
 const OPCIONES_ACCION = ["Sin acción", "Eliminado", "Respuesta"].map((v) => ({ valor: v, etiqueta: v }));
-const OPCIONES_MOTIVO = ["—", "Spam", "Ofensas", "Ventas no autorizadas", "Información falsa", "Otros"].map((v) => ({
-  valor: v,
-  etiqueta: v,
-}));
+// Base fija + lo que cada quien vaya agregando desde el propio desplegable
+// (ver onCrearOpcion más abajo) — esos extra se guardan en catalogo_opciones
+// (tipo "motivo_cm") y se comparten entre todos los usuarios.
+const MOTIVOS_BASE = ["Spam", "Ofensas", "Ventas no autorizadas", "Información falsa", "Otros"];
 
 type FilaComentario = {
   id: number;
@@ -40,7 +41,7 @@ type FilaComentario = {
 };
 
 function filaVacia(id: number): FilaComentario {
-  return { id, usuario: "", comentario: "", accion: "Sin acción", motivo: "—", archivoCaptura: null };
+  return { id, usuario: "", comentario: "", accion: "Sin acción", motivo: "", archivoCaptura: null };
 }
 
 function formularioVacio() {
@@ -69,6 +70,29 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState(false);
   const inputsCaptura = useRef<Record<number, HTMLInputElement | null>>({});
+  const [motivosExtra, setMotivosExtra] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/community-manager/motivos")
+      .then((r) => r.json())
+      .then((data) => setMotivosExtra(data.opciones ?? []))
+      .catch(() => {});
+  }, []);
+
+  const opcionesMotivo = useMemo(
+    () => [...MOTIVOS_BASE, ...motivosExtra.filter((m) => !MOTIVOS_BASE.includes(m))].map((v) => ({ valor: v, etiqueta: v })),
+    [motivosExtra]
+  );
+
+  async function crearMotivo(valorNuevo: string) {
+    const res = await fetch("/api/community-manager/motivos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valor: valorNuevo }),
+    });
+    const data = await res.json();
+    if (res.ok) setMotivosExtra(data.opciones ?? []);
+  }
 
   function actualizarComentario(id: number, cambios: Partial<FilaComentario>) {
     setComentarios((filas) => filas.map((f) => (f.id === id ? { ...f, ...cambios } : f)));
@@ -141,12 +165,11 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
 
   return (
     <div className="space-y-7">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">
-          Moderación <span className="text-muted">· {TITULO_PLATAFORMA[plataforma]}</span>
-        </h1>
-        <p className="text-sm text-muted">Registra una publicación que revisaste en {TITULO_PLATAFORMA[plataforma]}.</p>
-      </div>
+      <EncabezadoPlataforma
+        plataforma={plataforma}
+        titulo={<>Moderación <span className="text-muted">· {TITULO_PLATAFORMA[plataforma]}</span></>}
+        subtitulo={`Registra una publicación que revisaste en ${TITULO_PLATAFORMA[plataforma]}.`}
+      />
 
       <div className="shell rounded-[1.75rem] p-2 diffused">
         <div className="core space-y-6 rounded-[calc(1.75rem-0.5rem)] p-6">
@@ -221,17 +244,31 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
               Agregar comentario
             </button>
           </div>
+          {/* table-fixed + colgroup: sin esto el navegador le daba espacio
+              de más a la celda de Comentario y dejaba un hueco muerto antes
+              de Acción; ahora cada columna mide justo lo que necesita y
+              Motivo queda lo bastante ancha para que su menú (y "Agregar
+              motivo nuevo") no necesite scroll lateral. */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-8" />
+                <col className="w-32" />
+                <col />
+                <col className="w-32" />
+                <col className="w-52" />
+                <col className="w-16" />
+                <col className="w-8" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-silver text-xs font-semibold uppercase tracking-wide text-muted">
-                  <th className="w-8 py-2.5 pr-2">#</th>
+                  <th className="py-2.5 pr-2">#</th>
                   <th className="py-2.5 pr-3">Usuario</th>
                   <th className="py-2.5 pr-3">Comentario</th>
                   <th className="py-2.5 pr-3">Acción</th>
                   <th className="py-2.5 pr-3">Motivo</th>
                   <th className="py-2.5 pr-3">Captura</th>
-                  <th className="w-8 py-2.5" />
+                  <th className="py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -243,7 +280,7 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
                         value={fila.usuario}
                         onChange={(e) => actualizarComentario(fila.id, { usuario: e.target.value })}
                         placeholder="Usuario"
-                        className="w-28 rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                        className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
                       />
                     </td>
                     <td className="py-2.5 pr-3">
@@ -251,7 +288,7 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
                         value={fila.comentario}
                         onChange={(e) => actualizarComentario(fila.id, { comentario: e.target.value })}
                         placeholder="Comentario"
-                        className="w-60 rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                        className="w-full rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
                       />
                     </td>
                     <td className="py-2.5 pr-3">
@@ -263,9 +300,11 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
                     </td>
                     <td className="py-2.5 pr-3">
                       <ComboboxBuscador
-                        opciones={OPCIONES_MOTIVO}
+                        opciones={opcionesMotivo}
                         valor={fila.motivo}
                         onChange={(v) => actualizarComentario(fila.id, { motivo: v })}
+                        etiquetaVacio="—"
+                        onCrearOpcion={crearMotivo}
                       />
                     </td>
                     <td className="py-2.5 pr-3">
