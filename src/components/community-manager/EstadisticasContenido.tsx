@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, MessageSquare, Trash2, FileText, Users, Search } from "lucide-react";
+import { Calendar, MessageSquare, Trash2, FileText, Users, Search, Facebook, Instagram, Music2, GraduationCap, LayoutGrid } from "lucide-react";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { Kpi } from "@/components/charts/Kpi";
 import { DonutChart } from "@/components/charts/DonutChart";
@@ -17,6 +17,13 @@ const TITULO_PLATAFORMA: Record<Plataforma, string> = {
   instagram: "Instagram",
   tiktok: "TikTok",
   skool: "Skool",
+};
+
+const ICONO_PLATAFORMA: Record<Plataforma, typeof LayoutGrid> = {
+  facebook: Facebook,
+  instagram: Instagram,
+  tiktok: Music2,
+  skool: GraduationCap,
 };
 
 // Contenido de la pantalla de Estadísticas — una instancia por red (la
@@ -51,16 +58,23 @@ export function EstadisticasContenido({ plataforma }: { plataforma: Plataforma |
     );
   }, [datos, busqueda]);
 
+  const IconoPlataforma = plataforma ? ICONO_PLATAFORMA[plataforma] : LayoutGrid;
+
   return (
     <div className="space-y-7">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            Estadísticas {plataforma && <span className="text-muted">· {TITULO_PLATAFORMA[plataforma]}</span>}
-          </h1>
-          <p className="text-sm text-muted">
-            {plataforma ? `Resumen de moderación en ${TITULO_PLATAFORMA[plataforma]}.` : "Resumen general de moderación en redes sociales y Skool."}
-          </p>
+      <div className="sticky top-0 z-10 -mx-4 -mt-5 flex flex-wrap items-center justify-between gap-3 bg-background px-4 pb-4 pt-5 sm:-mx-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8 md:pt-8">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-primary-dim text-primary-deep">
+            <IconoPlataforma className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">
+              Estadísticas {plataforma && <span className="text-muted">· {TITULO_PLATAFORMA[plataforma]}</span>}
+            </h1>
+            <p className="text-sm text-muted">
+              {plataforma ? `Resumen de moderación en ${TITULO_PLATAFORMA[plataforma]}.` : "Resumen general de moderación en redes sociales y Skool."}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2 rounded-xl border border-silver bg-surface px-3 py-2 text-xs text-muted">
           <Calendar className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -145,10 +159,13 @@ export function EstadisticasContenido({ plataforma }: { plataforma: Plataforma |
                   />
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              {/* max-h ajustado a ~3 filas + encabezado: más comentarios no
+                  hacen crecer la tarjeta, se ven con scroll propio (el
+                  encabezado se queda fijo arriba de ese scroll). */}
+              <div className="scrollbar-fina max-h-[420px] overflow-auto">
                 <table className="w-full min-w-[640px] text-left text-base">
                   <thead>
-                    <tr className="border-b border-silver text-sm font-semibold uppercase tracking-wide text-muted">
+                    <tr className="sticky top-0 z-10 border-b border-silver bg-surface text-sm font-semibold uppercase tracking-wide text-muted">
                       <th className="whitespace-nowrap py-3 pr-4">Fecha</th>
                       <th className="whitespace-nowrap py-3 pr-4">Usuario</th>
                       <th className="whitespace-nowrap py-3 pr-4">Comentario</th>

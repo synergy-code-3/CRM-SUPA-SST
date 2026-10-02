@@ -111,6 +111,7 @@ const PALABRAS_VACIAS = new Set([
   // preposiciones restantes (las de arriba ya cubrían con/para/por/sobre/entre/de/en/a)
   "ante", "bajo", "cabe", "contra", "desde", "durante", "hacia", "hasta",
   "mediante", "segun", "según", "sin", "tras", "via", "vía", "versus",
+  "eso", "nadie", "cosa",
 ]);
 
 function calcularDelta(actual: number, anterior: number): number {
