@@ -105,6 +105,24 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Scrollbar fina y temeada (en vez de la gris por defecto del SO) para
+   listas internas con scroll propio, ej. el ranking de BarChart.tsx
+   cuando hay más filas de las que caben en la tarjeta. */
+.scrollbar-fina {
+  scrollbar-width: thin;
+  scrollbar-color: var(--silver-deep) transparent;
+}
+.scrollbar-fina::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-fina::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-fina::-webkit-scrollbar-thumb {
+  background-color: var(--silver-deep);
+  border-radius: 9999px;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

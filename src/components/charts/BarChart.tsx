@@ -10,7 +10,7 @@ export function BarChart({ datos }: { datos: { nombre: string; cantidad: number 
   const max = Math.max(...datos.map((d) => d.cantidad));
   const total = datos.reduce((s, d) => s + d.cantidad, 0);
   return (
-    <ul className="flex h-full flex-col justify-center gap-2.5 overflow-y-auto">
+    <ul className="scrollbar-fina flex h-full flex-col justify-start gap-2.5 overflow-y-auto pr-1">
       {datos.map((d, i) => (
         <li key={d.nombre} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} className="cursor-pointer">
           <div className="mb-1 flex items-center justify-between text-xs">
