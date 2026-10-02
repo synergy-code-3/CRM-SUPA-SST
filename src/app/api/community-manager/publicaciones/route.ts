@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       tipoPublicacion,
       fechaRevision,
       cantidadComentarios: Number(body?.cantidadComentarios) || 0,
+      cantidadBorrados: Number(body?.cantidadBorrados) || 0,
       cantidadInteracciones: Number(body?.cantidadInteracciones) || 0,
       esPauta: body?.esPauta === "Sí" || body?.esPauta === true,
       notas: body?.notas ?? null,

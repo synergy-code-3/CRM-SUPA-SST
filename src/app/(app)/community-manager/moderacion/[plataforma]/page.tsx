@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { ModeracionContenido } from "@/components/community-manager/ModeracionContenido";
+import { SkoolAtencionContenido } from "@/components/community-manager/SkoolAtencionContenido";
 import { PLATAFORMAS_VALIDAS, type Plataforma } from "@/lib/community-manager";
 
 export default async function ModeracionPlataformaPage({
@@ -9,5 +10,6 @@ export default async function ModeracionPlataformaPage({
 }) {
   const { plataforma } = await params;
   if (!PLATAFORMAS_VALIDAS.includes(plataforma as Plataforma)) notFound();
+  if (plataforma === "skool") return <SkoolAtencionContenido />;
   return <ModeracionContenido plataforma={plataforma as Plataforma} />;
 }

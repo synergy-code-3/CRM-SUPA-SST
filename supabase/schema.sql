@@ -786,3 +786,40 @@ create table if not exists cm_comentarios (
 create index if not exists idx_cm_comentarios_plataforma on cm_comentarios (plataforma, creado_en desc);
 create index if not exists idx_cm_comentarios_publicacion on cm_comentarios (publicacion_id);
 alter table cm_comentarios enable row level security;
+
+-- "Comentarios borrados" se lleva como Número agregado por publicación
+-- (así lo manejaban en Sheets: no detallan cada uno) — las filas de
+-- cm_comentarios son solo ejemplos puntuales para "Motivos de eliminación"
+-- e Historial, no el conteo real. Ver obtenerEstadisticas en
+-- src/lib/community-manager.ts: "Comentarios revisados"/"Comentarios
+-- borrados" suman cantidad_comentarios/cantidad_borrados de aquí, no
+-- cuentan filas de cm_comentarios.
+alter table cm_publicaciones add column if not exists cantidad_borrados integer not null default 0;
+
+-- Para poder identificar (y, si hace falta, revertir) lo que se trajo de
+-- la migración del Sheets histórico, separado de lo que se vaya
+-- registrando real desde el formulario.
+alter table cm_publicaciones add column if not exists migrado_de_sheets boolean not null default false;
+alter table cm_comentarios add column if not exists migrado_de_sheets boolean not null default false;
+
+-- El Sheets histórico ("Webinar") deja de tener fecha por publicación en un
+-- tramo largo (dejaron de anotarla) — se migra igual, sin inventar una
+-- fecha, en vez de perder ese historial de comentarios/interacciones.
+alter table cm_publicaciones alter column fecha_revision drop not null;
+
+-- Skool es distinto a las redes sociales: no hay "publicaciones" ni
+-- "comentarios borrados" — es un registro de atención (qué preguntaron,
+-- qué se respondió). Tabla aparte de cm_publicaciones/cm_comentarios
+-- porque el modelo no tiene nada en común.
+create table if not exists cm_skool_atenciones (
+  id uuid primary key default gen_random_uuid(),
+  fecha date not null,
+  usuario text not null,
+  pregunta text not null,
+  respuesta text not null,
+  creado_por_id uuid references usuarios (id),
+  creado_por_nombre text not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_cm_skool_atenciones_fecha on cm_skool_atenciones (creado_en desc);
+alter table cm_skool_atenciones enable row level security;

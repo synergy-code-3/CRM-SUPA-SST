@@ -49,6 +49,7 @@ function formularioVacio() {
     tipoPublicacion: "",
     fechaRevision: "",
     cantidadComentarios: "",
+    cantidadBorrados: "",
     cantidadInteracciones: "",
     esPauta: "",
     notas: "",
@@ -117,6 +118,7 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
           tipoPublicacion: form.tipoPublicacion,
           fechaRevision: form.fechaRevision,
           cantidadComentarios: form.cantidadComentarios,
+          cantidadBorrados: form.cantidadBorrados,
           cantidadInteracciones: form.cantidadInteracciones,
           esPauta: form.esPauta,
           notas: form.notas,
@@ -162,7 +164,7 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
               <ComboboxBuscador opciones={OPCIONES_TIPO_PUBLICACION} valor={form.tipoPublicacion} onChange={(v) => setForm((f) => ({ ...f, tipoPublicacion: v }))} placeholder="Seleccionar…" />
             </Campo>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Campo label="Fecha de revisión *">
               <input
                 type="date"
@@ -177,6 +179,15 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
                 min={0}
                 value={form.cantidadComentarios}
                 onChange={(e) => setForm((f) => ({ ...f, cantidadComentarios: e.target.value }))}
+                className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
+              />
+            </Campo>
+            <Campo label="Cantidad de comentarios eliminados *">
+              <input
+                type="number"
+                min={0}
+                value={form.cantidadBorrados}
+                onChange={(e) => setForm((f) => ({ ...f, cantidadBorrados: e.target.value }))}
                 className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>

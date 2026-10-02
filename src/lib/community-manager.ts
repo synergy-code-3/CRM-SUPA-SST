@@ -42,6 +42,7 @@ export async function crearRegistroPublicacion(input: {
   tipoPublicacion: string;
   fechaRevision: string;
   cantidadComentarios: number;
+  cantidadBorrados: number;
   cantidadInteracciones: number;
   esPauta: boolean;
   notas?: string | null;
@@ -58,6 +59,7 @@ export async function crearRegistroPublicacion(input: {
       tipo_publicacion: input.tipoPublicacion,
       fecha_revision: input.fechaRevision,
       cantidad_comentarios: input.cantidadComentarios,
+      cantidad_borrados: input.cantidadBorrados,
       cantidad_interacciones: input.cantidadInteracciones,
       es_pauta: input.esPauta,
       notas: input.notas?.trim() || null,
@@ -132,6 +134,18 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
   const inicioActual = new Date(ahora - DIAS_VENTANA * 86400000).toISOString();
   const inicioAnterior = new Date(ahora - 2 * DIAS_VENTANA * 86400000).toISOString();
 
+  // "Comentarios revisados/borrados" salen de los Números agregados que se
+  // capturan por publicación (igual que ya lo llevaban en Sheets) — las
+  // filas de cm_comentarios de abajo son solo ejemplos puntuales para
+  // "Motivos de eliminación"/Historial, contarlas daría un total ridículo
+  // comparado con la realidad (nadie detalla cada comentario uno por uno).
+  let qPublicaciones = supabase
+    .from("cm_publicaciones")
+    .select("creado_en, cantidad_comentarios, cantidad_borrados, cantidad_interacciones");
+  if (plataforma) qPublicaciones = qPublicaciones.eq("plataforma", plataforma);
+  const { data: publicaciones, error: errPub } = await qPublicaciones;
+  if (errPub) throw errPub;
+
   let qComentarios = supabase
     .from("cm_comentarios")
     .select("creado_en, usuario, comentario, accion, motivo")
@@ -140,26 +154,15 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
   const { data: comentarios, error: errCom } = await qComentarios;
   if (errCom) throw errCom;
 
-  let qPublicaciones = supabase
-    .from("cm_publicaciones")
-    .select("creado_en, cantidad_interacciones, fecha_revision");
-  if (plataforma) qPublicaciones = qPublicaciones.eq("plataforma", plataforma);
-  const { data: publicaciones, error: errPub } = await qPublicaciones;
-  if (errPub) throw errPub;
-
   const filas = comentarios ?? [];
   const pubs = publicaciones ?? [];
 
   const enVentana = (fecha: string, desde: string, hasta?: string) => fecha >= desde && (!hasta || fecha < hasta);
 
-  const comentariosActuales = filas.filter((f) => enVentana(f.creado_en, inicioActual));
-  const comentariosAnteriores = filas.filter((f) => enVentana(f.creado_en, inicioAnterior, inicioActual));
-  const borradosActuales = comentariosActuales.filter((f) => f.accion === "Eliminado");
-  const borradosAnteriores = comentariosAnteriores.filter((f) => f.accion === "Eliminado");
   const pubsActuales = pubs.filter((p) => enVentana(p.creado_en, inicioActual));
   const pubsAnteriores = pubs.filter((p) => enVentana(p.creado_en, inicioAnterior, inicioActual));
-  const interaccionesActuales = pubsActuales.reduce((s, p) => s + (p.cantidad_interacciones ?? 0), 0);
-  const interaccionesAnteriores = pubsAnteriores.reduce((s, p) => s + (p.cantidad_interacciones ?? 0), 0);
+  const sumar = (lista: typeof pubs, campo: "cantidad_comentarios" | "cantidad_borrados" | "cantidad_interacciones") =>
+    lista.reduce((s, p) => s + (p[campo] ?? 0), 0);
 
   const motivosMapa = new Map<string, number>();
   for (const f of filas) {
@@ -168,14 +171,14 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
   }
 
   return {
-    comentariosRevisados: comentariosActuales.length,
-    comentariosRevisadosDelta: calcularDelta(comentariosActuales.length, comentariosAnteriores.length),
-    comentariosBorrados: borradosActuales.length,
-    comentariosBorradosDelta: calcularDelta(borradosActuales.length, borradosAnteriores.length),
+    comentariosRevisados: sumar(pubsActuales, "cantidad_comentarios"),
+    comentariosRevisadosDelta: calcularDelta(sumar(pubsActuales, "cantidad_comentarios"), sumar(pubsAnteriores, "cantidad_comentarios")),
+    comentariosBorrados: sumar(pubsActuales, "cantidad_borrados"),
+    comentariosBorradosDelta: calcularDelta(sumar(pubsActuales, "cantidad_borrados"), sumar(pubsAnteriores, "cantidad_borrados")),
     publicacionesRevisadas: pubsActuales.length,
     publicacionesRevisadasDelta: calcularDelta(pubsActuales.length, pubsAnteriores.length),
-    interaccionesTotales: interaccionesActuales,
-    interaccionesTotalesDelta: calcularDelta(interaccionesActuales, interaccionesAnteriores),
+    interaccionesTotales: sumar(pubsActuales, "cantidad_interacciones"),
+    interaccionesTotalesDelta: calcularDelta(sumar(pubsActuales, "cantidad_interacciones"), sumar(pubsAnteriores, "cantidad_interacciones")),
     motivosEliminacion: [...motivosMapa.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })),
     palabrasClave: extraerPalabrasClave(filas.map((f) => f.comentario)),
     historial: filas.slice(0, 50).map((f) => ({
@@ -185,5 +188,91 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
       motivo: f.motivo ?? "—",
       accion: f.accion as "Eliminado" | "Sin acción",
     })),
+  };
+}
+
+// --- Skool: registro de atención (distinto a las redes sociales) ------
+// No hay "publicaciones" ni "comentarios borrados" aquí — es nada más
+// "qué preguntaron, qué se respondió". Tabla y forma propias
+// (cm_skool_atenciones), sin el campo "estado" (se pidió quitarlo).
+
+export type AtencionSkool = {
+  id: string;
+  fecha: string; // ISO (date)
+  usuario: string;
+  pregunta: string;
+  respuesta: string;
+  creadoEn: string;
+};
+
+export async function crearAtencionSkool(input: {
+  fecha: string;
+  usuario: string;
+  pregunta: string;
+  respuesta: string;
+  creadoPorId: string;
+  creadoPorNombre: string;
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("cm_skool_atenciones")
+    .insert({
+      fecha: input.fecha,
+      usuario: input.usuario.trim(),
+      pregunta: input.pregunta.trim(),
+      respuesta: input.respuesta.trim(),
+      creado_por_id: input.creadoPorId,
+      creado_por_nombre: input.creadoPorNombre,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return { id: data.id as string };
+}
+
+export async function listarAtencionesSkool(busqueda?: string): Promise<AtencionSkool[]> {
+  let query = supabase
+    .from("cm_skool_atenciones")
+    .select("id, fecha, usuario, pregunta, respuesta, creado_en")
+    .order("creado_en", { ascending: false })
+    .limit(200);
+  const q = busqueda?.trim();
+  if (q) query = query.or(`usuario.ilike.%${q}%,pregunta.ilike.%${q}%,respuesta.ilike.%${q}%`);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((f) => ({
+    id: f.id as string,
+    fecha: f.fecha as string,
+    usuario: f.usuario as string,
+    pregunta: f.pregunta as string,
+    respuesta: f.respuesta as string,
+    creadoEn: f.creado_en as string,
+  }));
+}
+
+export type EstadisticasSkool = {
+  totalAtenciones: number;
+  atencionesRecientes: number;
+  atencionesRecientesDelta: number;
+  preguntasComunes: { nombre: string; cantidad: number }[];
+};
+
+export async function obtenerEstadisticasSkool(): Promise<EstadisticasSkool> {
+  const ahora = Date.now();
+  const inicioActual = new Date(ahora - DIAS_VENTANA * 86400000).toISOString();
+  const inicioAnterior = new Date(ahora - 2 * DIAS_VENTANA * 86400000).toISOString();
+
+  const { data, error } = await supabase.from("cm_skool_atenciones").select("creado_en, pregunta");
+  if (error) throw error;
+  const filas = data ?? [];
+
+  const enVentana = (fecha: string, desde: string, hasta?: string) => fecha >= desde && (!hasta || fecha < hasta);
+  const actuales = filas.filter((f) => enVentana(f.creado_en, inicioActual));
+  const anteriores = filas.filter((f) => enVentana(f.creado_en, inicioAnterior, inicioActual));
+
+  return {
+    totalAtenciones: filas.length,
+    atencionesRecientes: actuales.length,
+    atencionesRecientesDelta: calcularDelta(actuales.length, anteriores.length),
+    preguntasComunes: extraerPalabrasClave(filas.map((f) => f.pregunta)),
   };
 }
