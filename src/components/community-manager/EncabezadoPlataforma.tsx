@@ -62,7 +62,9 @@ export function EncabezadoPlataforma(props: Props) {
       if (mainEl) {
         const mainRect = mainEl.getBoundingClientRect();
         const padTop = parseFloat(getComputedStyle(mainEl).paddingTop) || 0;
-        setEstilo({ top: mainRect.top, left: mainRect.left, width: mainRect.width, padTop });
+        // clientWidth (no getBoundingClientRect().width) para no incluir la
+        // franja de la barra de scroll — si no, el fondo la tapa.
+        setEstilo({ top: mainRect.top, left: mainRect.left, width: mainEl.clientWidth, padTop });
       } else {
         const rect = el.getBoundingClientRect();
         setEstilo({ top: rect.top, left: rect.left, width: rect.width, padTop: 0 });
