@@ -95,6 +95,44 @@ export async function subirImagenAviso(avisoId: string, archivo: File): Promise<
   return `${data.publicUrl}?v=${Date.now()}`;
 }
 
+// Captura de pantalla opcional de un comentario moderado (Community
+// Manager) — pública, mismo criterio que avisos-imagenes.
+export const BUCKET_CM_CAPTURAS = "cm-capturas";
+
+const TAMANO_MAXIMO_CAPTURA_BYTES = 8 * 1024 * 1024;
+
+let bucketCmCapturasListo = false;
+
+async function asegurarBucketCmCapturas(): Promise<void> {
+  if (bucketCmCapturasListo) return;
+  const { error } = await supabase.storage.createBucket(BUCKET_CM_CAPTURAS, { public: true });
+  if (error && !/already exists/i.test(error.message ?? "")) throw error;
+  bucketCmCapturasListo = true;
+}
+
+export async function subirCapturaComentario(publicacionId: string, archivo: File): Promise<string> {
+  if (archivo.size > TAMANO_MAXIMO_CAPTURA_BYTES) {
+    throw new Error(`"${archivo.name}" pesa más de 8 MB`);
+  }
+  if (archivo.type && !TIPOS_IMAGEN_PERMITIDOS.includes(archivo.type)) {
+    throw new Error("Debe ser una imagen JPG, PNG o WEBP");
+  }
+
+  await asegurarBucketCmCapturas();
+
+  const extension = archivo.type === "image/png" ? "png" : archivo.type === "image/webp" ? "webp" : "jpg";
+  const ruta = `${publicacionId}/${randomUUID()}.${extension}`;
+  const buffer = Buffer.from(await archivo.arrayBuffer());
+
+  const { error } = await supabase.storage
+    .from(BUCKET_CM_CAPTURAS)
+    .upload(ruta, buffer, { contentType: archivo.type || "image/jpeg" });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(BUCKET_CM_CAPTURAS).getPublicUrl(ruta);
+  return data.publicUrl;
+}
+
 export async function subirAvatar(usuarioId: string, archivo: File): Promise<string> {
   if (archivo.size > TAMANO_MAXIMO_AVATAR_BYTES) {
     throw new Error("La imagen pesa más de 4 MB");

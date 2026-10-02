@@ -747,3 +747,42 @@ create table if not exists landing_registros (
 create index if not exists idx_landing_registros_cliente on landing_registros (cliente_id);
 create index if not exists idx_landing_registros_estado on landing_registros (estado);
 alter table landing_registros enable row level security;
+
+-- Community Manager — un registro de publicación por cada vez que se
+-- revisa una publicación en Moderación, con sus comentarios. Esto es lo
+-- que alimenta Estadísticas (ver obtenerEstadisticas en
+-- src/lib/community-manager.ts) — ya no son datos de ejemplo.
+create table if not exists cm_publicaciones (
+  id uuid primary key default gen_random_uuid(),
+  plataforma text not null check (plataforma in ('facebook', 'instagram', 'tiktok', 'skool')),
+  enlace text not null,
+  tipo_publicacion text not null,
+  fecha_revision date not null,
+  cantidad_comentarios integer not null default 0,
+  cantidad_interacciones integer not null default 0,
+  es_pauta boolean not null default false,
+  notas text,
+  creado_por_id uuid references usuarios (id),
+  creado_por_nombre text not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_cm_publicaciones_plataforma on cm_publicaciones (plataforma, creado_en desc);
+alter table cm_publicaciones enable row level security;
+
+-- plataforma queda copiada aquí también (no solo en cm_publicaciones) para
+-- no tener que hacer join al calcular Estadísticas por red — supabase-js no
+-- hace joins ad-hoc fácilmente sin una vista aparte.
+create table if not exists cm_comentarios (
+  id uuid primary key default gen_random_uuid(),
+  publicacion_id uuid not null references cm_publicaciones (id) on delete cascade,
+  plataforma text not null check (plataforma in ('facebook', 'instagram', 'tiktok', 'skool')),
+  usuario text not null,
+  comentario text not null,
+  accion text not null default 'Sin acción' check (accion in ('Sin acción', 'Eliminado')),
+  motivo text,
+  captura_url text,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_cm_comentarios_plataforma on cm_comentarios (plataforma, creado_en desc);
+create index if not exists idx_cm_comentarios_publicacion on cm_comentarios (publicacion_id);
+alter table cm_comentarios enable row level security;

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, ImagePlus } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Trash2, ImagePlus, Check } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
-import type { Plataforma } from "@/components/community-manager/mock-data";
+import type { Plataforma } from "@/lib/community-manager";
 
 const TITULO_PLATAFORMA: Record<Plataforma, string> = {
   facebook: "Facebook",
@@ -36,182 +36,256 @@ type FilaComentario = {
   comentario: string;
   accion: string;
   motivo: string;
+  archivoCaptura: File | null;
 };
 
 function filaVacia(id: number): FilaComentario {
-  return { id, usuario: "", comentario: "", accion: "Sin acción", motivo: "—" };
+  return { id, usuario: "", comentario: "", accion: "Sin acción", motivo: "—", archivoCaptura: null };
+}
+
+function formularioVacio() {
+  return {
+    enlace: "",
+    tipoPublicacion: "",
+    fechaRevision: "",
+    cantidadComentarios: "",
+    cantidadInteracciones: "",
+    esPauta: "",
+    notas: "",
+  };
 }
 
 // Formulario de "Registro de publicación" — una instancia por red (la
 // navegación entre redes vive en el menú lateral, anidada bajo
-// "Moderación", ver NAV_COMMUNITY_MANAGER en Sidebar.tsx).
+// "Moderación", ver NAV_COMMUNITY_MANAGER en Sidebar.tsx). Guarda de verdad
+// en Supabase vía POST /api/community-manager/publicaciones — lo que se
+// guarda aquí es lo que alimenta Estadísticas.
 export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) {
-  const [enlace, setEnlace] = useState("");
-  const [tipoPublicacion, setTipoPublicacion] = useState("");
-  const [fechaRevision, setFechaRevision] = useState("");
-  const [cantidadComentarios, setCantidadComentarios] = useState("");
-  const [cantidadInteracciones, setCantidadInteracciones] = useState("");
-  const [esPauta, setEsPauta] = useState("");
+  const [form, setForm] = useState(formularioVacio());
   const [comentarios, setComentarios] = useState<FilaComentario[]>([filaVacia(1), filaVacia(2)]);
-  const [siguienteId, setSiguienteId] = useState(3);
-  const [notas, setNotas] = useState("");
-  const [aviso, setAviso] = useState<string | null>(null);
+  const siguienteId = useRef(3);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exito, setExito] = useState(false);
+  const inputsCaptura = useRef<Record<number, HTMLInputElement | null>>({});
 
   function actualizarComentario(id: number, cambios: Partial<FilaComentario>) {
     setComentarios((filas) => filas.map((f) => (f.id === id ? { ...f, ...cambios } : f)));
   }
 
   function agregarComentario() {
-    setComentarios((filas) => [...filas, filaVacia(siguienteId)]);
-    setSiguienteId((n) => n + 1);
+    setComentarios((filas) => [...filas, filaVacia(siguienteId.current++)]);
   }
 
   function quitarComentario(id: number) {
-    setComentarios((filas) => filas.filter((f) => f.id !== id));
+    setComentarios((filas) => (filas.length <= 1 ? filas : filas.filter((f) => f.id !== id)));
   }
 
-  function guardarRegistro() {
-    // Solo visual por ahora — la funcionalidad real (guardar en Supabase y
-    // reflejarlo en Estadísticas) se conecta en una siguiente fase.
-    setAviso("Esta es la vista previa visual — todavía no se conecta a la base de datos.");
-    setTimeout(() => setAviso(null), 4000);
+  async function guardarRegistro() {
+    setError(null);
+    if (!form.enlace.trim() || !form.tipoPublicacion || !form.fechaRevision || !form.esPauta) {
+      setError("Completa enlace, tipo de publicación, fecha de revisión y si es pauta.");
+      return;
+    }
+    setGuardando(true);
+    try {
+      const id = crypto.randomUUID();
+
+      // Las capturas se suben primero (usan el id que se le va a dar al
+      // registro) — así la foto queda enlazada aunque se suban en pasos
+      // separados.
+      const comentariosConCaptura = await Promise.all(
+        comentarios.map(async (c) => {
+          if (!c.archivoCaptura) return { usuario: c.usuario, comentario: c.comentario, accion: c.accion, motivo: c.motivo, capturaUrl: null };
+          const body = new FormData();
+          body.set("publicacionId", id);
+          body.set("archivo", c.archivoCaptura);
+          const res = await fetch("/api/community-manager/capturas", { method: "POST", body });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "No se pudo subir una captura");
+          return { usuario: c.usuario, comentario: c.comentario, accion: c.accion, motivo: c.motivo, capturaUrl: data.url as string };
+        })
+      );
+
+      const res = await fetch("/api/community-manager/publicaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          plataforma,
+          enlace: form.enlace,
+          tipoPublicacion: form.tipoPublicacion,
+          fechaRevision: form.fechaRevision,
+          cantidadComentarios: form.cantidadComentarios,
+          cantidadInteracciones: form.cantidadInteracciones,
+          esPauta: form.esPauta,
+          notas: form.notas,
+          comentarios: comentariosConCaptura,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "No se pudo guardar el registro");
+
+      setForm(formularioVacio());
+      setComentarios([filaVacia(siguienteId.current++), filaVacia(siguienteId.current++)]);
+      setExito(true);
+      setTimeout(() => setExito(false), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el registro");
+    } finally {
+      setGuardando(false);
+    }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">
+        <h1 className="text-2xl font-semibold text-foreground">
           Moderación <span className="text-muted">· {TITULO_PLATAFORMA[plataforma]}</span>
         </h1>
         <p className="text-sm text-muted">Registra una publicación que revisaste en {TITULO_PLATAFORMA[plataforma]}.</p>
       </div>
 
       <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core space-y-5 rounded-[calc(1.75rem-0.5rem)] p-5">
-          <h3 className="text-sm font-semibold text-foreground">Información de la publicación</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="core space-y-6 rounded-[calc(1.75rem-0.5rem)] p-6">
+          <h3 className="text-base font-semibold text-foreground">Información de la publicación</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Campo label="Enlace de la publicación *">
               <input
-                value={enlace}
-                onChange={(e) => setEnlace(e.target.value)}
+                value={form.enlace}
+                onChange={(e) => setForm((f) => ({ ...f, enlace: e.target.value }))}
                 placeholder={`https://www.${DOMINIO_PLATAFORMA[plataforma]}/...`}
-                className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>
             <Campo label="Tipo de publicación *">
-              <ComboboxBuscador opciones={OPCIONES_TIPO_PUBLICACION} valor={tipoPublicacion} onChange={setTipoPublicacion} placeholder="Seleccionar…" />
+              <ComboboxBuscador opciones={OPCIONES_TIPO_PUBLICACION} valor={form.tipoPublicacion} onChange={(v) => setForm((f) => ({ ...f, tipoPublicacion: v }))} placeholder="Seleccionar…" />
             </Campo>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Campo label="Fecha de revisión *">
               <input
                 type="date"
-                value={fechaRevision}
-                onChange={(e) => setFechaRevision(e.target.value)}
-                className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                value={form.fechaRevision}
+                onChange={(e) => setForm((f) => ({ ...f, fechaRevision: e.target.value }))}
+                className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>
             <Campo label="Cantidad de comentarios *">
               <input
                 type="number"
                 min={0}
-                value={cantidadComentarios}
-                onChange={(e) => setCantidadComentarios(e.target.value)}
-                className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                value={form.cantidadComentarios}
+                onChange={(e) => setForm((f) => ({ ...f, cantidadComentarios: e.target.value }))}
+                className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>
             <Campo label="Cantidad de interacciones *">
               <input
                 type="number"
                 min={0}
-                value={cantidadInteracciones}
-                onChange={(e) => setCantidadInteracciones(e.target.value)}
-                className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+                value={form.cantidadInteracciones}
+                onChange={(e) => setForm((f) => ({ ...f, cantidadInteracciones: e.target.value }))}
+                className="w-full rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
               />
             </Campo>
           </div>
           <div className="max-w-xs">
             <Campo label="¿Es pauta? *">
-              <ComboboxBuscador opciones={OPCIONES_SI_NO} valor={esPauta} onChange={setEsPauta} placeholder="Seleccionar…" />
+              <ComboboxBuscador opciones={OPCIONES_SI_NO} valor={form.esPauta} onChange={(v) => setForm((f) => ({ ...f, esPauta: v }))} placeholder="Seleccionar…" />
             </Campo>
           </div>
         </div>
       </div>
 
       <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core rounded-[calc(1.75rem-0.5rem)] p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Comentarios de la publicación</h3>
+        <div className="core rounded-[calc(1.75rem-0.5rem)] p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">Comentarios de la publicación</h3>
             <button
               onClick={agregarComentario}
-              className="ease-spring flex items-center gap-1.5 rounded-lg brand-plate px-3 py-1.5 text-xs font-medium text-white transition"
+              className="ease-spring flex items-center gap-1.5 rounded-lg brand-plate px-3.5 py-2 text-sm font-medium text-white transition"
             >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <Plus className="h-4 w-4" strokeWidth={1.75} />
               Agregar comentario
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-silver text-xs font-semibold uppercase tracking-wide text-muted">
-                  <th className="w-8 py-2 pr-2">#</th>
-                  <th className="py-2 pr-3">Usuario</th>
-                  <th className="py-2 pr-3">Comentario</th>
-                  <th className="py-2 pr-3">Acción</th>
-                  <th className="py-2 pr-3">Motivo</th>
-                  <th className="py-2 pr-3">Captura</th>
-                  <th className="w-8 py-2" />
+                  <th className="w-8 py-2.5 pr-2">#</th>
+                  <th className="py-2.5 pr-3">Usuario</th>
+                  <th className="py-2.5 pr-3">Comentario</th>
+                  <th className="py-2.5 pr-3">Acción</th>
+                  <th className="py-2.5 pr-3">Motivo</th>
+                  <th className="py-2.5 pr-3">Captura</th>
+                  <th className="w-8 py-2.5" />
                 </tr>
               </thead>
               <tbody>
                 {comentarios.map((fila, i) => (
                   <tr key={fila.id} className="border-b border-silver/60 last:border-0">
-                    <td className="py-2 pr-2 text-muted">{i + 1}</td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-2 text-muted">{i + 1}</td>
+                    <td className="py-2.5 pr-3">
                       <input
                         value={fila.usuario}
                         onChange={(e) => actualizarComentario(fila.id, { usuario: e.target.value })}
                         placeholder="Usuario"
-                        className="w-28 rounded-lg border border-silver bg-surface-2 px-2 py-1 text-xs outline-none ring-primary/30 focus:ring-2"
+                        className="w-28 rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-3">
                       <input
                         value={fila.comentario}
                         onChange={(e) => actualizarComentario(fila.id, { comentario: e.target.value })}
                         placeholder="Comentario"
-                        className="w-56 rounded-lg border border-silver bg-surface-2 px-2 py-1 text-xs outline-none ring-primary/30 focus:ring-2"
+                        className="w-60 rounded-lg border border-silver bg-surface-2 px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-3">
                       <ComboboxBuscador
                         opciones={OPCIONES_ACCION}
                         valor={fila.accion}
                         onChange={(v) => actualizarComentario(fila.id, { accion: v })}
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-3">
                       <ComboboxBuscador
                         opciones={OPCIONES_MOTIVO}
                         valor={fila.motivo}
                         onChange={(v) => actualizarComentario(fila.id, { motivo: v })}
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-3">
+                      <input
+                        ref={(el) => {
+                          inputsCaptura.current[fila.id] = el;
+                        }}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => actualizarComentario(fila.id, { archivoCaptura: e.target.files?.[0] ?? null })}
+                        className="hidden"
+                      />
                       <button
-                        title="Adjuntar captura (opcional)"
-                        className="ease-spring flex h-7 w-7 items-center justify-center rounded-lg border border-dashed border-silver text-muted transition hover:border-primary/40 hover:text-primary"
+                        onClick={() => inputsCaptura.current[fila.id]?.click()}
+                        title={fila.archivoCaptura ? fila.archivoCaptura.name : "Adjuntar captura (opcional)"}
+                        className={`ease-spring flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                          fila.archivoCaptura
+                            ? "border-success/40 bg-success/10 text-success"
+                            : "border-dashed border-silver text-muted hover:border-primary/40 hover:text-primary"
+                        }`}
                       >
-                        <ImagePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        {fila.archivoCaptura ? <Check className="h-4 w-4" strokeWidth={1.75} /> : <ImagePlus className="h-4 w-4" strokeWidth={1.75} />}
                       </button>
                     </td>
-                    <td className="py-2">
+                    <td className="py-2.5">
                       <button
                         onClick={() => quitarComentario(fila.id)}
                         title="Quitar fila"
-                        className="ease-spring flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger"
+                        className="ease-spring flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger"
                       >
-                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                       </button>
                     </td>
                   </tr>
@@ -223,22 +297,24 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
       </div>
 
       <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core rounded-[calc(1.75rem-0.5rem)] p-5">
+        <div className="core rounded-[calc(1.75rem-0.5rem)] p-6">
           <Campo label="Notas adicionales (opcional)">
             <textarea
-              value={notas}
-              onChange={(e) => setNotas(e.target.value)}
+              value={form.notas}
+              onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
               placeholder="Observaciones sobre la publicación…"
               rows={3}
-              className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
+              className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
             />
           </Campo>
-          {aviso && <p className="mt-3 text-xs text-warning">{aviso}</p>}
+          {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+          {exito && <p className="mt-3 text-sm text-success">Registro guardado — ya se refleja en Estadísticas.</p>}
           <button
             onClick={guardarRegistro}
-            className="ease-spring mt-4 w-full rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition sm:w-auto"
+            disabled={guardando}
+            className="ease-spring mt-5 w-full rounded-xl brand-plate px-4 py-3 text-sm font-medium text-white transition disabled:opacity-50 sm:w-auto"
           >
-            Guardar registro
+            {guardando ? "Guardando…" : "Guardar registro"}
           </button>
         </div>
       </div>
@@ -249,7 +325,7 @@ export function ModeracionContenido({ plataforma }: { plataforma: Plataforma }) 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
+      <span className="mb-1.5 block text-sm font-medium text-muted">{label}</span>
       {children}
     </label>
   );

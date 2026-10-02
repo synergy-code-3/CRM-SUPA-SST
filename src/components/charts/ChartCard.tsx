@@ -6,6 +6,7 @@ export function ChartCard({
   title,
   subtitle,
   className = "",
+  alto = "h-64",
   children,
 }: {
   icon?: LucideIcon;
@@ -13,6 +14,9 @@ export function ChartCard({
   title: string;
   subtitle: string;
   className?: string;
+  // Alto del área de la gráfica (clase de Tailwind) — Community Manager
+  // pasa algo más grande ("h-80"/"h-96") sin afectar al Dashboard del Club.
+  alto?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -23,7 +27,7 @@ export function ChartCard({
           {title}
         </h3>
         <p className="mb-4 text-xs text-muted">{subtitle}</p>
-        <div className="h-64">{children}</div>
+        <div className={alto}>{children}</div>
       </div>
     </div>
   );

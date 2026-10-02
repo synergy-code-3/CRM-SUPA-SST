@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import { ModeracionContenido } from "@/components/community-manager/ModeracionContenido";
-import type { Plataforma } from "@/components/community-manager/mock-data";
-
-const PLATAFORMAS_VALIDAS: Plataforma[] = ["facebook", "instagram", "tiktok", "skool"];
+import { PLATAFORMAS_VALIDAS, type Plataforma } from "@/lib/community-manager";
 
 export default async function ModeracionPlataformaPage({
   params,

@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import { EstadisticasContenido } from "@/components/community-manager/EstadisticasContenido";
-import type { Plataforma } from "@/components/community-manager/mock-data";
-
-const PLATAFORMAS_VALIDAS: Plataforma[] = ["facebook", "instagram", "tiktok", "skool"];
+import { PLATAFORMAS_VALIDAS, type Plataforma } from "@/lib/community-manager";
 
 export default async function CommunityManagerPlataformaPage({
   params,
