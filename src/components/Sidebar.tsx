@@ -40,16 +40,35 @@ const NAV_CLUB: ItemNav[] = [
   { href: "/avisos", label: "Avisos", icon: Megaphone, permiso: "verAvisos", contador: "avisos" },
 ];
 
-// Nav de cada workspace cuando se cambia desde el switcher del logo (ver
-// WORKSPACES/Marca más abajo) — listo para agregarle más páginas después,
-// mismo patrón que NAV_CERTIFICACIONES.
-const NAV_COMMUNITY_MANAGER: ItemNav[] = [
-  { href: "/community-manager", label: "General", icon: BarChart3, permiso: "verCommunityManager" },
-  { href: "/community-manager/facebook", label: "Facebook", icon: Facebook, permiso: "verCommunityManager" },
-  { href: "/community-manager/instagram", label: "Instagram", icon: Instagram, permiso: "verCommunityManager" },
-  { href: "/community-manager/tiktok", label: "TikTok", icon: Music2, permiso: "verCommunityManager" },
-  { href: "/community-manager/skool", label: "Skool", icon: GraduationCap, permiso: "verCommunityManager" },
-  { href: "/community-manager/moderacion", label: "Moderación", icon: Flag, permiso: "verCommunityManager" },
+// Nav de Community Manager: a diferencia de NAV_CLUB/NAV_CERTIFICACIONES
+// (lista plana), esta sección tiene 2 grupos principales (Estadísticas y
+// Moderación) con las mismas 4 redes anidadas debajo de cada uno — ver
+// GrupoNav/NavComunityManager más abajo. El permiso ya lo filtra el
+// workspace completo (verCommunityManager en WORKSPACES), así que aquí no
+// hace falta repetirlo por ítem.
+type SubItemNav = { href: string; label: string; icon: typeof LayoutDashboard };
+type GrupoNav = { href: string; label: string; icon: typeof LayoutDashboard; hijos: SubItemNav[] };
+
+const REDES_COMMUNITY_MANAGER: { id: string; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "tiktok", label: "TikTok", icon: Music2 },
+  { id: "skool", label: "Skool", icon: GraduationCap },
+];
+
+const GRUPOS_COMMUNITY_MANAGER: GrupoNav[] = [
+  {
+    href: "/community-manager",
+    label: "Estadísticas",
+    icon: BarChart3,
+    hijos: REDES_COMMUNITY_MANAGER.map((r) => ({ href: `/community-manager/${r.id}`, label: r.label, icon: r.icon })),
+  },
+  {
+    href: "/community-manager/moderacion",
+    label: "Moderación",
+    icon: Flag,
+    hijos: REDES_COMMUNITY_MANAGER.map((r) => ({ href: `/community-manager/moderacion/${r.id}`, label: r.label, icon: r.icon })),
+  },
 ];
 
 // Workspaces disponibles en el switcher del logo — agregar uno nuevo aquí
@@ -588,6 +607,51 @@ function ApartadosVencidosModal({
   );
 }
 
+// Nav de Community Manager: 2 grupos principales (Estadísticas, Moderación)
+// más grandes/en negrita que un ítem normal — cada uno lleva a su propia
+// vista general y, debajo, las mismas 4 redes anidadas con sangría. `grande`
+// replica el mismo ajuste de tamaño que items.map ya hacía entre escritorio
+// (más compacto) y el drawer móvil (más espacioso).
+function NavGruposCommunityManager({ pathname, grande = false }: { pathname: string; grande?: boolean }) {
+  return (
+    <>
+      {GRUPOS_COMMUNITY_MANAGER.map((grupo) => {
+        const activoGrupo = pathname === grupo.href;
+        return (
+          <div key={grupo.href} className={grande ? "mb-1" : "mb-0.5"}>
+            <Link
+              href={grupo.href}
+              className={`ease-spring flex items-center gap-3 rounded-xl px-3 font-semibold transition ${
+                grande ? "py-3 text-base" : "py-2.5 text-sm"
+              } ${activoGrupo ? "bg-primary-dim text-primary-deep" : "text-foreground hover:bg-surface-2"}`}
+            >
+              <grupo.icon className={grande ? "h-5.5 w-5.5" : "h-5 w-5"} strokeWidth={1.9} />
+              {grupo.label}
+            </Link>
+            <div className="mt-0.5 flex flex-col gap-0.5 border-l border-silver/70 pl-3">
+              {grupo.hijos.map((hijo) => {
+                const activoHijo = pathname === hijo.href;
+                return (
+                  <Link
+                    key={hijo.href}
+                    href={hijo.href}
+                    className={`ease-spring flex items-center gap-2.5 rounded-lg px-3 font-medium transition ${
+                      grande ? "py-2 text-sm" : "py-1.5 text-xs"
+                    } ${activoHijo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"}`}
+                  >
+                    <hijo.icon className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} strokeWidth={1.75} />
+                    {hijo.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { usuario } = useSesion();
@@ -615,11 +679,8 @@ export function Sidebar() {
   // desincronicen, y es deep-linkable (entrar directo a /certificaciones/x
   // o /community-manager ya muestra el workspace correcto sin un clic de más).
   const workspaceActual = workspaceDesdeRuta(pathname);
-  const NAV_POR_WORKSPACE: Record<string, ItemNav[]> = {
-    certificaciones: NAV_CERTIFICACIONES,
-    "community-manager": NAV_COMMUNITY_MANAGER,
-  };
-  const items = (NAV_POR_WORKSPACE[workspaceActual] ?? NAV_CLUB).filter((item) =>
+  const esCommunityManager = workspaceActual === "community-manager";
+  const items = (workspaceActual === "certificaciones" ? NAV_CERTIFICACIONES : NAV_CLUB).filter((item) =>
     tienePermiso(usuario.rol, item.permiso)
   );
   const opcionesWorkspace = WORKSPACES.filter((w) => tienePermiso(usuario.rol, w.permiso));
@@ -632,22 +693,26 @@ export function Sidebar() {
           <Marca workspaceActual={workspaceActual} opciones={opcionesWorkspace} />
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {items.map(({ href, label, icon: Icon, contador }, i) => {
-            const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
-            return (
-              <Link
-                key={`${href}-${label}`}
-                href={href}
-                className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
-                {label}
-                {contador && <BurbujaConteo cantidad={conteos[contador]} />}
-              </Link>
-            );
-          })}
+          {esCommunityManager ? (
+            <NavGruposCommunityManager pathname={pathname} />
+          ) : (
+            items.map(({ href, label, icon: Icon, contador }, i) => {
+              const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
+              return (
+                <Link
+                  key={`${href}-${label}`}
+                  href={href}
+                  className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                    activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
+                  {label}
+                  {contador && <BurbujaConteo cantidad={conteos[contador]} />}
+                </Link>
+              );
+            })
+          )}
         </nav>
         {workspaceActual === "club" && <EnlacesRenovacion />}
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
@@ -690,22 +755,26 @@ export function Sidebar() {
               </button>
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {items.map(({ href, label, icon: Icon, contador }, i) => {
-                const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
-                return (
-                  <Link
-                    key={`${href}-${label}`}
-                    href={href}
-                    className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                      activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" strokeWidth={1.75} />
-                    {label}
-                    {contador && <BurbujaConteo cantidad={conteos[contador]} />}
-                  </Link>
-                );
-              })}
+              {esCommunityManager ? (
+                <NavGruposCommunityManager pathname={pathname} grande />
+              ) : (
+                items.map(({ href, label, icon: Icon, contador }, i) => {
+                  const activo = pathname === href && items.findIndex((it) => it.href === href) === i;
+                  return (
+                    <Link
+                      key={`${href}-${label}`}
+                      href={href}
+                      className={`ease-spring flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                        activo ? "bg-primary-dim text-primary-deep" : "text-muted hover:bg-surface-2 hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" strokeWidth={1.75} />
+                      {label}
+                      {contador && <BurbujaConteo cantidad={conteos[contador]} />}
+                    </Link>
+                  );
+                })
+              )}
             </nav>
 
             {filtrosPagina && (
