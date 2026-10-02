@@ -188,6 +188,10 @@ function AvisoModal({
   );
   const [destinatarios, setDestinatarios] = useState<Set<string>>(new Set(aviso?.destinatariosIds ?? []));
   const [usuarios, setUsuarios] = useState<UsuarioOpcion[]>([]);
+  // Solo filtra qué se MUESTRA en la lista — la selección vive aparte (el
+  // Set de arriba), así que buscar a alguien más no pierde a quien ya
+  // habías marcado.
+  const [busquedaUsuario, setBusquedaUsuario] = useState("");
   const [imagen, setImagen] = useState<File | null>(null);
   const [quitarImagenExistente, setQuitarImagenExistente] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -317,24 +321,44 @@ function AvisoModal({
               </button>
             </div>
             {audiencia === "personal" && (
-              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-silver p-2">
-                {usuarios.length === 0 && <p className="text-xs text-muted">Cargando usuarios…</p>}
-                {usuarios.map((u) => (
-                  <label
-                    key={u.id}
-                    className="ease-spring flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-foreground transition hover:bg-surface-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={destinatarios.has(u.id)}
-                      onChange={() => alternarDestinatario(u.id)}
-                      className="h-3.5 w-3.5 flex-none rounded border-silver"
-                    />
-                    <Users className="h-3 w-3 flex-none text-muted" strokeWidth={1.75} />
-                    <span className="truncate">{u.nombre}</span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <input
+                    value={busquedaUsuario}
+                    onChange={(e) => setBusquedaUsuario(e.target.value)}
+                    placeholder="Buscar persona…"
+                    className="flex-1 rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-xs outline-none ring-primary/30 focus:ring-2"
+                  />
+                  {destinatarios.size > 0 && (
+                    <span className="flex-none text-xs font-medium text-primary">
+                      {destinatarios.size} elegido{destinatarios.size === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-silver p-2">
+                  {usuarios.length === 0 && <p className="text-xs text-muted">Cargando usuarios…</p>}
+                  {usuarios
+                    .filter((u) => u.nombre.toLowerCase().includes(busquedaUsuario.trim().toLowerCase()))
+                    .map((u) => (
+                      <label
+                        key={u.id}
+                        className="ease-spring flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-foreground transition hover:bg-surface-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={destinatarios.has(u.id)}
+                          onChange={() => alternarDestinatario(u.id)}
+                          className="h-3.5 w-3.5 flex-none rounded border-silver"
+                        />
+                        <Users className="h-3 w-3 flex-none text-muted" strokeWidth={1.75} />
+                        <span className="truncate">{u.nombre}</span>
+                      </label>
+                    ))}
+                  {usuarios.length > 0 &&
+                    usuarios.filter((u) => u.nombre.toLowerCase().includes(busquedaUsuario.trim().toLowerCase()))
+                      .length === 0 && <p className="px-1.5 py-1 text-xs text-muted">Nadie coincide con esa búsqueda.</p>}
+                </div>
+              </>
             )}
           </div>
 
