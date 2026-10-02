@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, Share2 } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
@@ -38,8 +38,32 @@ const NAV_CLUB: ItemNav[] = [
   { href: "/eliminados", label: "Eliminados", icon: Trash2, permiso: "verEliminados" },
   { href: "/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
   { href: "/avisos", label: "Avisos", icon: Megaphone, permiso: "verAvisos", contador: "avisos" },
+];
+
+// Nav de cada workspace cuando se cambia desde el switcher del logo (ver
+// WORKSPACES/Marca más abajo) — Community Manager arranca con un solo
+// ítem (su propia home), listo para agregarle más páginas después, mismo
+// patrón que NAV_CERTIFICACIONES.
+const NAV_COMMUNITY_MANAGER: ItemNav[] = [
   { href: "/community-manager", label: "Community Manager", icon: Share2, permiso: "verCommunityManager" },
 ];
+
+// Workspaces disponibles en el switcher del logo — agregar uno nuevo aquí
+// (con su propio NAV_* y su entrada en el switch de `items`/`Marca` más
+// abajo) es lo único que hace falta para que aparezca en la lista.
+type Workspace = { id: string; label: string; href: string; permiso: Accion };
+
+const WORKSPACES: Workspace[] = [
+  { id: "club", label: "Club Sinergético", href: "/clientes", permiso: "verClientes" },
+  { id: "certificaciones", label: "Certificaciones", href: "/certificaciones", permiso: "verCertificaciones" },
+  { id: "community-manager", label: "Community Manager", href: "/community-manager", permiso: "verCommunityManager" },
+];
+
+function workspaceDesdeRuta(pathname: string): string {
+  if (pathname.startsWith("/certificaciones")) return "certificaciones";
+  if (pathname.startsWith("/community-manager")) return "community-manager";
+  return "club";
+}
 
 // Sección "Certificaciones" (Legendar-IA) — workspace aparte, se cambia con
 // el switcher del logo (ver Marca()/Sidebar()). Todavía chica a propósito:
@@ -142,15 +166,29 @@ const ROL_LABEL: Record<Rol, string> = {
   abeja: "Abeja",
 };
 
-// enCertificaciones: qué workspace mostrar (logo+nombre, derivado de la URL
-// en Sidebar() — nunca estado propio, así no se puede desincronizar).
-// puedeCambiar: si el usuario tiene verCertificaciones — sin eso, ni se
-// muestra el botón del switcher.
-function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean; puedeCambiar: boolean }) {
+// workspaceActual: derivado de la URL en Sidebar() (nunca estado propio,
+// así el switcher y la página mostrada no se pueden desincronizar).
+// opciones: los workspaces a los que el usuario tiene permiso — el botón
+// del switcher ni se muestra si solo hay uno (ver WORKSPACES más arriba).
+function Marca({ workspaceActual, opciones }: { workspaceActual: string; opciones: Workspace[] }) {
   // En Certificaciones, tocar el logo muestra todas las certificaciones.
   const certificacion = useCertificacionActualOpcional();
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const enCertificaciones = workspaceActual === "certificaciones";
+  const actual = opciones.find((o) => o.id === workspaceActual);
+
+  useEffect(() => {
+    if (!abierto) return;
+    function alClicFuera(e: MouseEvent) {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target as Node)) setAbierto(false);
+    }
+    document.addEventListener("mousedown", alClicFuera);
+    return () => document.removeEventListener("mousedown", alClicFuera);
+  }, [abierto]);
+
   return (
-    <div className="flex items-center gap-3 px-2">
+    <div ref={contenedorRef} className="relative flex items-center gap-3 px-2">
       {enCertificaciones ? (
         <Link
           href="/certificaciones"
@@ -168,23 +206,48 @@ function Marca({ enCertificaciones, puedeCambiar }: { enCertificaciones: boolean
           />
         </Link>
       ) : (
-        <>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <Image src="/icons/icon-192.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-foreground">CRM CS</p>
-            <p className="truncate text-xs text-muted">Club Sinergético</p>
+            <p className="truncate text-xs text-muted">{actual?.label ?? "Club Sinergético"}</p>
           </div>
-        </>
+        </div>
       )}
-      {puedeCambiar && (
-        <Link
-          href={enCertificaciones ? "/clientes" : "/certificaciones"}
-          aria-label={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
-          title={enCertificaciones ? "Cambiar a Club Sinergético" : "Cambiar a Certificaciones"}
-          className="ease-spring flex h-8 w-8 flex-none items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
-        >
-          <ChevronsUpDown className="h-4 w-4" strokeWidth={1.75} />
-        </Link>
+      {opciones.length > 1 && (
+        <div className="relative flex-none">
+          <button
+            onClick={() => setAbierto((a) => !a)}
+            aria-label="Cambiar de sección"
+            aria-expanded={abierto}
+            title="Cambiar de sección"
+            className="ease-spring flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-foreground"
+          >
+            <ChevronsUpDown className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+          {abierto && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-silver bg-surface py-1 diffused-lg">
+              {opciones.map((o) => (
+                <Link
+                  key={o.id}
+                  href={o.href}
+                  onClick={() => {
+                    setAbierto(false);
+                    if (o.id !== "certificaciones") certificacion?.setCertificacionActual(null);
+                  }}
+                  className={`ease-spring flex items-center justify-between gap-2 px-3 py-2 text-sm transition ${
+                    o.id === workspaceActual
+                      ? "bg-primary-dim font-medium text-primary-deep"
+                      : "text-foreground hover:bg-surface-2"
+                  }`}
+                >
+                  {o.label}
+                  {o.id === workspaceActual && <Check className="h-3.5 w-3.5 flex-none" strokeWidth={2} />}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -546,19 +609,23 @@ export function Sidebar() {
   // Deriva el workspace de la URL en vez de guardar estado aparte — así no
   // hay forma de que el switcher y la página realmente mostrada se
   // desincronicen, y es deep-linkable (entrar directo a /certificaciones/x
-  // ya muestra el workspace correcto sin un clic de más).
-  const enCertificaciones = pathname.startsWith("/certificaciones");
-  const items = (enCertificaciones ? NAV_CERTIFICACIONES : NAV_CLUB).filter((item) =>
+  // o /community-manager ya muestra el workspace correcto sin un clic de más).
+  const workspaceActual = workspaceDesdeRuta(pathname);
+  const NAV_POR_WORKSPACE: Record<string, ItemNav[]> = {
+    certificaciones: NAV_CERTIFICACIONES,
+    "community-manager": NAV_COMMUNITY_MANAGER,
+  };
+  const items = (NAV_POR_WORKSPACE[workspaceActual] ?? NAV_CLUB).filter((item) =>
     tienePermiso(usuario.rol, item.permiso)
   );
-  const puedeCambiarWorkspace = tienePermiso(usuario.rol, "verCertificaciones");
+  const opcionesWorkspace = WORKSPACES.filter((w) => tienePermiso(usuario.rol, w.permiso));
 
   return (
     <>
       {/* Sidebar fijo — solo md+ (tablet/escritorio). */}
       <aside className="hidden h-screen w-64 flex-none flex-col border-r border-silver/70 bg-surface px-4 py-6 md:flex">
         <div className="mb-8">
-          <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
+          <Marca workspaceActual={workspaceActual} opciones={opcionesWorkspace} />
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {items.map(({ href, label, icon: Icon, contador }, i) => {
@@ -578,7 +645,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        {!enCertificaciones && <EnlacesRenovacion />}
+        {workspaceActual === "club" && <EnlacesRenovacion />}
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
       </aside>
 
@@ -600,7 +667,7 @@ export function Sidebar() {
             />
           )}
         </button>
-        <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
+        <Marca workspaceActual={workspaceActual} opciones={opcionesWorkspace} />
         <span className="w-9" aria-hidden="true" />
       </header>
 
@@ -609,7 +676,7 @@ export function Sidebar() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setAbierto(false)} aria-hidden="true" />
           <div className="animate-slide-in-left relative flex h-full w-72 max-w-[82%] flex-col bg-surface px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
-              <Marca enCertificaciones={enCertificaciones} puedeCambiar={puedeCambiarWorkspace} />
+              <Marca workspaceActual={workspaceActual} opciones={opcionesWorkspace} />
               <button
                 onClick={() => setAbierto(false)}
                 aria-label="Cerrar menú"
@@ -660,7 +727,7 @@ export function Sidebar() {
               </div>
             )}
 
-            {!enCertificaciones && <EnlacesRenovacion />}
+            {workspaceActual === "club" && <EnlacesRenovacion />}
             <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>
