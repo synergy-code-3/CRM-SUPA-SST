@@ -41,12 +41,13 @@ function Contenido({ plataforma, titulo, subtitulo, extra }: Props) {
 // scroll y no deja ver nada "detrás". Va fijo (position:fixed, medido con
 // JS y montado en un portal a <body> — el mismo truco que ya funciona en
 // ComboboxBuscador) en vez de sticky, para no depender de ningún contexto
-// de overflow/stacking ambiguo. El fondo arranca justo en el borde
-// superior de <main> (sin sumarle su padding-top) para que no quede
-// ningún hueco por donde se asome la tarjeta de abajo; ese mismo padding
-// se aplica como padding-top AL FONDO fijo, así el texto queda exactamente
-// en la misma posición de siempre — solo el fondo se estira hacia arriba
-// para taparlo todo.
+// de overflow/stacking ambiguo. El FONDO llega de lado a lado de <main>
+// (sin el centrado/max-w-6xl de las tarjetas de abajo, para que no quede
+// un hueco lateral por donde se asome el contenido) y arranca justo en su
+// borde superior (ese padding se aplica como padding-top al propio fondo,
+// no al cálculo de posición). Un contenedor interno re-centra el texto
+// con el mismo max-w-6xl + padding horizontal que usa <main>, así el
+// título queda exactamente donde estaría si no se hubiera estirado nada.
 export function EncabezadoPlataforma(props: Props) {
   const marcador = useRef<HTMLDivElement>(null);
   const [estilo, setEstilo] = useState<{ top: number; left: number; width: number; padTop: number } | null>(null);
@@ -58,12 +59,12 @@ export function EncabezadoPlataforma(props: Props) {
 
     function actualizar() {
       if (!el) return;
-      const rect = el.getBoundingClientRect();
       if (mainEl) {
         const mainRect = mainEl.getBoundingClientRect();
         const padTop = parseFloat(getComputedStyle(mainEl).paddingTop) || 0;
-        setEstilo({ top: mainRect.top, left: rect.left, width: rect.width, padTop });
+        setEstilo({ top: mainRect.top, left: mainRect.left, width: mainRect.width, padTop });
       } else {
+        const rect = el.getBoundingClientRect();
         setEstilo({ top: rect.top, left: rect.left, width: rect.width, padTop: 0 });
       }
     }
@@ -91,7 +92,9 @@ export function EncabezadoPlataforma(props: Props) {
             style={{ position: "fixed", top: estilo.top, left: estilo.left, width: estilo.width, paddingTop: estilo.padTop, zIndex: 30 }}
             className="border-b border-silver/70 bg-background pb-4"
           >
-            <Contenido {...props} />
+            <div className="mx-auto max-w-6xl px-4 sm:px-6 md:px-8">
+              <Contenido {...props} />
+            </div>
           </div>,
           document.body
         )}
