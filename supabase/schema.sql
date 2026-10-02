@@ -778,7 +778,7 @@ create table if not exists cm_comentarios (
   plataforma text not null check (plataforma in ('facebook', 'instagram', 'tiktok', 'skool')),
   usuario text not null,
   comentario text not null,
-  accion text not null default 'Sin acción' check (accion in ('Sin acción', 'Eliminado')),
+  accion text not null default 'Sin acción' check (accion in ('Sin acción', 'Eliminado', 'Respuesta')),
   motivo text,
   captura_url text,
   creado_en timestamptz not null default now()
@@ -806,6 +806,11 @@ alter table cm_comentarios add column if not exists migrado_de_sheets boolean no
 -- tramo largo (dejaron de anotarla) — se migra igual, sin inventar una
 -- fecha, en vez de perder ese historial de comentarios/interacciones.
 alter table cm_publicaciones alter column fecha_revision drop not null;
+
+-- "Respuesta" se suma a Acción (además de "Sin acción"/"Eliminado"): hay
+-- comentarios que no se borran ni se dejan tal cual, se les contesta.
+alter table cm_comentarios drop constraint if exists cm_comentarios_accion_check;
+alter table cm_comentarios add constraint cm_comentarios_accion_check check (accion in ('Sin acción', 'Eliminado', 'Respuesta'));
 
 -- Skool es distinto a las redes sociales: no hay "publicaciones" ni
 -- "comentarios borrados" — es un registro de atención (qué preguntaron,

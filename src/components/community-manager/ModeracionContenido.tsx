@@ -24,7 +24,7 @@ const OPCIONES_TIPO_PUBLICACION = ["Publicación normal", "Reel / Video corto", 
   etiqueta: v,
 }));
 const OPCIONES_SI_NO = ["Sí", "No"].map((v) => ({ valor: v, etiqueta: v }));
-const OPCIONES_ACCION = ["Sin acción", "Eliminado"].map((v) => ({ valor: v, etiqueta: v }));
+const OPCIONES_ACCION = ["Sin acción", "Eliminado", "Respuesta"].map((v) => ({ valor: v, etiqueta: v }));
 const OPCIONES_MOTIVO = ["—", "Spam", "Ofensas", "Ventas no autorizadas", "Información falsa", "Otros"].map((v) => ({
   valor: v,
   etiqueta: v,

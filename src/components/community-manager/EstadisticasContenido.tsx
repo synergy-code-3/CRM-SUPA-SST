@@ -171,7 +171,17 @@ export function EstadisticasContenido({ plataforma }: { plataforma: Plataforma |
                           <td className="py-3 pr-4 text-foreground">{h.comentario}</td>
                           <td className="whitespace-nowrap py-3 pr-4 text-muted">{h.motivo}</td>
                           <td className="whitespace-nowrap py-3">
-                            <span className={h.accion === "Eliminado" ? "font-medium text-danger" : "text-muted"}>{h.accion}</span>
+                            <span
+                              className={
+                                h.accion === "Eliminado"
+                                  ? "font-medium text-danger"
+                                  : h.accion === "Respuesta"
+                                    ? "font-medium text-primary"
+                                    : "text-muted"
+                              }
+                            >
+                              {h.accion}
+                            </span>
                           </td>
                         </tr>
                       ))

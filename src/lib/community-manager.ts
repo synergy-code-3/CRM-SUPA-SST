@@ -8,7 +8,7 @@ export type HistorialComentario = {
   usuario: string;
   comentario: string;
   motivo: string;
-  accion: "Eliminado" | "Sin acción";
+  accion: "Eliminado" | "Sin acción" | "Respuesta";
 };
 
 export type EstadisticasPlataforma = {
@@ -96,6 +96,10 @@ export async function crearRegistroPublicacion(input: {
 const DIAS_VENTANA = 30;
 // Palabras demasiado comunes en español como para decir algo por sí
 // solas — se descartan antes de contar frecuencia de palabras clave.
+// Incluye todas las preposiciones del español (a, ante, bajo, cabe, con,
+// contra, de, desde, durante, en, entre, hacia, hasta, mediante, para,
+// por, según, sin, so, sobre, tras, vía) — no aportan nada como "palabra
+// clave" por sí solas.
 const PALABRAS_VACIAS = new Set([
   "que", "para", "con", "los", "las", "una", "uno", "por", "del", "como",
   "esto", "esta", "este", "pero", "mas", "más", "muy", "soy", "eres", "es",
@@ -104,6 +108,9 @@ const PALABRAS_VACIAS = new Set([
   "todo", "toda", "todos", "todas", "nos", "les", "sus", "mis", "tus",
   "se", "lo", "le", "me", "mi", "tu", "el", "la", "un", "en", "de", "a",
   "y", "o", "si", "sí", "no", "yo", "ya", "al",
+  // preposiciones restantes (las de arriba ya cubrían con/para/por/sobre/entre/de/en/a)
+  "ante", "bajo", "cabe", "contra", "desde", "durante", "hacia", "hasta",
+  "mediante", "segun", "según", "sin", "tras", "via", "vía", "versus",
 ]);
 
 function calcularDelta(actual: number, anterior: number): number {
@@ -186,7 +193,7 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
       usuario: f.usuario,
       comentario: f.comentario,
       motivo: f.motivo ?? "—",
-      accion: f.accion as "Eliminado" | "Sin acción",
+      accion: f.accion as "Eliminado" | "Sin acción" | "Respuesta",
     })),
   };
 }
