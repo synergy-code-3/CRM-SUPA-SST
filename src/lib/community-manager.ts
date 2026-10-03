@@ -112,6 +112,30 @@ const PALABRAS_VACIAS = new Set([
   "ante", "bajo", "cabe", "contra", "desde", "durante", "hacia", "hasta",
   "mediante", "segun", "según", "sin", "tras", "via", "vía", "versus",
   "eso", "nadie", "cosa",
+  // pedidas explícitamente + relleno general (pronombres, verbos ser/estar/
+  // haber, cuantificadores, adverbios de lugar/tiempo/cantidad, muletillas)
+  // que tampoco dicen nada por sí solos como "palabra clave".
+  "aplicar", "tener", "otra", "otro", "otras", "otros",
+  "ella", "ellos", "ellas", "nosotros", "ustedes", "usted",
+  "esos", "esas", "aquel", "aquella", "aquellos", "aquellas",
+  "cual", "cuales", "quien", "quienes", "cuyo", "cuya",
+  "unos", "unas", "algun", "algún", "alguna", "algunos", "algunas",
+  "ningun", "ningún", "ninguna", "ningunos", "ningunas",
+  "cada", "cierto", "cierta", "ciertos", "ciertas", "mismo", "misma", "mismos", "mismas",
+  "tanto", "tanta", "tantos", "tantas",
+  "somos", "sois", "era", "eras", "eramos", "éramos", "fueron", "sera", "será", "seran", "serán",
+  "estoy", "estas", "está", "estamos", "estaban", "estuvo", "estuve",
+  "haber", "habia", "había", "habian", "habían", "hay", "habra", "habrá",
+  "hice", "hizo", "hicieron", "poder", "puede", "pueden", "podria", "podría",
+  "debe", "deben", "debia", "debía",
+  "quiero", "quiere", "queremos", "dijo", "dijeron", "decir", "voy", "vamos", "van", "venir", "viene",
+  "aqui", "aquí", "alli", "allí", "ahi", "ahí", "alla", "allá", "aun", "aún",
+  "todavia", "todavía", "siempre", "nunca", "jamas", "jamás",
+  "quiza", "quizá", "quizas", "quizás", "apenas", "bastante", "casi", "demasiado",
+  "menos", "mucho", "muchos", "mucha", "muchas", "poco", "pocos", "poca", "pocas",
+  "solo", "sólo", "solamente", "bien", "mal", "mejor", "peor", "mientras",
+  "aunque", "pues", "luego", "entonces", "ademas", "además", "incluso", "excepto", "salvo", "sino", "ni",
+  "bueno", "vaya", "verdad", "claro", "tipo",
 ]);
 
 function calcularDelta(actual: number, anterior: number): number {
