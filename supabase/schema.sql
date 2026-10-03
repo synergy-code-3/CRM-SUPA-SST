@@ -605,6 +605,13 @@ alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_c
 alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
   check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones', 'motivo_cm'));
 
+-- "Palabras clave más comunes" (Community Manager): además de la lista
+-- fija de palabras vacías en community-manager.ts, cada quien puede
+-- descartar una palabra puntual desde la propia gráfica.
+alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
+alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
+  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones', 'motivo_cm', 'palabra_descartada_cm'));
+
 -- Solicitudes de alta para Certificaciones — mismo patrón que
 -- solicitudes_cliente (Club), pero sin la separación correo de pago/acceso
 -- (Certificaciones solo tiene un correo) ni evento (usa region en su

@@ -25,15 +25,29 @@ export function EstadisticasSkoolContenido() {
   const [busqueda, setBusqueda] = useState("");
   const [buscandoEnServidor, setBuscandoEnServidor] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/community-manager/skool/estadisticas")
+  function cargarEstadisticas() {
+    return fetch("/api/community-manager/skool/estadisticas")
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "No se pudieron cargar las estadísticas");
         setDatos(data.estadisticas);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar las estadísticas"));
+  }
+
+  useEffect(() => {
+    cargarEstadisticas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function descartarPalabra(nombre: string) {
+    const res = await fetch("/api/community-manager/palabras-descartadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valor: nombre }),
+    });
+    if (res.ok) cargarEstadisticas();
+  }
 
   async function cargarAtenciones(q?: string) {
     const params = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
@@ -93,7 +107,7 @@ export function EstadisticasSkoolContenido() {
             {datos.preguntasComunes.length === 0 ? (
               <p className="flex h-full items-center justify-center text-sm text-muted">Todavía no hay registros.</p>
             ) : (
-              <BarChart datos={datos.preguntasComunes} />
+              <BarChart datos={datos.preguntasComunes} onDescartar={descartarPalabra} />
             )}
           </ChartCard>
         </>

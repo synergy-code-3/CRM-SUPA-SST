@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { listarCatalogo } from "@/lib/catalogo";
 
 export type Plataforma = "facebook" | "instagram" | "tiktok" | "skool";
 export const PLATAFORMAS_VALIDAS: Plataforma[] = ["facebook", "instagram", "tiktok", "skool"];
@@ -143,7 +144,13 @@ function calcularDelta(actual: number, anterior: number): number {
   return Math.round(((actual - anterior) / anterior) * 100);
 }
 
-function extraerPalabrasClave(textos: string[], limite = 8): { nombre: string; cantidad: number }[] {
+// descartadas: palabras puntuales que alguien quitó a mano desde la propia
+// gráfica (ver onDescartar en BarChart.tsx), además de PALABRAS_VACIAS.
+function extraerPalabrasClave(
+  textos: string[],
+  descartadas: Set<string> = new Set(),
+  limite = 8
+): { nombre: string; cantidad: number }[] {
   const conteo = new Map<string, number>();
   for (const texto of textos) {
     const palabras = texto
@@ -152,7 +159,7 @@ function extraerPalabrasClave(textos: string[], limite = 8): { nombre: string; c
       .replace(/[̀-ͯ]/g, "") // quita acentos para agrupar "más"/"mas"
       .replace(/[^a-z0-9ñ\s]/g, " ")
       .split(/\s+/)
-      .filter((p) => p.length >= 3 && !PALABRAS_VACIAS.has(p) && !/^\d+$/.test(p));
+      .filter((p) => p.length >= 3 && !PALABRAS_VACIAS.has(p) && !descartadas.has(p) && !/^\d+$/.test(p));
     for (const p of palabras) conteo.set(p, (conteo.get(p) ?? 0) + 1);
   }
   return [...conteo.entries()]
@@ -186,6 +193,8 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
   const { data: comentarios, error: errCom } = await qComentarios;
   if (errCom) throw errCom;
 
+  const palabrasDescartadas = new Set(await listarCatalogo("palabra_descartada_cm"));
+
   const filas = comentarios ?? [];
   const pubs = publicaciones ?? [];
 
@@ -212,7 +221,7 @@ export async function obtenerEstadisticas(plataforma: Plataforma | null): Promis
     interaccionesTotales: sumar(pubsActuales, "cantidad_interacciones"),
     interaccionesTotalesDelta: calcularDelta(sumar(pubsActuales, "cantidad_interacciones"), sumar(pubsAnteriores, "cantidad_interacciones")),
     motivosEliminacion: [...motivosMapa.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })),
-    palabrasClave: extraerPalabrasClave(filas.map((f) => f.comentario)),
+    palabrasClave: extraerPalabrasClave(filas.map((f) => f.comentario), palabrasDescartadas),
     historial: filas.slice(0, 50).map((f) => ({
       fecha: new Date(f.creado_en).toLocaleDateString("es-MX"),
       usuario: f.usuario,
@@ -296,6 +305,7 @@ export async function obtenerEstadisticasSkool(): Promise<EstadisticasSkool> {
   const { data, error } = await supabase.from("cm_skool_atenciones").select("creado_en, pregunta");
   if (error) throw error;
   const filas = data ?? [];
+  const palabrasDescartadas = new Set(await listarCatalogo("palabra_descartada_cm"));
 
   const enVentana = (fecha: string, desde: string, hasta?: string) => fecha >= desde && (!hasta || fecha < hasta);
   const actuales = filas.filter((f) => enVentana(f.creado_en, inicioActual));
@@ -305,7 +315,7 @@ export async function obtenerEstadisticasSkool(): Promise<EstadisticasSkool> {
     totalAtenciones: filas.length,
     atencionesRecientes: actuales.length,
     atencionesRecientesDelta: calcularDelta(actuales.length, anteriores.length),
-    preguntasComunes: extraerPalabrasClave(filas.map((f) => f.pregunta)),
+    preguntasComunes: extraerPalabrasClave(filas.map((f) => f.pregunta), palabrasDescartadas),
   };
 }
 

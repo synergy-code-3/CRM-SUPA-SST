@@ -30,18 +30,32 @@ export function EstadisticasContenido({ plataforma }: { plataforma: Plataforma |
   const [datos, setDatos] = useState<EstadisticasPlataforma | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDatos(null);
+  function cargar() {
     setError(null);
     const params = plataforma ? `?plataforma=${plataforma}` : "";
-    fetch(`/api/community-manager/estadisticas${params}`)
+    return fetch(`/api/community-manager/estadisticas${params}`)
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "No se pudieron cargar las estadísticas");
         setDatos(data.estadisticas);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar las estadísticas"));
+  }
+
+  useEffect(() => {
+    setDatos(null);
+    cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plataforma]);
+
+  async function descartarPalabra(nombre: string) {
+    const res = await fetch("/api/community-manager/palabras-descartadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valor: nombre }),
+    });
+    if (res.ok) cargar();
+  }
 
   const historialFiltrado = useMemo(() => {
     if (!datos) return [];
@@ -124,7 +138,7 @@ export function EstadisticasContenido({ plataforma }: { plataforma: Plataforma |
               {datos.palabrasClave.length === 0 ? (
                 <p className="flex h-full items-center justify-center text-sm text-muted">Todavía no hay comentarios registrados.</p>
               ) : (
-                <BarChart datos={datos.palabrasClave} />
+                <BarChart datos={datos.palabrasClave} onDescartar={descartarPalabra} />
               )}
             </ChartCard>
           </div>
