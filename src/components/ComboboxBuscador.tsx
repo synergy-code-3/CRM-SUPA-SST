@@ -115,7 +115,11 @@ export function ComboboxBuscador({
           <div
             ref={panel}
             style={{ position: "fixed", top: posicion.top, left: posicion.left, width: posicion.width }}
-            className="z-50 overflow-hidden rounded-lg border border-silver bg-surface shadow-lg"
+            // z-[200]: por encima de cualquier modal de la app (el más alto
+            // en uso es z-[100], ej. AccesoPendiente/FotoAmpliada/login) —
+            // si no, el menú se abre pero queda pintado detrás del modal,
+            // invisible (pasó con z-50 dentro de NuevoClienteModal, z-[60]).
+            className="z-[200] overflow-hidden rounded-lg border border-silver bg-surface shadow-lg"
           >
             <div className="flex items-center gap-1.5 border-b border-silver px-2.5 py-1.5">
               <Search className="h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
