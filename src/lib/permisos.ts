@@ -50,6 +50,9 @@ export const PERMISOS = {
   // mientras se construye solo admin ve contenido real; coordinador/abeja
   // ven "En construcción" (ver community-manager/layout.tsx).
   verCommunityManager: ["admin", "coordinador", "abeja"],
+  // Coordinación Académica (mentorías, giras, mentores) — portado desde una
+  // app aparte, solo para administradores.
+  verCoordinacion: ["admin"],
 } as const satisfies Record<string, readonly Rol[]>;
 
 export type Accion = keyof typeof PERMISOS;

@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, Bot } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import type { ItemReciente, Plataforma } from "@/lib/community-manager";
 import { useSesion } from "@/lib/session-context";
@@ -85,11 +85,13 @@ const WORKSPACES: Workspace[] = [
   { id: "club", label: "Club Sinergético", href: "/clientes", permiso: "verClientes" },
   { id: "certificaciones", label: "Certificaciones", href: "/certificaciones", permiso: "verCertificaciones" },
   { id: "community-manager", label: "Community Manager", href: "/community-manager", permiso: "verCommunityManager" },
+  { id: "coordinacion", label: "Coordinación Académica", href: "/coordinacion", permiso: "verCoordinacion" },
 ];
 
 function workspaceDesdeRuta(pathname: string): string {
   if (pathname.startsWith("/certificaciones")) return "certificaciones";
   if (pathname.startsWith("/community-manager")) return "community-manager";
+  if (pathname.startsWith("/coordinacion")) return "coordinacion";
   return "club";
 }
 
@@ -111,6 +113,17 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
   { href: "/certificaciones/tags", label: "Tags", icon: Tag, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/actividad", label: "Actividad", icon: History, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/usuarios", label: "Usuarios", icon: ShieldCheck, permiso: "gestionarUsuarios", contador: "usuarios" },
+];
+
+// Coordinación Académica — portado desde una app aparte (Firebase), solo
+// admin (el permiso del workspace completo ya lo filtra, ver WORKSPACES).
+const NAV_COORDINACION: ItemNav[] = [
+  { href: "/coordinacion", label: "Calendario", icon: CalendarDays, permiso: "verCoordinacion" },
+  { href: "/coordinacion/mentorias", label: "Mentorías", icon: GraduationCap, permiso: "verCoordinacion" },
+  { href: "/coordinacion/mentores", label: "Mentores", icon: UserRound, permiso: "verCoordinacion" },
+  { href: "/coordinacion/giras", label: "Giras", icon: MapPin, permiso: "verCoordinacion" },
+  { href: "/coordinacion/grupos", label: "Grupos de Comunidad", icon: Globe, permiso: "verCoordinacion" },
+  { href: "/coordinacion/asistente", label: "Asistente IA", icon: Bot, permiso: "verCoordinacion" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
@@ -739,7 +752,12 @@ export function Sidebar() {
   // o /community-manager ya muestra el workspace correcto sin un clic de más).
   const workspaceActual = workspaceDesdeRuta(pathname);
   const esCommunityManager = workspaceActual === "community-manager";
-  const items = (workspaceActual === "certificaciones" ? NAV_CERTIFICACIONES : NAV_CLUB).filter((item) =>
+  const NAV_POR_WORKSPACE: Record<string, ItemNav[]> = {
+    certificaciones: NAV_CERTIFICACIONES,
+    coordinacion: NAV_COORDINACION,
+    club: NAV_CLUB,
+  };
+  const items = (NAV_POR_WORKSPACE[workspaceActual] ?? NAV_CLUB).filter((item) =>
     tienePermiso(usuario.rol, item.permiso)
   );
   const opcionesWorkspace = WORKSPACES.filter((w) => tienePermiso(usuario.rol, w.permiso));

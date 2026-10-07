@@ -841,3 +841,87 @@ create table if not exists cm_skool_atenciones (
 );
 create index if not exists idx_cm_skool_atenciones_fecha on cm_skool_atenciones (creado_en desc);
 alter table cm_skool_atenciones enable row level security;
+
+-- Coordinación Académica — portado desde una app aparte (Firebase/Firestore,
+-- "Coordinacion-Club-Sinergetico"). Workspace solo-admin (ver permisos.ts,
+-- verCoordinacion): mentorías del Club, sus mentores y el calendario de
+-- eventos internos. Giras y Grupos de Comunidad NO tienen tabla propia —
+-- se consultan en vivo del mismo Google Sheet que ya usaban (ver
+-- src/lib/coordinacion.ts), así que siempre están al día sin duplicar datos.
+create table if not exists coord_mentores (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  rango text not null check (rango in ('Director', 'Lider', 'Abeja')),
+  especialidad text,
+  descripcion text,
+  activo boolean not null default true,
+  creado_en timestamptz not null default now()
+);
+alter table coord_mentores enable row level security;
+
+-- La app vieja tenía "Creación"/"Difusión"/"Retroalimentación" como 3
+-- pantallas de menú, pero las 3 editaban el MISMO documento — aquí es una
+-- sola tabla con todos los campos. "estado" (creada/confirmada/concluida/
+-- cancelada) era manual y alimentaba un tablero Kanban — se quitan ambos:
+-- `concluida` se fija sola en el servidor al guardar la Retro (ver
+-- guardarRetroMentoria en src/lib/coordinacion.ts), no hay "cancelada"
+-- (para eso se borra el registro).
+create table if not exists coord_mentorias (
+  id uuid primary key default gen_random_uuid(),
+  mentor_id uuid references coord_mentores (id),
+  tipo_mentoria text not null check (tipo_mentoria in ('lunes-prin', 'lunes-sin', 'martes', 'miercoles', 'jueves', 'viernes')),
+  tema text,
+  fecha date not null,
+  hora text,
+  material boolean not null default false,
+  notas text,
+  copy_previa text,
+  copy_plataforma text,
+  aud_inicial integer,
+  aud_media integer,
+  aud_final integer,
+  obs_pub text,
+  ideas text,
+  preguntas text,
+  concluida boolean not null default false,
+  creado_por_id uuid references usuarios (id),
+  creado_por_nombre text not null,
+  creado_en timestamptz not null default now(),
+  actualizado_en timestamptz
+);
+create index if not exists idx_coord_mentorias_fecha on coord_mentorias (fecha desc);
+alter table coord_mentorias enable row level security;
+
+-- El checklist de difusión (Canva/Telegram/WhatsApp/Marketing/Skool) en la
+-- app vieja vivía SOLO en localStorage de cada navegador — nunca
+-- sincronizaba entre usuarios. Aquí sí es una tabla real compartida.
+create table if not exists coord_mentoria_difusion (
+  mentoria_id uuid primary key references coord_mentorias (id) on delete cascade,
+  canva boolean not null default false,
+  telegram boolean not null default false,
+  whatsapp boolean not null default false,
+  marketing boolean not null default false,
+  skool boolean not null default false
+);
+alter table coord_mentoria_difusion enable row level security;
+
+-- Eventos internos del calendario de Coordinación (reuniones, webinars) —
+-- distinto de "Giras" (que no tiene tabla, viene del Sheet) y distinto de
+-- las mentorías (coord_mentorias) y los avisos del Club (tabla avisos).
+create table if not exists coord_eventos (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null,
+  fecha date not null,
+  color text,
+  hora_inicio text,
+  hora_fin text,
+  enlace text,
+  invitados text,
+  notas text,
+  descripcion text,
+  creado_por_id uuid references usuarios (id),
+  creado_por_nombre text not null,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_coord_eventos_fecha on coord_eventos (fecha desc);
+alter table coord_eventos enable row level security;
