@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, Bot } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import type { ItemReciente, Plataforma } from "@/lib/community-manager";
 import { useSesion } from "@/lib/session-context";
@@ -123,7 +123,6 @@ const NAV_COORDINACION: ItemNav[] = [
   { href: "/coordinacion/mentores", label: "Mentores", icon: UserRound, permiso: "verCoordinacion" },
   { href: "/coordinacion/giras", label: "Giras", icon: MapPin, permiso: "verCoordinacion" },
   { href: "/coordinacion/grupos", label: "Grupos de Comunidad", icon: Globe, permiso: "verCoordinacion" },
-  { href: "/coordinacion/asistente", label: "Asistente IA", icon: Bot, permiso: "verCoordinacion" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };

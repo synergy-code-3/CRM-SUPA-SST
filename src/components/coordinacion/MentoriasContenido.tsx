@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GraduationCap, Plus, X, Check } from "lucide-react";
+import { GraduationCap, Plus, X, Check, Download } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import {
   TIPOS_MENTORIA,
   TIPOS_MENTORIA_VALIDOS,
+  construirMarkdownMentorias,
   type Mentor,
   type Mentoria,
   type TipoMentoria,
@@ -22,6 +23,17 @@ const PRESETS_HORA = [
 
 function hoyISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function descargarMarkdown(mentorias: Mentoria[]): void {
+  const markdown = construirMarkdownMentorias(mentorias);
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `mentorias-${hoyISO()}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatearFecha(iso: string): string {
@@ -94,14 +106,24 @@ export function MentoriasContenido() {
           </h1>
           <p className="text-sm text-muted">Creación, difusión y retroalimentación de cada sesión.</p>
         </div>
-        <button
-          disabled={creando}
-          onClick={() => crear(TIPOS_MENTORIA_VALIDOS[0], hoyISO())}
-          className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.75} />
-          Nueva mentoría
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={!mentorias || mentorias.length === 0}
+            onClick={() => descargarMarkdown(mentorias ?? [])}
+            className="ease-spring flex items-center gap-1.5 rounded-xl border border-silver px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" strokeWidth={1.75} />
+            Descargar .md
+          </button>
+          <button
+            disabled={creando}
+            onClick={() => crear(TIPOS_MENTORIA_VALIDOS[0], hoyISO())}
+            className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            Nueva mentoría
+          </button>
+        </div>
       </div>
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}

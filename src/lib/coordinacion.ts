@@ -470,3 +470,40 @@ export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("coord_eventos").delete().eq("id", id);
   if (error) throw error;
 }
+
+// --- Exportar a Markdown (botón "Descargar .md" de Mentorías) -----------
+
+function formatearFechaLarga(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+export function construirMarkdownMentorias(mentorias: Mentoria[]): string {
+  const lineas: string[] = ["# Mentorías — Club Sinergético", ""];
+  const ordenadas = [...mentorias].sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  for (const m of ordenadas) {
+    const tipo = TIPOS_MENTORIA[m.tipoMentoria]?.label ?? m.tipoMentoria;
+    lineas.push(`## ${formatearFechaLarga(m.fecha)} — ${tipo}`);
+    lineas.push("");
+    lineas.push(`- **Tema:** ${m.tema || "—"}`);
+    lineas.push(`- **Mentor:** ${m.mentorNombre || "—"}`);
+    lineas.push(`- **Hora:** ${m.hora || "—"}`);
+    lineas.push(`- **Estado:** ${m.concluida ? "Concluida" : "En curso"}`);
+    lineas.push(`- **Material preparado:** ${m.material ? "Sí" : "No"}`);
+    if (m.audInicial != null || m.audMedia != null || m.audFinal != null) {
+      lineas.push(`- **Audiencia:** inicial ${m.audInicial ?? "—"} → media ${m.audMedia ?? "—"} → final ${m.audFinal ?? "—"}`);
+    }
+    if (m.obsPub) lineas.push(`- **Observaciones del público:** ${m.obsPub}`);
+    if (m.ideas) lineas.push(`- **Ideas importantes:** ${m.ideas}`);
+    if (m.preguntas) lineas.push(`- **Preguntas frecuentes:** ${m.preguntas}`);
+    if (m.notas) lineas.push(`- **Notas internas:** ${m.notas}`);
+    const difusionHecha = Object.entries(m.difusion).filter(([, v]) => v).map(([k]) => k);
+    lineas.push(`- **Difusión completada:** ${difusionHecha.length > 0 ? difusionHecha.join(", ") : "ninguna"}`);
+    lineas.push("");
+    lineas.push("---");
+    lineas.push("");
+  }
+
+  return lineas.join("\n");
+}
