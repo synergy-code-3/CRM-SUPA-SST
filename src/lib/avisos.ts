@@ -113,10 +113,10 @@ export async function crearAviso(
 // real detrás. soloAdmin=true (el caso real de hoy, reactivaciones de
 // Kajabi) lo deja fuera de /avisos y de la ventana emergente para
 // coordinador/abeja — es ruido operativo que no les toca a ellos.
-export async function crearAvisoAutomatico(titulo: string, mensaje: string, soloAdmin: boolean): Promise<Aviso> {
+export async function crearAvisoAutomatico(titulo: string, mensaje: string, soloAdmin: boolean, autorNombre = "Kajabi"): Promise<Aviso> {
   const { data, error } = await supabase
     .from("avisos")
-    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: null, autor_nombre: "Kajabi", solo_admin: soloAdmin })
+    .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), autor_id: null, autor_nombre: autorNombre, solo_admin: soloAdmin })
     .select("*")
     .single();
   if (error) throw error;
