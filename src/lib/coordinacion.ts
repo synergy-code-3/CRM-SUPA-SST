@@ -360,3 +360,113 @@ export async function eliminarMentoria(id: string): Promise<void> {
   const { error } = await supabase.from("coord_mentorias").delete().eq("id", id);
   if (error) throw error;
 }
+
+// --- Eventos internos del calendario (reuniones, webinars) ---------------
+
+type FilaEvento = {
+  id: string;
+  titulo: string;
+  fecha: string;
+  color: string | null;
+  hora_inicio: string | null;
+  hora_fin: string | null;
+  enlace: string | null;
+  invitados: string | null;
+  notas: string | null;
+  descripcion: string | null;
+};
+
+function filaAEvento(f: FilaEvento): EventoInterno {
+  return {
+    id: f.id,
+    titulo: f.titulo,
+    fecha: f.fecha,
+    color: f.color,
+    horaInicio: f.hora_inicio,
+    horaFin: f.hora_fin,
+    enlace: f.enlace,
+    invitados: f.invitados,
+    notas: f.notas,
+    descripcion: f.descripcion,
+  };
+}
+
+const SELECT_EVENTO = "id, titulo, fecha, color, hora_inicio, hora_fin, enlace, invitados, notas, descripcion";
+
+export async function listarEventos(rango?: { desde: string; hasta: string }): Promise<EventoInterno[]> {
+  let q = supabase.from("coord_eventos").select(SELECT_EVENTO).order("fecha");
+  if (rango) q = q.gte("fecha", rango.desde).lte("fecha", rango.hasta);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((f) => filaAEvento(f as FilaEvento));
+}
+
+export async function crearEvento(input: {
+  titulo: string;
+  fecha: string;
+  color?: string | null;
+  horaInicio?: string | null;
+  horaFin?: string | null;
+  enlace?: string | null;
+  invitados?: string | null;
+  notas?: string | null;
+  descripcion?: string | null;
+  creadoPorId: string;
+  creadoPorNombre: string;
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("coord_eventos")
+    .insert({
+      titulo: input.titulo.trim(),
+      fecha: input.fecha,
+      color: input.color || null,
+      hora_inicio: input.horaInicio || null,
+      hora_fin: input.horaFin || null,
+      enlace: input.enlace?.trim() || null,
+      invitados: input.invitados?.trim() || null,
+      notas: input.notas?.trim() || null,
+      descripcion: input.descripcion?.trim() || null,
+      creado_por_id: input.creadoPorId,
+      creado_por_nombre: input.creadoPorNombre,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return { id: data.id as string };
+}
+
+export async function actualizarEvento(
+  id: string,
+  input: {
+    titulo: string;
+    fecha: string;
+    color?: string | null;
+    horaInicio?: string | null;
+    horaFin?: string | null;
+    enlace?: string | null;
+    invitados?: string | null;
+    notas?: string | null;
+    descripcion?: string | null;
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from("coord_eventos")
+    .update({
+      titulo: input.titulo.trim(),
+      fecha: input.fecha,
+      color: input.color || null,
+      hora_inicio: input.horaInicio || null,
+      hora_fin: input.horaFin || null,
+      enlace: input.enlace?.trim() || null,
+      invitados: input.invitados?.trim() || null,
+      notas: input.notas?.trim() || null,
+      descripcion: input.descripcion?.trim() || null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function eliminarEvento(id: string): Promise<void> {
+  const { error } = await supabase.from("coord_eventos").delete().eq("id", id);
+  if (error) throw error;
+}
