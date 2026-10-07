@@ -5,13 +5,18 @@ import { supabase } from "@/lib/supabase";
 
 export type TipoMentoria = "lunes-prin" | "lunes-sin" | "martes" | "miercoles" | "jueves" | "viernes";
 
-export const TIPOS_MENTORIA: Record<TipoMentoria, { label: string; horario: string }> = {
-  "lunes-prin": { label: "Lunes de Principiante", horario: "12pm" },
-  "lunes-sin": { label: "Lunes Sinergético", horario: "7pm" },
-  martes: { label: "Martes de Estrategia Digital", horario: "7pm" },
-  miercoles: { label: "Miércoles de Creación de Contenido", horario: "7pm" },
-  jueves: { label: "Jueves de Estrategia de Venta", horario: "7pm" },
-  viernes: { label: "Viernes de Caso de Éxito", horario: "4pm" },
+// `color` = el mismo color con el que cada mentoría se identifica en
+// Skool (tarjetas de "Lunes Sinergético"/"Clase de principiantes"/etc.) —
+// se usa para agrupar la lista de Mentorías en carpetas por tipo. "Caso de
+// Éxito" (viernes) no tiene un color de marca propio en Skool, se deja en
+// gris neutro a propósito.
+export const TIPOS_MENTORIA: Record<TipoMentoria, { label: string; horario: string; color: string }> = {
+  "lunes-prin": { label: "Lunes de Principiante", horario: "12pm", color: "#F97316" },
+  "lunes-sin": { label: "Lunes Sinergético", horario: "7pm", color: "#9B2335" },
+  martes: { label: "Martes de Estrategia Digital", horario: "7pm", color: "#0EA5E9" },
+  miercoles: { label: "Miércoles de Creación de Contenido", horario: "7pm", color: "#9333EA" },
+  jueves: { label: "Jueves de Estrategia de Venta", horario: "7pm", color: "#16A34A" },
+  viernes: { label: "Viernes de Caso de Éxito", horario: "4pm", color: "#6B7280" },
 };
 export const TIPOS_MENTORIA_VALIDOS: TipoMentoria[] = ["lunes-prin", "lunes-sin", "martes", "miercoles", "jueves", "viernes"];
 

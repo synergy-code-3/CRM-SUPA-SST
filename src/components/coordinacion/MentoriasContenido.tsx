@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GraduationCap, Plus, Download } from "lucide-react";
-import { TIPOS_MENTORIA, construirMarkdownMentorias, mentoriaVacia, type Mentor, type Mentoria } from "@/lib/coordinacion";
+import { GraduationCap, Plus, Download, ChevronDown } from "lucide-react";
+import {
+  TIPOS_MENTORIA,
+  TIPOS_MENTORIA_VALIDOS,
+  construirMarkdownMentorias,
+  mentoriaVacia,
+  type Mentor,
+  type Mentoria,
+  type TipoMentoria,
+} from "@/lib/coordinacion";
 import { PanelMentoria } from "./PanelMentoria";
 
 function hoyISO(): string {
@@ -30,6 +38,7 @@ export function MentoriasContenido() {
   const [mentores, setMentores] = useState<Mentor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [abierta, setAbierta] = useState<Mentoria | null>(null);
+  const [carpetasCerradas, setCarpetasCerradas] = useState<Set<TipoMentoria>>(new Set());
 
   function cargarMentorias() {
     return fetch("/api/coordinacion/mentorias")
@@ -50,6 +59,26 @@ export function MentoriasContenido() {
   }, []);
 
   const opcionesMentor = useMemo(() => mentores.map((m) => ({ valor: m.id, etiqueta: m.nombre })), [mentores]);
+
+  // Carpetas por tipo de mentoría, mismo color que su tarjeta en Skool
+  // (ver TIPOS_MENTORIA) y mismo orden de la semana (no alfabético).
+  const carpetas = useMemo(() => {
+    const mapa = new Map<TipoMentoria, Mentoria[]>();
+    for (const m of mentorias ?? []) {
+      if (!mapa.has(m.tipoMentoria)) mapa.set(m.tipoMentoria, []);
+      mapa.get(m.tipoMentoria)!.push(m);
+    }
+    return TIPOS_MENTORIA_VALIDOS.map((tipo) => ({ tipo, items: mapa.get(tipo) ?? [] })).filter((c) => c.items.length > 0);
+  }, [mentorias]);
+
+  function alternarCarpeta(tipo: TipoMentoria) {
+    setCarpetasCerradas((prev) => {
+      const next = new Set(prev);
+      if (next.has(tipo)) next.delete(tipo);
+      else next.add(tipo);
+      return next;
+    });
+  }
 
   async function eliminar(id: string) {
     if (!window.confirm("¿Eliminar esta mentoría? No se puede deshacer.")) return;
@@ -89,38 +118,58 @@ export function MentoriasContenido() {
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
 
-      <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core rounded-[calc(1.75rem-0.5rem)] p-6">
-          {!mentorias ? (
-            <p className="py-8 text-center text-sm text-muted">Cargando…</p>
-          ) : mentorias.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted">Todavía no hay mentorías.</p>
-          ) : (
-            <ul className="divide-y divide-silver/60">
-              {mentorias.map((m) => (
-                <li key={m.id}>
-                  <button onClick={() => setAbierta(m)} className="flex w-full flex-wrap items-center justify-between gap-3 py-3.5 text-left">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground">{m.tema || "(sin tema)"}</p>
-                      <p className="text-xs text-muted">
-                        {formatearFecha(m.fecha)} · {TIPOS_MENTORIA[m.tipoMentoria].label}
-                        {m.mentorNombre ? ` · ${m.mentorNombre}` : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`flex-none rounded-full px-3 py-1 text-xs font-medium ${
-                        m.concluida ? "bg-success/15 text-success" : "bg-surface-2 text-muted"
-                      }`}
-                    >
-                      {m.concluida ? "Concluida" : "En curso"}
+      {!mentorias ? (
+        <p className="py-12 text-center text-sm text-muted">Cargando…</p>
+      ) : carpetas.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted">Todavía no hay mentorías.</p>
+      ) : (
+        <div className="space-y-4">
+          {carpetas.map(({ tipo, items }) => {
+            const color = TIPOS_MENTORIA[tipo].color;
+            const cerrada = carpetasCerradas.has(tipo);
+            return (
+              <div key={tipo} className="shell rounded-[1.75rem] p-2 diffused">
+                <div className="core overflow-hidden rounded-[calc(1.75rem-0.5rem)]">
+                  <button
+                    onClick={() => alternarCarpeta(tipo)}
+                    className="ease-spring flex w-full items-center gap-3 px-6 py-4 text-left transition hover:bg-surface-2"
+                  >
+                    <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: color }} />
+                    <span className="flex-1 font-semibold text-foreground">
+                      {TIPOS_MENTORIA[tipo].label} <span className="font-normal text-muted">· {items.length}</span>
                     </span>
+                    <ChevronDown className={`h-4 w-4 flex-none text-muted transition-transform ${cerrada ? "" : "rotate-180"}`} strokeWidth={1.75} />
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                  {!cerrada && (
+                    <ul className="divide-y divide-silver/60 px-6 pb-2">
+                      {items.map((m) => (
+                        <li key={m.id}>
+                          <button onClick={() => setAbierta(m)} className="flex w-full flex-wrap items-center justify-between gap-3 py-3 text-left">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground">{m.tema || "(sin tema)"}</p>
+                              <p className="text-xs text-muted">
+                                {formatearFecha(m.fecha)}
+                                {m.mentorNombre ? ` · ${m.mentorNombre}` : ""}
+                              </p>
+                            </div>
+                            <span
+                              className={`flex-none rounded-full px-3 py-1 text-xs font-medium ${
+                                m.concluida ? "bg-success/15 text-success" : "bg-surface-2 text-muted"
+                              }`}
+                            >
+                              {m.concluida ? "Concluida" : "En curso"}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
 
       {abierta && (
         <PanelMentoria
