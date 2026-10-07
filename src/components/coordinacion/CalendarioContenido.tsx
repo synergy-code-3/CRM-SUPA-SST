@@ -57,6 +57,11 @@ function celdasDelMes(anio: number, mesIndex0: number): { fecha: string; delMes:
   return celdas;
 }
 
+function formatearFechaLarga(fechaIso: string): string {
+  const texto = new Date(`${fechaIso}T12:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
 function eventoVacio(fecha: string) {
   return { id: "", titulo: "", fecha, color: COLORES_EVENTO[3], horaInicio: "", horaFin: "", enlace: "", invitados: "", notas: "", descripcion: "" };
 }
@@ -72,6 +77,7 @@ export function CalendarioContenido() {
   const [giras, setGiras] = useState<Gira[]>([]);
   const [modal, setModal] = useState<ReturnType<typeof eventoVacio> | null>(null);
   const [panelMentoria, setPanelMentoria] = useState<Mentoria | null>(null);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [mostrarElegirTipo, setMostrarElegirTipo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,7 +286,8 @@ export function CalendarioContenido() {
               return (
                 <div
                   key={fecha}
-                  className={`min-h-[88px] rounded-lg border p-1.5 text-left align-top ${
+                  onClick={() => setDiaSeleccionado(fecha)}
+                  className={`min-h-[88px] cursor-pointer rounded-lg border p-1.5 text-left align-top transition hover:border-primary/40 ${
                     fecha === hoyIso ? "border-primary/50 bg-primary-dim" : "border-silver/60"
                   } ${delMes ? "" : "opacity-40"}`}
                 >
@@ -289,7 +296,10 @@ export function CalendarioContenido() {
                     {mentoriasDia.map((m) => (
                       <button
                         key={m.id}
-                        onClick={() => setPanelMentoria(m)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPanelMentoria(m);
+                        }}
                         title={`${TIPOS_MENTORIA[m.tipoMentoria].label}${m.tema ? ` — ${m.tema}` : ""}`}
                         className="ease-spring block w-full truncate rounded bg-primary-dim px-1.5 py-0.5 text-left text-[11px] font-medium text-primary-deep transition hover:brightness-95"
                       >
@@ -299,7 +309,8 @@ export function CalendarioContenido() {
                     {eventosDia.map((e) => (
                       <button
                         key={e.id}
-                        onClick={() =>
+                        onClick={(ev) => {
+                          ev.stopPropagation();
                           setModal({
                             id: e.id,
                             titulo: e.titulo,
@@ -311,8 +322,8 @@ export function CalendarioContenido() {
                             invitados: e.invitados ?? "",
                             notas: e.notas ?? "",
                             descripcion: e.descripcion ?? "",
-                          })
-                        }
+                          });
+                        }}
                         title={e.titulo}
                         className="ease-spring block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
                         style={{ backgroundColor: e.color ?? COLORES_EVENTO[3] }}
@@ -323,7 +334,10 @@ export function CalendarioContenido() {
                     {girasDia.map((g, i) => (
                       <button
                         key={`${g.nombre}-${i}`}
-                        onClick={() => router.push("/coordinacion/giras")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push("/coordinacion/giras");
+                        }}
                         title={`Gira: ${g.nombre}${g.horario ? ` — ${g.horario}` : ""}${g.hotel ? ` — ${g.hotel}` : ""}`}
                         className="ease-spring flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
                         style={{ backgroundColor: colorGira(g.nombre) }}
@@ -422,6 +436,110 @@ export function CalendarioContenido() {
           onGuardado={() => cargar()}
           onEliminar={eliminarMentoria}
         />
+      )}
+
+      {diaSeleccionado && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-foreground/30 p-6 backdrop-blur-[2px]"
+          onClick={(e) => e.target === e.currentTarget && setDiaSeleccionado(null)}
+        >
+          <div className="shell w-full max-w-sm rounded-[2rem] p-2 diffused-lg animate-fade-in">
+            <div className="core space-y-4 rounded-[calc(2rem-0.5rem)] p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-foreground">{formatearFechaLarga(diaSeleccionado)}</h2>
+                <button onClick={() => setDiaSeleccionado(null)} className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2">
+                  <X className="h-4.5 w-4.5" strokeWidth={1.75} />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                {(mentoriasPorFecha.get(diaSeleccionado) ?? []).map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setPanelMentoria(m);
+                      setDiaSeleccionado(null);
+                    }}
+                    className="ease-spring flex w-full items-center gap-2 rounded-lg bg-primary-dim px-3 py-2 text-left text-sm font-medium text-primary-deep transition hover:brightness-95"
+                  >
+                    <GraduationCap className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    <span className="truncate">
+                      {TIPOS_MENTORIA[m.tipoMentoria].label}
+                      {m.tema ? ` — ${m.tema}` : ""}
+                    </span>
+                  </button>
+                ))}
+                {(eventosPorFecha.get(diaSeleccionado) ?? []).map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => {
+                      setModal({
+                        id: e.id,
+                        titulo: e.titulo,
+                        fecha: e.fecha,
+                        color: e.color ?? COLORES_EVENTO[3],
+                        horaInicio: e.horaInicio ?? "",
+                        horaFin: e.horaFin ?? "",
+                        enlace: e.enlace ?? "",
+                        invitados: e.invitados ?? "",
+                        notas: e.notas ?? "",
+                        descripcion: e.descripcion ?? "",
+                      });
+                      setDiaSeleccionado(null);
+                    }}
+                    className="ease-spring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-white transition hover:brightness-95"
+                    style={{ backgroundColor: e.color ?? COLORES_EVENTO[3] }}
+                  >
+                    <CalendarPlus className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    <span className="truncate">{e.titulo}</span>
+                  </button>
+                ))}
+                {(girasPorFecha.get(diaSeleccionado) ?? []).map((g, i) => (
+                  <button
+                    key={`${g.nombre}-${i}`}
+                    onClick={() => {
+                      router.push("/coordinacion/giras");
+                      setDiaSeleccionado(null);
+                    }}
+                    className="ease-spring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-white transition hover:brightness-95"
+                    style={{ backgroundColor: colorGira(g.nombre) }}
+                  >
+                    <MapPin className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    <span className="truncate">{g.nombre}</span>
+                  </button>
+                ))}
+                {!mentoriasPorFecha.get(diaSeleccionado)?.length &&
+                  !eventosPorFecha.get(diaSeleccionado)?.length &&
+                  !girasPorFecha.get(diaSeleccionado)?.length && (
+                    <p className="py-2 text-sm text-muted">Nada agendado este día.</p>
+                  )}
+              </div>
+
+              <div className="flex gap-2 border-t border-silver/70 pt-4">
+                <button
+                  onClick={() => {
+                    setModal(eventoVacio(diaSeleccionado));
+                    setDiaSeleccionado(null);
+                  }}
+                  className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-silver px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2"
+                >
+                  <CalendarPlus className="h-4 w-4" strokeWidth={1.75} />
+                  Evento
+                </button>
+                <button
+                  onClick={() => {
+                    setPanelMentoria(mentoriaVacia(diaSeleccionado));
+                    setDiaSeleccionado(null);
+                  }}
+                  className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-xl brand-plate px-3 py-2.5 text-sm font-medium text-white transition"
+                >
+                  <GraduationCap className="h-4 w-4" strokeWidth={1.75} />
+                  Mentoría
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

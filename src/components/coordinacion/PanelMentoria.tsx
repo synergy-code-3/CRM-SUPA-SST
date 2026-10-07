@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Copy } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion";
 
@@ -250,12 +250,12 @@ export function PanelMentoria({
                   {generando ? "Generando…" : "Generar desde tema/mentor"}
                 </button>
               </div>
-              <Campo label="Copy de previa (anuncio del día)">
+              <CampoConCopiar label="Copy de previa (anuncio del día)" valor={copyPrevia}>
                 <textarea value={copyPrevia} onChange={(e) => setCopyPrevia(e.target.value)} rows={6} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
-              </Campo>
-              <Campo label="Copy de plataforma (ya disponible en Classroom)">
+              </CampoConCopiar>
+              <CampoConCopiar label="Copy de plataforma (ya disponible en Classroom)" valor={copyPlataforma}>
                 <textarea value={copyPlataforma} onChange={(e) => setCopyPlataforma(e.target.value)} rows={5} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
-              </Campo>
+              </CampoConCopiar>
               <div>
                 <span className="mb-2 block text-sm font-medium text-muted">Checklist de difusión</span>
                 <div className="grid grid-cols-2 gap-2">
@@ -326,5 +326,42 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1.5 block text-sm font-medium text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Igual que Campo, pero con un botón para copiar el texto actual al
+// portapapeles — para pegar el copy directo en WhatsApp/Telegram/Skool
+// sin tener que seleccionar el texto a mano.
+function CampoConCopiar({ label, valor, children }: { label: string; valor: string; children: React.ReactNode }) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(valor);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // portapapeles no disponible, ignorar
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="block text-sm font-medium text-muted">{label}</span>
+        <button
+          type="button"
+          onClick={copiar}
+          disabled={!valor.trim()}
+          className={`ease-spring flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition disabled:opacity-40 ${
+            copiado ? "text-success" : "text-muted hover:text-primary"
+          }`}
+        >
+          {copiado ? <Check className="h-3 w-3" strokeWidth={2.5} /> : <Copy className="h-3 w-3" strokeWidth={2} />}
+          {copiado ? "Copiado" : "Copiar"}
+        </button>
+      </div>
+      {children}
+    </div>
   );
 }
