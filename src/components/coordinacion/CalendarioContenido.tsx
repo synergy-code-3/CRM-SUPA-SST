@@ -1,9 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus, MapPin } from "lucide-react";
 import { TIPOS_MENTORIA, mentoriaVacia, type Mentor, type Mentoria, type EventoInterno } from "@/lib/coordinacion";
+import type { Gira } from "@/lib/coordinacion-sheets";
 import { PanelMentoria } from "./PanelMentoria";
+
+// Mismo criterio que la app vieja (GIRA_PALETA/giraColor): los eventos
+// "especiales" (Bootcamp/Synergy) resaltan con su propio color, el resto
+// usa un azul genérico — así se distinguen del verde de Mentorías.
+const PALETA_GIRA: Record<string, string> = {
+  "BOOTCAMP USA": "#9B2335", "SYNERGY USA": "#1D4ED8", "SYNERGY MEX": "#7C3AED",
+  "BOOTCAMP MEX": "#B91C1C", "SYNERGY UNLIMITED": "#0F766E", BOOTCAMP: "#9B2335", SYNERGY: "#1D4ED8",
+};
+function colorGira(nombre: string): string {
+  const mayus = nombre.toUpperCase();
+  for (const [clave, color] of Object.entries(PALETA_GIRA)) if (mayus.includes(clave)) return color;
+  return "#0369A1";
+}
 
 const COLORES_EVENTO = ["#3B82F6", "#10B981", "#A855F7", "#F59E0B"];
 const NOMBRES_MES = [
@@ -47,12 +62,14 @@ function eventoVacio(fecha: string) {
 }
 
 export function CalendarioContenido() {
+  const router = useRouter();
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mesIndex0, setMesIndex0] = useState(hoy.getMonth());
   const [mentorias, setMentorias] = useState<Mentoria[]>([]);
   const [mentores, setMentores] = useState<Mentor[]>([]);
   const [eventos, setEventos] = useState<EventoInterno[]>([]);
+  const [giras, setGiras] = useState<Gira[]>([]);
   const [modal, setModal] = useState<ReturnType<typeof eventoVacio> | null>(null);
   const [panelMentoria, setPanelMentoria] = useState<Mentoria | null>(null);
   const [mostrarElegirTipo, setMostrarElegirTipo] = useState(false);
@@ -74,6 +91,13 @@ export function CalendarioContenido() {
       .then((data) => setEventos(data.eventos ?? []))
       .catch(() => {});
   }
+
+  useEffect(() => {
+    fetch("/api/coordinacion/giras")
+      .then((r) => r.json())
+      .then((data) => setGiras(data.giras ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     cargar();
@@ -115,6 +139,16 @@ export function CalendarioContenido() {
     }
     return mapa;
   }, [eventos]);
+
+  const girasPorFecha = useMemo(() => {
+    const mapa = new Map<string, Gira[]>();
+    for (const g of giras) {
+      if (!g.fechaIso) continue;
+      if (!mapa.has(g.fechaIso)) mapa.set(g.fechaIso, []);
+      mapa.get(g.fechaIso)!.push(g);
+    }
+    return mapa;
+  }, [giras]);
 
   function cambiarMes(delta: number) {
     let m = mesIndex0 + delta;
@@ -242,6 +276,7 @@ export function CalendarioContenido() {
               const dia = Number(fecha.slice(8, 10));
               const mentoriasDia = mentoriasPorFecha.get(fecha) ?? [];
               const eventosDia = eventosPorFecha.get(fecha) ?? [];
+              const girasDia = girasPorFecha.get(fecha) ?? [];
               return (
                 <div
                   key={fecha}
@@ -283,6 +318,18 @@ export function CalendarioContenido() {
                         style={{ backgroundColor: e.color ?? COLORES_EVENTO[3] }}
                       >
                         {e.titulo}
+                      </button>
+                    ))}
+                    {girasDia.map((g, i) => (
+                      <button
+                        key={`${g.nombre}-${i}`}
+                        onClick={() => router.push("/coordinacion/giras")}
+                        title={`Gira: ${g.nombre}${g.horario ? ` — ${g.horario}` : ""}${g.hotel ? ` — ${g.hotel}` : ""}`}
+                        className="ease-spring flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
+                        style={{ backgroundColor: colorGira(g.nombre) }}
+                      >
+                        <MapPin className="h-2.5 w-2.5 flex-none" strokeWidth={2} />
+                        <span className="truncate">{g.nombre}</span>
                       </button>
                     ))}
                   </div>
