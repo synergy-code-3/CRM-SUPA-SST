@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
-import { TIPOS_MENTORIA, type Mentoria, type EventoInterno } from "@/lib/coordinacion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus } from "lucide-react";
+import { TIPOS_MENTORIA, mentoriaVacia, type Mentor, type Mentoria, type EventoInterno } from "@/lib/coordinacion";
+import { PanelMentoria } from "./PanelMentoria";
 
 const COLORES_EVENTO = ["#3B82F6", "#10B981", "#A855F7", "#F59E0B"];
 const NOMBRES_MES = [
@@ -51,10 +51,14 @@ export function CalendarioContenido() {
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mesIndex0, setMesIndex0] = useState(hoy.getMonth());
   const [mentorias, setMentorias] = useState<Mentoria[]>([]);
+  const [mentores, setMentores] = useState<Mentor[]>([]);
   const [eventos, setEventos] = useState<EventoInterno[]>([]);
   const [modal, setModal] = useState<ReturnType<typeof eventoVacio> | null>(null);
+  const [panelMentoria, setPanelMentoria] = useState<Mentoria | null>(null);
+  const [mostrarElegirTipo, setMostrarElegirTipo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const elegirTipoRef = useRef<HTMLDivElement>(null);
 
   const celdas = useMemo(() => celdasDelMes(anio, mesIndex0), [anio, mesIndex0]);
   const desde = celdas[0].fecha;
@@ -75,6 +79,24 @@ export function CalendarioContenido() {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desde, hasta]);
+
+  useEffect(() => {
+    fetch("/api/coordinacion/mentores")
+      .then((r) => r.json())
+      .then((data) => setMentores(data.mentores ?? []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!mostrarElegirTipo) return;
+    function alClicFuera(e: MouseEvent) {
+      if (elegirTipoRef.current && !elegirTipoRef.current.contains(e.target as Node)) setMostrarElegirTipo(false);
+    }
+    document.addEventListener("mousedown", alClicFuera);
+    return () => document.removeEventListener("mousedown", alClicFuera);
+  }, [mostrarElegirTipo]);
+
+  const opcionesMentor = useMemo(() => mentores.map((m) => ({ valor: m.id, etiqueta: m.nombre })), [mentores]);
 
   const mentoriasPorFecha = useMemo(() => {
     const mapa = new Map<string, Mentoria[]>();
@@ -138,6 +160,13 @@ export function CalendarioContenido() {
     cargar();
   }
 
+  async function eliminarMentoria(id: string) {
+    if (!window.confirm("¿Eliminar esta mentoría? No se puede deshacer.")) return;
+    await fetch(`/api/coordinacion/mentorias/${id}`, { method: "DELETE" });
+    setPanelMentoria(null);
+    cargar();
+  }
+
   const hoyIso = iso(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
   return (
@@ -150,13 +179,39 @@ export function CalendarioContenido() {
           </h1>
           <p className="text-sm text-muted">Mentorías y eventos internos del equipo de coordinación.</p>
         </div>
-        <button
-          onClick={() => setModal(eventoVacio(hoyIso))}
-          className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.75} />
-          Nuevo evento
-        </button>
+        <div ref={elegirTipoRef} className="relative">
+          <button
+            onClick={() => setMostrarElegirTipo((v) => !v)}
+            className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2.5 text-sm font-medium text-white transition"
+          >
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            Nuevo
+          </button>
+          {mostrarElegirTipo && (
+            <div className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-xl border border-silver bg-surface py-1 diffused-lg">
+              <button
+                onClick={() => {
+                  setMostrarElegirTipo(false);
+                  setModal(eventoVacio(hoyIso));
+                }}
+                className="ease-spring flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-foreground transition hover:bg-surface-2"
+              >
+                <CalendarPlus className="h-4 w-4 text-muted" strokeWidth={1.75} />
+                Evento
+              </button>
+              <button
+                onClick={() => {
+                  setMostrarElegirTipo(false);
+                  setPanelMentoria(mentoriaVacia(hoyIso));
+                }}
+                className="ease-spring flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-foreground transition hover:bg-surface-2"
+              >
+                <GraduationCap className="h-4 w-4 text-muted" strokeWidth={1.75} />
+                Mentoría
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
@@ -197,14 +252,14 @@ export function CalendarioContenido() {
                   <p className="mb-1 text-xs font-medium text-muted">{dia}</p>
                   <div className="space-y-1">
                     {mentoriasDia.map((m) => (
-                      <Link
+                      <button
                         key={m.id}
-                        href="/coordinacion/mentorias"
+                        onClick={() => setPanelMentoria(m)}
                         title={`${TIPOS_MENTORIA[m.tipoMentoria].label}${m.tema ? ` — ${m.tema}` : ""}`}
-                        className="ease-spring block truncate rounded bg-primary-dim px-1.5 py-0.5 text-[11px] font-medium text-primary-deep transition hover:brightness-95"
+                        className="ease-spring block w-full truncate rounded bg-primary-dim px-1.5 py-0.5 text-left text-[11px] font-medium text-primary-deep transition hover:brightness-95"
                       >
                         {TIPOS_MENTORIA[m.tipoMentoria].label}
-                      </Link>
+                      </button>
                     ))}
                     {eventosDia.map((e) => (
                       <button
@@ -310,6 +365,16 @@ export function CalendarioContenido() {
             </div>
           </div>
         </div>
+      )}
+
+      {panelMentoria && (
+        <PanelMentoria
+          mentoria={panelMentoria}
+          opcionesMentor={opcionesMentor}
+          onCerrar={() => setPanelMentoria(null)}
+          onGuardado={() => cargar()}
+          onEliminar={eliminarMentoria}
+        />
       )}
     </div>
   );

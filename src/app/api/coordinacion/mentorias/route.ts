@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { crearAvisoAutomatico } from "@/lib/avisos";
-import { listarMentorias, crearMentoria, TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
+import { listarMentorias, crearMentoria, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
 
 export async function GET(req: Request) {
   const permiso = await requerirPermiso("verCoordinacion");
@@ -43,12 +42,6 @@ export async function POST(req: Request) {
       creadoPorId: permiso.usuario.id,
       creadoPorNombre: permiso.usuario.nombre,
     });
-    await crearAvisoAutomatico(
-      "Nueva mentoría programada",
-      `Se agendó "${TIPOS_MENTORIA[tipoMentoria]?.label ?? tipoMentoria}" para el ${fecha}.`,
-      true,
-      "Coordinación"
-    );
     return NextResponse.json({ id });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear la mentoría";

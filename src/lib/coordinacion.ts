@@ -57,6 +57,33 @@ export type Mentoria = {
   difusion: DifusionChecklist;
 };
 
+// Objeto "borrador" para abrir el panel sin haber creado nada todavía en
+// Supabase (id: "" marca que es borrador — ver PanelMentoria.tsx). Se usa
+// tanto desde Mentorías como desde Calendario.
+export function mentoriaVacia(fecha: string, tipoMentoria: TipoMentoria = TIPOS_MENTORIA_VALIDOS[0]): Mentoria {
+  return {
+    id: "",
+    mentorId: null,
+    mentorNombre: null,
+    tipoMentoria,
+    tema: null,
+    fecha,
+    hora: null,
+    material: false,
+    notas: null,
+    copyPrevia: null,
+    copyPlataforma: null,
+    audInicial: null,
+    audMedia: null,
+    audFinal: null,
+    obsPub: null,
+    ideas: null,
+    preguntas: null,
+    concluida: false,
+    difusion: { canva: false, telegram: false, whatsapp: false, marketing: false, skool: false },
+  };
+}
+
 export type EventoInterno = {
   id: string;
   titulo: string;

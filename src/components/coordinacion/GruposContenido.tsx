@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Globe, Search, UserRound, Users, MessageCircle } from "lucide-react";
+import { Globe, Search, UserRound, Users, MessageCircle, Copy, Check } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import type { Grupo } from "@/lib/coordinacion-sheets";
 
@@ -109,15 +109,7 @@ export function GruposContenido() {
                               )}
                             </div>
                           </div>
-                          <a
-                            href={g.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="ease-spring flex flex-none items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
-                            Abrir grupo
-                          </a>
+                          <BotonCopiarLink link={g.link} />
                         </li>
                       ))}
                     </ul>
@@ -129,6 +121,32 @@ export function GruposContenido() {
         </>
       )}
     </div>
+  );
+}
+
+function BotonCopiarLink({ link }: { link: string }) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // portapapeles no disponible, ignorar
+    }
+  }
+
+  return (
+    <button
+      onClick={copiar}
+      className={`ease-spring flex flex-none items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+        copiado ? "border-success/40 bg-success/10 text-success" : "border-silver text-foreground hover:bg-surface-2"
+      }`}
+    >
+      {copiado ? <Check className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      {copiado ? "Copiado" : "Copiar link"}
+    </button>
   );
 }
 

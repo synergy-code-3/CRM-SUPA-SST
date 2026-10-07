@@ -9,6 +9,21 @@
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxdetNkJ8vM6zjGXNbB0HHz2IprhzFmo6zrQkC2OyxCdeKJtCJ9LtwUY_70sqk5JcPF/exec";
 
+// El Sheet no cambia a cada rato — sin esto, cada vez que alguien entra a
+// Giras/Grupos el servidor vuelve a pedirle al Apps Script (que es lento,
+// unos segundos). Caché en memoria del proceso, 10 min — mismo TTL que ya
+// usaba la app vieja (SHEET_TTL) para su caché en localStorage.
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const cacheEnMemoria = new Map<string, { datos: unknown; expiraEn: number }>();
+
+async function conCache<T>(clave: string, obtener: () => Promise<T>): Promise<T> {
+  const cacheado = cacheEnMemoria.get(clave);
+  if (cacheado && Date.now() < cacheado.expiraEn) return cacheado.datos as T;
+  const datos = await obtener();
+  cacheEnMemoria.set(clave, { datos, expiraEn: Date.now() + CACHE_TTL_MS });
+  return datos;
+}
+
 async function obtenerFilasSheet(tab: "giras" | "grupos"): Promise<string[][]> {
   const res = await fetch(`${APPS_SCRIPT_URL}?tab=${tab}`, { signal: AbortSignal.timeout(15000), cache: "no-store" });
   if (!res.ok) throw new Error(`No se pudo leer la hoja de ${tab} (${res.status})`);
@@ -100,6 +115,10 @@ export type Gira = {
 const GIRAS_START_ROW = 55; // fila 56 del Sheet — antes de eso es histórico viejo, ver index.html original
 
 export async function obtenerGiras(): Promise<Gira[]> {
+  return conCache("giras", obtenerGirasSinCache);
+}
+
+async function obtenerGirasSinCache(): Promise<Gira[]> {
   const filas = await obtenerFilasSheet("giras");
   const giras: Gira[] = [];
   for (let i = GIRAS_START_ROW; i < filas.length; i++) {
@@ -151,6 +170,10 @@ export type Grupo = {
 };
 
 export async function obtenerGrupos(): Promise<Grupo[]> {
+  return conCache("grupos", obtenerGruposSinCache);
+}
+
+async function obtenerGruposSinCache(): Promise<Grupo[]> {
   const filas = await obtenerFilasSheet("grupos");
   const grupos: Grupo[] = [];
   let paisActual = "";
