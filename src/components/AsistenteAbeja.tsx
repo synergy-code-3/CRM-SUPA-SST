@@ -3,36 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { X, Send } from "lucide-react";
+import { useSesion } from "@/lib/session-context";
 import {
-  IDS_PREGUNTAS_INICIALES,
-  buscarRespuesta,
-  temaPorId,
+  buscarTema,
+  preguntasInicialesParaRol,
+  respuestaAleatoria,
+  respuestaSinResultado,
   type TemaAsistente,
 } from "@/lib/asistente-abeja-datos";
 
 const DURACION_GESTO_MS = 2200;
 const INTERVALO_GESTO_MS = 30_000;
 
-const PREGUNTAS_INICIALES = IDS_PREGUNTAS_INICIALES.map((id) => temaPorId(id)).filter(
-  (t): t is TemaAsistente => !!t
-);
-
-const SIN_RESULTADO: TemaAsistente = {
-  id: "sin-resultado",
-  pregunta: "",
-  palabrasClave: [],
-  respuesta:
-    "No encontré nada con esas palabras — intenta con otros términos (ej. \"renovar\", \"pausar\", \"certificaciones\") o pregúntale directo a un admin.",
-};
+type Resultado = { tema: TemaAsistente | null; respuesta: string };
 
 // Mascota flotante + mini-asistente de ayuda por palabras clave (no es un
-// modelo de lenguaje: respuestas fijas en asistente-abeja-datos.ts). Vive
-// en (app)/layout.tsx, fuera del Sidebar/CertificacionesShell, para flotar
+// modelo de lenguaje: respuestas fijas en asistente-abeja-datos.ts, con
+// variantes y temas filtrados según el rol de la sesión). Vive en
+// (app)/layout.tsx, fuera del Sidebar/CertificacionesShell, para flotar
 // igual en cualquier workspace.
 export function AsistenteAbeja() {
+  const { usuario } = useSesion();
   const [abierto, setAbierto] = useState(false);
   const [pose, setPose] = useState<1 | 2>(1);
-  const [tema, setTema] = useState<TemaAsistente | null>(null);
+  const [resultado, setResultado] = useState<Resultado | null>(null);
   const [texto, setTexto] = useState("");
 
   const timeoutGestoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,24 +51,35 @@ export function AsistenteAbeja() {
     setAbierto((a) => {
       const siguiente = !a;
       if (siguiente) {
-        setTema(null);
+        setResultado(null);
         setTexto("");
       }
       return siguiente;
     });
   }
 
+  function mostrarTema(tema: TemaAsistente) {
+    if (!usuario) return;
+    const respuesta = respuestaAleatoria(tema, usuario.rol);
+    if (!respuesta) return; // no debería pasar — los chips ya vienen filtrados por rol
+    setResultado({ tema, respuesta });
+  }
+
   function preguntar(texto: string) {
-    if (!texto.trim()) return;
-    setTema(buscarRespuesta(texto) ?? SIN_RESULTADO);
+    if (!texto.trim() || !usuario) return;
+    const tema = buscarTema(texto, usuario.rol);
+    setResultado(tema ? { tema, respuesta: respuestaAleatoria(tema, usuario.rol)! } : { tema: null, respuesta: respuestaSinResultado() });
   }
 
   function entendido() {
     setAbierto(false);
-    setTema(null);
+    setResultado(null);
     setTexto("");
     mostrarGestoTemporal();
   }
+
+  if (!usuario) return null;
+  const preguntasIniciales = preguntasInicialesParaRol(usuario.rol);
 
   return (
     <div className="fixed bottom-5 right-5 z-[90] flex flex-col items-end gap-3">
@@ -92,19 +97,21 @@ export function AsistenteAbeja() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-3">
-              {tema ? (
+              {resultado ? (
                 <div className="space-y-3">
-                  {tema.pregunta && <p className="text-xs font-medium text-muted">{tema.pregunta}</p>}
-                  <p className="text-sm leading-relaxed text-foreground">{tema.respuesta}</p>
+                  {resultado.tema?.pregunta && (
+                    <p className="text-xs font-medium text-muted">{resultado.tema.pregunta}</p>
+                  )}
+                  <p className="text-sm leading-relaxed text-foreground">{resultado.respuesta}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <p className="text-sm text-muted">¿Cómo te ayudo? Elige una pregunta o escribe la tuya.</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {PREGUNTAS_INICIALES.map((t) => (
+                    {preguntasIniciales.map((t) => (
                       <button
                         key={t.id}
-                        onClick={() => setTema(t)}
+                        onClick={() => mostrarTema(t)}
                         className="ease-spring rounded-full border border-silver bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
                       >
                         {t.pregunta}
@@ -116,7 +123,7 @@ export function AsistenteAbeja() {
             </div>
 
             <div className="border-t border-silver p-3">
-              {tema ? (
+              {resultado ? (
                 <button
                   onClick={entendido}
                   className="ease-spring w-full rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition"
