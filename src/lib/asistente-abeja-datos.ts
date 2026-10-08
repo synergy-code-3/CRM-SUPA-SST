@@ -350,10 +350,21 @@ export function buscarTema(texto: string, rol: Rol): TemaAsistente | null {
 }
 
 const RESPUESTAS_SIN_RESULTADO = [
-  'No encontré nada con esas palabras — intenta con otros términos (ej. "renovar", "certificaciones", "exportar").',
-  "No te entendí bien — prueba con una palabra más directa, o pregúntale a un admin si no aparece.",
+  "No encontré nada con esas palabras — dale a \"Contactar al propietario\" si quieres preguntarlo directo.",
+  "No te entendí bien, o es algo que todavía no sé responder — escríbele al propietario con el botón de abajo.",
 ];
 
 export function respuestaSinResultado(): string {
   return elegirAlAzar(RESPUESTAS_SIN_RESULTADO);
+}
+
+// WhatsApp del propietario (Samuel) — se ofrece como salida cuando la
+// abejita no encuentra ningún tema para lo que escribieron.
+const WHATSAPP_PROPIETARIO = "5213329467402";
+
+export function urlWhatsappPropietario(preguntaOriginal: string): string {
+  const mensaje = preguntaOriginal.trim()
+    ? `Hola, le pregunté a la abejita del CRM: "${preguntaOriginal.trim()}" y no supo responder.`
+    : "Hola, tengo una duda sobre el CRM que la abejita no supo responder.";
+  return `https://wa.me/${WHATSAPP_PROPIETARIO}?text=${encodeURIComponent(mensaje)}`;
 }

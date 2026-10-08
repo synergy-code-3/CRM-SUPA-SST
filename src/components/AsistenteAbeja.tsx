@@ -2,20 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { X, Send } from "lucide-react";
+import { X, Send, MessageCircle } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import {
   buscarTema,
   preguntasInicialesParaRol,
   respuestaAleatoria,
   respuestaSinResultado,
+  urlWhatsappPropietario,
   type TemaAsistente,
 } from "@/lib/asistente-abeja-datos";
 
 const DURACION_GESTO_MS = 2200;
 const INTERVALO_GESTO_MS = 30_000;
 
-type Resultado = { tema: TemaAsistente | null; respuesta: string };
+// preguntaOriginal solo se llena cuando no hubo match (tema null) — es lo
+// que la persona escribió, para precargarlo en el mensaje de WhatsApp.
+type Resultado = { tema: TemaAsistente | null; respuesta: string; preguntaOriginal?: string };
 
 // Mascota flotante + mini-asistente de ayuda por palabras clave (no es un
 // modelo de lenguaje: respuestas fijas en asistente-abeja-datos.ts, con
@@ -68,7 +71,11 @@ export function AsistenteAbeja() {
   function preguntar(texto: string) {
     if (!texto.trim() || !usuario) return;
     const tema = buscarTema(texto, usuario.rol);
-    setResultado(tema ? { tema, respuesta: respuestaAleatoria(tema, usuario.rol)! } : { tema: null, respuesta: respuestaSinResultado() });
+    setResultado(
+      tema
+        ? { tema, respuesta: respuestaAleatoria(tema, usuario.rol)! }
+        : { tema: null, respuesta: respuestaSinResultado(), preguntaOriginal: texto }
+    );
   }
 
   function entendido() {
@@ -122,14 +129,27 @@ export function AsistenteAbeja() {
               )}
             </div>
 
-            <div className="border-t border-silver p-3">
+            <div className="space-y-2 border-t border-silver p-3">
               {resultado ? (
-                <button
-                  onClick={entendido}
-                  className="ease-spring w-full rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition"
-                >
-                  Entendido
-                </button>
+                <>
+                  {!resultado.tema && (
+                    <a
+                      href={urlWhatsappPropietario(resultado.preguntaOriginal ?? "")}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ease-spring flex w-full items-center justify-center gap-1.5 rounded-xl bg-success/15 px-4 py-2 text-sm font-medium text-success transition hover:bg-success/25"
+                    >
+                      <MessageCircle className="h-4 w-4" strokeWidth={1.75} />
+                      Contactar al propietario
+                    </a>
+                  )}
+                  <button
+                    onClick={entendido}
+                    className="ease-spring w-full rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition"
+                  >
+                    Entendido
+                  </button>
+                </>
               ) : (
                 <form
                   onSubmit={(e) => {
