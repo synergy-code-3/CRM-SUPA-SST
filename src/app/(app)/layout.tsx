@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { AccesoPendiente } from "@/components/AccesoPendiente";
 import { PerfilObligatorio } from "@/components/PerfilObligatorio";
+import { AsistenteAbeja } from "@/components/AsistenteAbeja";
 import { CertificacionesShell } from "@/components/certificaciones/CertificacionesShell";
 import { FiltrosMovilProvider } from "@/lib/filtros-movil-context";
 import { useSesion } from "@/lib/session-context";
@@ -43,7 +44,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Certificaciones (Legendar-IA) tiene su propio shell, réplica del CRM
   // original — el del Club (Sidebar + main) solo aplica al resto de rutas.
-  if (pathname.startsWith("/certificaciones")) return <CertificacionesShell>{children}</CertificacionesShell>;
+  // La abejita flota encima de cualquiera de los dos, a propósito.
+  if (pathname.startsWith("/certificaciones")) {
+    return (
+      <>
+        <CertificacionesShell>{children}</CertificacionesShell>
+        <AsistenteAbeja />
+      </>
+    );
+  }
 
   return (
     <FiltrosMovilProvider>
@@ -59,6 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
+      <AsistenteAbeja />
     </FiltrosMovilProvider>
   );
 }

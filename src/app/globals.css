@@ -276,6 +276,36 @@ body {
     animation: foco-encendido 0.55s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
+  /* Abejita flotante (mascota/asistente): loop continuo, nunca se detiene. */
+  @keyframes flotar {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  .animate-flotar {
+    animation: flotar 3.2s ease-in-out infinite;
+  }
+
+  @keyframes abeja-pop {
+    0% {
+      transform: scale(0.9) translateY(4px);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-abeja-pop {
+    animation: abeja-pop 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
   /* Fondo de marca: azul tecno profundo con destellos diagonales. */
   .bg-brand {
     background-color: #050b1f;
