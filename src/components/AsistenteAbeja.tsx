@@ -70,6 +70,7 @@ export function AsistenteAbeja() {
   }
 
   function entendido() {
+    setAbierto(false);
     setTema(null);
     setTexto("");
     mostrarGestoTemporal();
@@ -155,14 +156,29 @@ export function AsistenteAbeja() {
         aria-label="Abrir asistente"
         className="ease-spring relative h-20 w-20 transition hover:scale-105"
       >
-        <span className={abierto ? "" : "animate-flotar block"}>
+        {/* Solo son 2 fotos fijas (no una serie de frames todavía) — el
+            "movimiento" entre pose 1 y 2 es un crossfade + un pequeño pop de
+            escala, no una animación cuadro por cuadro. Si en algún momento
+            hay frames intermedios de verdad, aquí es donde se agregarían. */}
+        <span className={`relative block h-full w-full ${abierto ? "" : "animate-flotar"}`}>
           <Image
-            src={pose === 1 ? "/abeja/pose-1.png" : "/abeja/pose-2.png"}
+            src="/abeja/pose-1.png"
             alt="Asistente"
-            width={160}
-            height={160}
-            className="h-full w-full object-contain drop-shadow-lg"
+            fill
+            sizes="80px"
+            className={`object-contain drop-shadow-lg transition-all duration-500 ease-out ${
+              pose === 1 ? "scale-100 opacity-100" : "scale-90 opacity-0"
+            }`}
             priority
+          />
+          <Image
+            src="/abeja/pose-2.png"
+            alt=""
+            fill
+            sizes="80px"
+            className={`object-contain drop-shadow-lg transition-all duration-500 ease-out ${
+              pose === 2 ? "scale-100 opacity-100" : "scale-90 opacity-0"
+            }`}
           />
         </span>
       </button>
