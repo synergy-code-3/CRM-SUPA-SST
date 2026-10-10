@@ -301,7 +301,8 @@ export function CalendarioContenido() {
                           setPanelMentoria(m);
                         }}
                         title={`${TIPOS_MENTORIA[m.tipoMentoria].label}${m.tema ? ` — ${m.tema}` : ""}`}
-                        className="ease-spring block w-full truncate rounded bg-primary-dim px-1.5 py-0.5 text-left text-[11px] font-medium text-primary-deep transition hover:brightness-95"
+                        className="ease-spring block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
+                        style={{ backgroundColor: TIPOS_MENTORIA[m.tipoMentoria].color }}
                       >
                         {TIPOS_MENTORIA[m.tipoMentoria].label}
                       </button>
@@ -460,7 +461,8 @@ export function CalendarioContenido() {
                       setPanelMentoria(m);
                       setDiaSeleccionado(null);
                     }}
-                    className="ease-spring flex w-full items-center gap-2 rounded-lg bg-primary-dim px-3 py-2 text-left text-sm font-medium text-primary-deep transition hover:brightness-95"
+                    className="ease-spring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-white transition hover:brightness-95"
+                    style={{ backgroundColor: TIPOS_MENTORIA[m.tipoMentoria].color }}
                   >
                     <GraduationCap className="h-4 w-4 flex-none" strokeWidth={1.75} />
                     <span className="truncate">

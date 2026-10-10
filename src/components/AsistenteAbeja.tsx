@@ -15,6 +15,10 @@ import {
 
 const DURACION_GESTO_MS = 2200;
 const INTERVALO_GESTO_MS = 30_000;
+const TAMANO_BOTON = 80; // h-20 w-20
+const MARGEN_PANTALLA = 8;
+const UMBRAL_ARRASTRE_PX = 6; // menos que esto se trata como clic, no arrastre
+const LLAVE_POSICION = "abeja_posicion";
 
 // preguntaOriginal solo se llena cuando no hubo match (tema null) — es lo
 // que la persona escribió, para precargarlo en el mensaje de WhatsApp.
@@ -31,8 +35,67 @@ export function AsistenteAbeja() {
   const [pose, setPose] = useState<1 | 2>(1);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [texto, setTexto] = useState("");
+  // null = posición por defecto (abajo a la derecha, vía clases CSS). Una
+  // vez que se arrastra, se fija en coordenadas absolutas y se recuerda
+  // por navegador (localStorage) — conveniencia de por-visitante, no datos
+  // que haga falta sincronizar entre dispositivos.
+  const [posicion, setPosicion] = useState<{ x: number; y: number } | null>(null);
 
   const timeoutGestoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arrastrandoRef = useRef(false);
+  const seMovioRef = useRef(false);
+  const origenPunteroRef = useRef<{ x: number; y: number } | null>(null);
+  const origenPosicionRef = useRef<{ x: number; y: number } | null>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    try {
+      const guardada = localStorage.getItem(LLAVE_POSICION);
+      if (guardada) setPosicion(JSON.parse(guardada));
+    } catch {
+      // localStorage no disponible — se queda en la posición por defecto.
+    }
+  }, []);
+
+  function alPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.button !== undefined && e.button !== 0) return; // solo clic izquierdo en mouse
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = botonRef.current!.getBoundingClientRect();
+    origenPunteroRef.current = { x: e.clientX, y: e.clientY };
+    origenPosicionRef.current = { x: rect.left, y: rect.top };
+    seMovioRef.current = false;
+    arrastrandoRef.current = true;
+  }
+
+  function alPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!arrastrandoRef.current || !origenPunteroRef.current || !origenPosicionRef.current) return;
+    const dx = e.clientX - origenPunteroRef.current.x;
+    const dy = e.clientY - origenPunteroRef.current.y;
+    if (!seMovioRef.current && Math.hypot(dx, dy) < UMBRAL_ARRASTRE_PX) return;
+    seMovioRef.current = true;
+    const x = Math.min(Math.max(origenPosicionRef.current.x + dx, MARGEN_PANTALLA), window.innerWidth - TAMANO_BOTON - MARGEN_PANTALLA);
+    const y = Math.min(Math.max(origenPosicionRef.current.y + dy, MARGEN_PANTALLA), window.innerHeight - TAMANO_BOTON - MARGEN_PANTALLA);
+    setPosicion({ x, y });
+  }
+
+  function alPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    arrastrandoRef.current = false;
+    if (seMovioRef.current) {
+      setPosicion((actual) => {
+        try {
+          if (actual) localStorage.setItem(LLAVE_POSICION, JSON.stringify(actual));
+        } catch {
+          // ignorar — no es crítico que persista
+        }
+        return actual;
+      });
+    } else {
+      abrirORecerrar();
+    }
+    origenPunteroRef.current = null;
+    origenPosicionRef.current = null;
+  }
 
   function mostrarGestoTemporal() {
     setPose(2);
@@ -89,7 +152,10 @@ export function AsistenteAbeja() {
   const preguntasIniciales = preguntasInicialesParaRol(usuario.rol);
 
   return (
-    <div className="fixed bottom-5 right-5 z-[90] flex flex-col items-end gap-3">
+    <div
+      className={`fixed z-[90] flex flex-col items-end gap-3 ${posicion ? "" : "bottom-5 right-5"}`}
+      style={posicion ? { left: posicion.x, top: posicion.y, right: "auto", bottom: "auto" } : undefined}
+    >
       {abierto && (
         <div className="animate-abeja-pop shell w-[min(88vw,22rem)] rounded-[1.5rem] p-2 diffused-lg">
           <div className="core flex max-h-[70vh] flex-col overflow-hidden rounded-[calc(1.5rem-0.5rem)]">
@@ -179,9 +245,13 @@ export function AsistenteAbeja() {
       )}
 
       <button
-        onClick={abrirORecerrar}
-        aria-label="Abrir asistente"
-        className="ease-spring relative h-20 w-20 transition hover:scale-105"
+        ref={botonRef}
+        onPointerDown={alPointerDown}
+        onPointerMove={alPointerMove}
+        onPointerUp={alPointerUp}
+        onDragStart={(e) => e.preventDefault()}
+        aria-label="Abrir asistente (mantén presionado para arrastrar)"
+        className="ease-spring relative h-20 w-20 touch-none select-none transition hover:scale-105"
       >
         {/* Solo son 2 fotos fijas (no una serie de frames todavía) — el
             "movimiento" entre pose 1 y 2 es un crossfade + un pequeño pop de
