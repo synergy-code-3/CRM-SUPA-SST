@@ -115,6 +115,9 @@ export default function SolicitudesCertificacionPage() {
         alert(data.error ?? "No se pudo aprobar la solicitud");
         return;
       }
+      if (data.yaEraCliente) {
+        alert(`${data.cliente?.nombre ?? "Esta persona"} ya era cliente de Certificaciones — se aprobó la solicitud enlazándola a su perfil existente, sin crear uno nuevo.`);
+      }
       if (data.avisoSkool) {
         alert(`Solicitud aprobada, pero la invitación a Skool falló:
 

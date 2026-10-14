@@ -7,10 +7,12 @@ import type { RegionCertificacion } from "@/lib/certificaciones-tipos";
 
 // A diferencia del Club (que tiene varios modos posibles al aprobar sobre un
 // correo que ya es cliente — renovación/black access/activar/sin cambios),
-// aquí se corta simple: si ya es cliente de Certificaciones, no se toca
-// nada solo — el admin lo revisa a mano desde su perfil. Decisión explícita
-// de Samuel (más simple, esta sección no tiene la misma variedad de reglas
-// de boletos que justifican esa complejidad en el Club).
+// aquí se corta simple: si ya es cliente de Certificaciones, la solicitud se
+// aprueba sola enlazándola a ese cliente ya existente, sin crear uno nuevo
+// ni volver a mandar la invitación a Skool (ya la tiene). Antes esto
+// devolvía error pidiendo aplicar el cambio a mano — Samuel pidió quitar
+// ese paso manual, el mismo auto-approve que ya existe cuando el cliente se
+// da de alta DESPUÉS de la solicitud (ver crearClienteCertificacion).
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("revisarSolicitudesCertificacion");
   if (!permiso.ok) return permiso.respuesta;
@@ -25,13 +27,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   try {
     const existente = await obtenerClienteCertificacion(solicitud.correo);
     if (existente) {
-      return NextResponse.json(
-        {
-          error: `${existente.nombre} ya es cliente de Certificaciones — revisa su perfil para aplicar el cambio a mano.`,
-          clienteId: existente.id,
-        },
-        { status: 409 }
-      );
+      const actualizada = await marcarSolicitudCertificacionAprobada(id, existente.id, permiso.usuario.nombre);
+      return NextResponse.json({ solicitud: actualizada, cliente: existente, yaEraCliente: true });
     }
 
     const notaSolicitud = solicitud.notas?.trim()
