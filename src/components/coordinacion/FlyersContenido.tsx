@@ -300,6 +300,7 @@ export function FlyersContenido() {
   // tienen píldora de fecha.
   const [fecha, setFecha] = useState("");
   const [fontListo, setFontListo] = useState(false);
+  const [pestanaEditor, setPestanaEditor] = useState<"contenido" | "estilo">("contenido");
 
   useEffect(() => {
     document.fonts
@@ -936,6 +937,25 @@ export function FlyersContenido() {
 
         <div className="shell rounded-[1.75rem] p-2 diffused">
           <div className="core space-y-4 rounded-[calc(1.75rem-0.5rem)] p-5">
+            <div className="flex gap-1.5 rounded-lg border border-silver bg-surface-2 p-1">
+              {([
+                { valor: "contenido", label: "Contenido" },
+                { valor: "estilo", label: "Estilo" },
+              ] as const).map(({ valor, label }) => (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setPestanaEditor(valor)}
+                  className={`ease-spring flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+                    pestanaEditor === valor ? "bg-surface text-primary-deep shadow-sm" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {pestanaEditor === "contenido" && (
+              <>
             <div>
               <label className="mb-1 block text-xs font-medium text-muted">Fondo</label>
               <select value={fondoId} onChange={(e) => setFondoId(e.target.value)} className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none">
@@ -995,8 +1015,10 @@ export function FlyersContenido() {
                 />
               </div>
             )}
-
-            <div className="space-y-3 border-t border-silver pt-3">
+              </>
+            )}
+            {pestanaEditor === "estilo" && (
+            <div className="space-y-3">
               <div>
                 <span className="mb-1 block text-xs text-muted">Alineación del tema</span>
                 <div className="flex gap-1.5 rounded-lg border border-silver bg-surface-2 p-1">
@@ -1031,6 +1053,7 @@ export function FlyersContenido() {
                 </label>
               ))}
             </div>
+            )}
           </div>
         </div>
       </div>
