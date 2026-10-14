@@ -158,6 +158,32 @@ function parsePlan(texto: string, mentores: MentorLigero[]): Sesion[] {
   return out;
 }
 
+// Día de la semana (offset desde el lunes) de cada tipo — para calcular la
+// fecha de cada mentoría a partir del lunes de la semana elegida. Las dos de
+// lunes comparten offset 0 (mismo día, hora distinta).
+const OFFSET_DIA: Record<TipoMentoria, number> = {
+  "lunes-prin": 0,
+  "lunes-sin": 0,
+  martes: 1,
+  miercoles: 2,
+  jueves: 3,
+  viernes: 4,
+};
+
+function lunesDeEstaSemana(): string {
+  const hoy = new Date();
+  const dia = hoy.getDay(); // 0=domingo
+  const offset = dia === 0 ? -6 : 1 - dia;
+  const lunes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + offset);
+  return `${lunes.getFullYear()}-${String(lunes.getMonth() + 1).padStart(2, "0")}-${String(lunes.getDate()).padStart(2, "0")}`;
+}
+
+function fechaDeSesion(tipo: TipoMentoria, semanaInicioIso: string): string {
+  const [y, m, d] = semanaInicioIso.split("-").map(Number);
+  const base = new Date(y, m - 1, d + OFFSET_DIA[tipo]);
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
@@ -188,6 +214,9 @@ export function FlyersContenido() {
   const [plan, setPlan] = useState("");
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [seleccionada, setSeleccionada] = useState(0);
+  const [semanaInicio, setSemanaInicio] = useState(lunesDeEstaSemana());
+  const [creandoMentorias, setCreandoMentorias] = useState(false);
+  const [resultadoCreacion, setResultadoCreacion] = useState<string | null>(null);
 
   const [tipoActivo, setTipoActivo] = useState<TipoMentoria>(TIPOS_MENTORIA_VALIDOS[0]);
   const [cfg, setCfg] = useState<LayoutFlyer>(DEFAULT_CFG);
@@ -303,6 +332,49 @@ export function FlyersContenido() {
     setTema(s.tema);
     setFondoId(assetFondoDe(s.tipo)?.id ?? "");
     setFotoId(mejorFotoPara(s.mentor)?.id ?? "");
+  }
+
+  // El horario de cada tipo ya es un default fijo (TIPOS_MENTORIA) — lo
+  // único que de verdad aporta la planeación es mentor/tipo/tema, así que
+  // con eso basta para crear la mentoría completa (fecha = lunes elegido +
+  // el día de la semana de su tipo).
+  async function crearMentoriasDeLaSemana() {
+    if (sesiones.length === 0) return;
+    setCreandoMentorias(true);
+    setResultadoCreacion(null);
+    try {
+      const existentes = await fetch("/api/coordinacion/mentorias").then((r) => r.json());
+      const yaExiste = (tipo: TipoMentoria, fecha: string) =>
+        (existentes.mentorias ?? []).some((m: { tipoMentoria: TipoMentoria; fecha: string }) => m.tipoMentoria === tipo && m.fecha === fecha);
+
+      let creadas = 0;
+      let saltadas = 0;
+      for (const s of sesiones) {
+        const fecha = fechaDeSesion(s.tipo, semanaInicio);
+        if (yaExiste(s.tipo, fecha)) {
+          saltadas++;
+          continue;
+        }
+        const mentorId = mentores.find((m) => norm(m.nombre) === norm(s.mentor))?.id ?? null;
+        const r = await fetch("/api/coordinacion/mentorias", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipoMentoria: s.tipo,
+            tema: s.tema,
+            fecha,
+            hora: TIPOS_MENTORIA[s.tipo].horario,
+            mentorId,
+          }),
+        });
+        if (r.ok) creadas++;
+      }
+      setResultadoCreacion(`${creadas} mentoría(s) creada(s)${saltadas ? `, ${saltadas} ya existían para esa fecha` : ""}.`);
+    } catch {
+      setResultadoCreacion("No se pudieron crear las mentorías.");
+    } finally {
+      setCreandoMentorias(false);
+    }
   }
 
   // --- Canvas -------------------------------------------------------
@@ -646,23 +718,45 @@ export function FlyersContenido() {
             Analizar planeación
           </button>
           {sesiones.length > 0 && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">{sesiones.length} mentoría(s) detectada(s) — Legendaria excluida</label>
-              <select
-                value={seleccionada}
-                onChange={(e) => {
-                  const i = Number(e.target.value);
-                  setSeleccionada(i);
-                  elegirSesion(sesiones[i]);
-                }}
-                className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none"
-              >
-                {sesiones.map((s, i) => (
-                  <option key={i} value={i}>
-                    {TIPOS_MENTORIA[s.tipo].label} — {s.mentor}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted">{sesiones.length} mentoría(s) detectada(s) — Legendaria excluida</label>
+                <select
+                  value={seleccionada}
+                  onChange={(e) => {
+                    const i = Number(e.target.value);
+                    setSeleccionada(i);
+                    elegirSesion(sesiones[i]);
+                  }}
+                  className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none"
+                >
+                  {sesiones.map((s, i) => (
+                    <option key={i} value={i}>
+                      {TIPOS_MENTORIA[s.tipo].label} — {s.mentor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-3 rounded-xl border border-silver p-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Semana del (lunes)</label>
+                  <input
+                    type="date"
+                    value={semanaInicio}
+                    onChange={(e) => setSemanaInicio(e.target.value)}
+                    className="rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none"
+                  />
+                </div>
+                <button
+                  onClick={crearMentoriasDeLaSemana}
+                  disabled={creandoMentorias}
+                  className="ease-spring rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+                >
+                  {creandoMentorias ? "Creando…" : "Crear mentorías de la semana"}
+                </button>
+                {resultadoCreacion && <p className="text-xs text-muted">{resultadoCreacion}</p>}
+              </div>
             </div>
           )}
         </div>
