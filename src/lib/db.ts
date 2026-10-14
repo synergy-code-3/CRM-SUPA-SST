@@ -1887,6 +1887,52 @@ export async function actualizarAccesos(id: string, nuevosAccesos: Accesos, auto
   return filaACliente(data as ClienteRow);
 }
 
+// Pone en 0 los accesos de un cliente cuyo Synergy Unlimited ya pasó (y que
+// no aplica a ninguna de las excepciones: MÁS+, guarda_acceso_su27, o haberse
+// inscrito/renovado ya para la edición siguiente) — a diferencia de
+// actualizarAccesos, deja un rastro explícito de "vencido" en vez del genérico
+// "Accesos editados", para no confundir esto con una corrección manual.
+// Mismo congelamiento (accesos_editado_manual) para que el siguiente
+// recálculo automático no se los vuelva a dar.
+export async function marcarAccesoSuVencido(id: string, autor: string): Promise<Cliente> {
+  const { data: fila, error: errLectura } = await supabase
+    .from("clientes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!fila) throw new Error("Cliente no encontrado");
+  const clienteActual = filaACliente(fila as ClienteRow);
+  if (clienteActual.guardaAccesoSu27) {
+    throw new Error("Accesos congelados: este cliente está guardando su acceso para Synergy Unlimited 2027.");
+  }
+  const anterior = clienteActual.accesos;
+  const tenia = (Object.keys(anterior) as (keyof Accesos)[])
+    .filter((nivel) => anterior[nivel].length > 0)
+    .map((nivel) => `${ACCESO_LABEL[nivel]}: ${textoAcceso(anterior[nivel])}`);
+  if (tenia.length === 0) return clienteActual;
+
+  const { data, error } = await supabase
+    .from("clientes")
+    .update({
+      accesos: { general: [], vip: [], black: [] },
+      accesos_editado_manual: true,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  await registrarEvento(
+    id,
+    "SU_VENCIDO",
+    `Acceso Synergy Unlimited vencido (evento ya realizado) — tenía: ${tenia.join(" · ")}`,
+    autor
+  );
+  return filaACliente(data as ClienteRow);
+}
+
 // Marca que el cliente está guardando su acceso a Synergy Unlimited 2027 en
 // vez de usar el calculado este año — congela sus accesos (recalcularAccesos
 // y actualizarAccesos arriba respetan esta bandera) hasta que se le quite a

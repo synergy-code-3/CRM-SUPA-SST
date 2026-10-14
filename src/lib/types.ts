@@ -147,6 +147,7 @@ export type TipoEvento =
   | "COMPRA_HOTMART"
   | "SU27_ACTIVADO"
   | "SU27_DESACTIVADO"
+  | "SU_VENCIDO"
   | "APARTADO50_ACTIVADO"
   | "APARTADO50_APAGADO"
   | "UPGRADE_MEMBRESIA";
@@ -174,6 +175,7 @@ export const TIPOS_EVENTO_FILTRABLES: TipoEvento[] = [
   "COMPRA_HOTMART",
   "SU27_ACTIVADO",
   "SU27_DESACTIVADO",
+  "SU_VENCIDO",
   "APARTADO50_ACTIVADO",
   "APARTADO50_APAGADO",
   "UPGRADE_MEMBRESIA",
@@ -213,6 +215,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   COMPRA_HOTMART: "Compra detectada (Hotmart)",
   SU27_ACTIVADO: "Guardó acceso para SU27",
   SU27_DESACTIVADO: "Quitó la reserva de SU27",
+  SU_VENCIDO: "Acceso Synergy vencido",
   APARTADO50_ACTIVADO: "Apartado 50% activado (temporizador de 30 días)",
   APARTADO50_APAGADO: "Apartado 50% liquidado / temporizador apagado",
   UPGRADE_MEMBRESIA: "Upgrade de membresía a 12 Meses",

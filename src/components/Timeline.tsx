@@ -48,6 +48,7 @@ const ICONS: Record<TipoEvento, typeof UserPlus> = {
   COMPRA_HOTMART: ShoppingCart,
   SU27_ACTIVADO: Lock,
   SU27_DESACTIVADO: Unlock,
+  SU_VENCIDO: XCircle,
   APARTADO50_ACTIVADO: Timer,
   APARTADO50_APAGADO: TimerOff,
   UPGRADE_MEMBRESIA: ArrowUpCircle,

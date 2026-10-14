@@ -3,6 +3,7 @@ import type { Accesos } from "./types";
 import { agregarOpcionCatalogo } from "./catalogo";
 import { finAccesoConEtiqueta } from "./fechas";
 import { normalizarEmail, normalizarTelefono } from "./db";
+import { listarSolicitudesCertificacion, marcarSolicitudCertificacionAprobada } from "./solicitudes-certificacion";
 import {
   accesosDeRegion,
   regionValida,
@@ -425,7 +426,22 @@ export async function crearClienteCertificacion(
   const cliente = filaACliente(data as ClienteCertificacionRow);
   if (input.origen === "csv") await registrarEventoCertificacion(id, "IMPORTACION", autor, "Cliente importado por CSV");
   else await registrarEventoCertificacion(id, "LLEGADA", autor, "Cliente registrado en Certificaciones");
+
+  // Si ya había una solicitud pendiente de este mismo correo (mandada antes
+  // de que la persona apareciera como cliente, ej. vía el sync de Sheets),
+  // se aprueba sola en vez de quedarse esperando revisión manual — este es
+  // el único punto de alta de certificaciones_clientes (sync, CSV, alta
+  // manual futura), así que cubre todos los caminos sin duplicar la lógica.
+  await autoAprobarSolicitudesPendientes(id, cliente.id, autor);
   return cliente;
+}
+
+async function autoAprobarSolicitudesPendientes(correo: string, clienteId: string, autor: string): Promise<void> {
+  const pendientes = await listarSolicitudesCertificacion({ estado: "pendiente" });
+  const delCorreo = pendientes.filter((s) => s.correo.trim().toLowerCase() === correo);
+  for (const solicitud of delCorreo) {
+    await marcarSolicitudCertificacionAprobada(solicitud.id, clienteId, `${autor} (auto: ya es cliente)`);
+  }
 }
 
 export type CambiosDatosCertificacion = {
