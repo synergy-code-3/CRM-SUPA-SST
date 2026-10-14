@@ -22,10 +22,14 @@ type FlyerAsset = {
   creadoEn: string;
 };
 
+type AlineacionTexto = "left" | "center" | "right";
+
 type LayoutFlyer = {
   px: number; py: number; pw: number; ph: number; pz: number;
   tx: number; ty: number; tw: number; ts: number;
   nx: number; ny: number; ns: number;
+  opacidadFondo: number; // 0-100 — opacidad del rectángulo oscuro detrás del tema y del nombre
+  alineacionTema: AlineacionTexto;
 };
 
 type MentorLigero = { id: string; nombre: string };
@@ -43,6 +47,8 @@ const DEFAULT_CFG: LayoutFlyer = {
   px: 64, py: 8, pw: 34, ph: 91, pz: 133,
   tx: 10, ty: 49, tw: 53, ts: 43,
   nx: 44, ny: 91, ns: 42,
+  opacidadFondo: 60,
+  alineacionTema: "left",
 };
 
 // Mismas frases "ancla" que el prototipo original para reconocer cada tipo
@@ -226,6 +232,13 @@ const CAMPOS_SLIDER: { k: keyof LayoutFlyer; label: string; min: number; max: nu
   { k: "tw", label: "Ancho del tema (%)", min: 15, max: 95 },
   { k: "ts", label: "Tamaño del tema (px)", min: 18, max: 95 },
   { k: "ns", label: "Tamaño del nombre (px)", min: 18, max: 95 },
+  { k: "opacidadFondo", label: "Opacidad del fondo oscuro (%)", min: 0, max: 100 },
+];
+
+const OPCIONES_ALINEACION: { valor: AlineacionTexto; label: string }[] = [
+  { valor: "left", label: "Izquierda" },
+  { valor: "center", label: "Centro" },
+  { valor: "right", label: "Derecha" },
 ];
 
 export function FlyersContenido() {
@@ -507,6 +520,8 @@ export function FlyersContenido() {
       ctx.drawImage(p, r.x, r.y, r.w, r.h);
     }
 
+    const alpha = cfg.opacidadFondo / 100;
+
     ctx.textBaseline = "top";
     ctx.fillStyle = "#fff";
     ctx.shadowColor = "rgba(0,0,0,.65)";
@@ -519,20 +534,27 @@ export function FlyersContenido() {
     const lh = cfg.ts * 1.17;
     const padX = 22;
     const padY = 15;
+    const anchoContenedor = cfg.tw * 16;
+    const anchoLinea = Math.max(80, ...ls.map((l) => ctx.measureText(l).width));
+    // La caja se ajusta al ancho del texto (no al contenedor completo), pero
+    // su posición dentro del contenedor sí depende de la alineación elegida.
+    const cajaX =
+      cfg.alineacionTema === "center"
+        ? tx + (anchoContenedor - anchoLinea) / 2
+        : cfg.alineacionTema === "right"
+          ? tx + anchoContenedor - anchoLinea
+          : tx;
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(9,23,43,0.57)";
+    ctx.fillStyle = `rgba(9,23,43,${alpha})`;
     ctx.beginPath();
-    ctx.roundRect(
-      tx - padX,
-      ty - padY,
-      Math.max(80, ...ls.map((l) => ctx.measureText(l).width)) + padX * 2,
-      ls.length * lh + padY * 2,
-      18
-    );
+    ctx.roundRect(cajaX - padX, ty - padY, anchoLinea + padX * 2, ls.length * lh + padY * 2, 18);
     ctx.fill();
     ctx.restore();
-    ls.forEach((l, i) => ctx.fillText(l, tx, ty + i * lh));
+    ctx.textAlign = cfg.alineacionTema;
+    const textoX = cfg.alineacionTema === "center" ? cajaX + anchoLinea / 2 : cfg.alineacionTema === "right" ? cajaX + anchoLinea : cajaX;
+    ls.forEach((l, i) => ctx.fillText(l, textoX, ty + i * lh));
+    ctx.textAlign = "left";
 
     ctx.font = `bold ${cfg.ns}px Arial`;
     const mentorText = nombreMentor || "Nombre del especialista";
@@ -543,7 +565,7 @@ export function FlyersContenido() {
     const nameW = ctx.measureText(mentorText).width;
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(0,0,0,0.68)";
+    ctx.fillStyle = `rgba(0,0,0,${Math.min(1, alpha + 0.1)})`;
     ctx.beginPath();
     ctx.roundRect(nameX - namePadX, nameY - namePadY, nameW + namePadX * 2, cfg.ns * 1.22 + namePadY * 2, 16);
     ctx.fill();
@@ -792,6 +814,23 @@ export function FlyersContenido() {
             </div>
 
             <div className="space-y-3 border-t border-silver pt-3">
+              <div>
+                <span className="mb-1 block text-xs text-muted">Alineación del tema</span>
+                <div className="flex gap-1.5 rounded-lg border border-silver bg-surface-2 p-1">
+                  {OPCIONES_ALINEACION.map(({ valor, label }) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      onClick={() => actualizarCfg({ alineacionTema: valor })}
+                      className={`ease-spring flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+                        cfg.alineacionTema === valor ? "bg-surface text-primary-deep shadow-sm" : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {CAMPOS_SLIDER.map(({ k, label, min, max }) => (
                 <label key={k} className="block text-xs text-muted">
                   {label}

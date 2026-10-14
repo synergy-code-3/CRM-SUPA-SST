@@ -612,6 +612,8 @@ export type LayoutFlyer = {
   px: number; py: number; pw: number; ph: number; pz: number;
   tx: number; ty: number; tw: number; ts: number;
   nx: number; ny: number; ns: number;
+  opacidadFondo: number;
+  alineacionTema: "left" | "center" | "right";
 };
 
 export async function listarFlyerLayouts(): Promise<Record<string, LayoutFlyer>> {
