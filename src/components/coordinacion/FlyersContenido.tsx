@@ -129,14 +129,23 @@ function parsePlan(texto: string, mentores: MentorLigero[]): Sesion[] {
 
   for (const line of lineas) {
     const m = line.match(/^.*?((?:lunes|martes|miercoles|miércoles|jueves|viernes)\b[^:]*?)\s*$/iu);
-    if (
-      m &&
-      !/^semana\b/i.test(line) &&
-      /(?:principiante|sinerg[eé]tico|estrategia|creaci[oó]n|ventas|caso de [eé]xito|legendaria)/i.test(m[1])
-    ) {
+    if (m && !/^semana\b/i.test(line)) {
       finish();
-      cur = { day: m[1], mentor: "", topic: "" };
-      field = null;
+      // Ya no se exige la palabra clave del tipo aquí (antes excluía por
+      // error líneas válidas de formatos distintos) — tipoDesdeTexto() en
+      // finish() es quien de verdad decide si el tipo se reconoce o no,
+      // así una línea rara (ej. "Sesión Especial Synergy Unlimited") se
+      // descarta sola sin arruinar la sesión de al lado.
+      //
+      // "Tipo — Mentor" en la misma línea (formato numerado real: "4. Martes
+      // de Estrategia Digital — Diego Hernández") — si viene así, el mentor
+      // ya está listo y el tema es la(s) línea(s) siguiente(s) SIN etiqueta
+      // (se reutiliza el acumulador de "topic" de abajo). Si no hay guion,
+      // sigue el formato original (con "Especialista:"/"Tema:" aparte).
+      const partes = m[1].split(/\s[—–-]\s/);
+      const mentorInline = partes.length > 1 ? partes[partes.length - 1].trim() : "";
+      cur = { day: m[1], mentor: mentorInline, topic: "" };
+      field = mentorInline ? "topic" : null;
       continue;
     }
     if (!cur) continue;
@@ -151,7 +160,7 @@ function parsePlan(texto: string, mentores: MentorLigero[]): Sesion[] {
     } else if (/^contexto|^objetivo|^descubre|^aprende/i.test(line) || /^[🎯]/u.test(line)) {
       field = null;
     } else if (field === "topic" && line.length > 4) {
-      cur.topic += " " + line;
+      cur.topic = cur.topic ? cur.topic + " " + line : line;
     }
   }
   finish();
