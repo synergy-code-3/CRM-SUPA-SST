@@ -178,6 +178,19 @@ function lunesDeEstaSemana(): string {
   return `${lunes.getFullYear()}-${String(lunes.getMonth() + 1).padStart(2, "0")}-${String(lunes.getDate()).padStart(2, "0")}`;
 }
 
+// El formulario de Mentorías (PanelMentoria) espera "HH:MM" (sus presets de
+// hora son "19:00"/"12:00"/"16:00") — TIPOS_MENTORIA.horario es texto para
+// mostrar ("7pm", "12pm") y NO calza con eso, así que había que traducirlo o
+// la mentoría creada aquí se veía con la hora vacía al abrirla.
+const HORA_ISO_POR_TIPO: Record<TipoMentoria, string> = {
+  "lunes-prin": "12:00",
+  "lunes-sin": "19:00",
+  martes: "19:00",
+  miercoles: "19:00",
+  jueves: "19:00",
+  viernes: "16:00",
+};
+
 function fechaDeSesion(tipo: TipoMentoria, semanaInicioIso: string): string {
   const [y, m, d] = semanaInicioIso.split("-").map(Number);
   const base = new Date(y, m - 1, d + OFFSET_DIA[tipo]);
@@ -321,6 +334,27 @@ export function FlyersContenido() {
     cargarTodo();
   }
 
+  // Reemplazo directo de un solo fondo/foto de la biblioteca (a diferencia
+  // de "Elegir imágenes", aquí ya se sabe la categoría/etiqueta exacta —
+  // sin pasar por la fila de revisión de pendientes.
+  const [subiendoDirecto, setSubiendoDirecto] = useState<string | null>(null);
+  async function reemplazarAsset(categoria: CategoriaAsset, etiqueta: string, archivo: File) {
+    setSubiendoDirecto(etiqueta);
+    const form = new FormData();
+    form.append("archivo", archivo);
+    form.append("categoria", categoria);
+    form.append("etiqueta", etiqueta);
+    try {
+      const r = await fetch("/api/coordinacion/flyers/assets", { method: "POST", body: form });
+      if (!r.ok) throw new Error((await r.json()).error ?? "No se pudo subir la imagen");
+      cargarTodo();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo subir la imagen");
+    } finally {
+      setSubiendoDirecto(null);
+    }
+  }
+
   // --- Planeación -------------------------------------------------------
 
   function analizarPlan() {
@@ -368,11 +402,28 @@ export function FlyersContenido() {
             tipoMentoria: s.tipo,
             tema: s.tema,
             fecha,
-            hora: TIPOS_MENTORIA[s.tipo].horario,
+            hora: HORA_ISO_POR_TIPO[s.tipo],
             mentorId,
           }),
         });
-        if (r.ok) creadas++;
+        if (r.ok) {
+          creadas++;
+          // Plus: generar y guardar de una vez los copys de difusión (previa
+          // y plataforma) — mismo cálculo que el botón "Generar" de la
+          // pestaña Difusión, solo que automático al crear desde la semana.
+          const { id } = await r.json();
+          const copy = await fetch(`/api/coordinacion/mentorias/${id}`, { method: "POST" }).then((x) => x.json());
+          await fetch(`/api/coordinacion/mentorias/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              seccion: "difusion",
+              copyPrevia: copy.copyPrevia ?? "",
+              copyPlataforma: copy.copyPlataforma ?? "",
+              checklist: { canva: false, telegram: false, whatsapp: false, marketing: false, skool: false },
+            }),
+          });
+        }
       }
       setResultadoCreacion(`${creadas} mentoría(s) creada(s)${saltadas ? `, ${saltadas} ya existían para esa fecha` : ""}.`);
     } catch {
@@ -815,58 +866,88 @@ export function FlyersContenido() {
             </div>
           )}
 
+          {/* Sin miniaturas a propósito — cargar 20 imágenes solo para esta
+              lista es lo que hacía lenta la página; el nombre alcanza para
+              saber qué ya está subido. */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fondos por tipo ({fondos.length}/{TIPOS_FONDO_BIBLIOTECA.length})</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <ul className="divide-y divide-silver/60 rounded-xl border border-silver">
                 {TIPOS_FONDO_BIBLIOTECA.map((tipo) => {
                   const a = assetFondoDe(tipo);
                   return (
-                    <div key={tipo} className="relative aspect-video overflow-hidden rounded-lg border border-silver bg-surface-2">
-                      {a ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-muted">Sin fondo</span>
-                      )}
-                      <span className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 py-1 text-[10px] text-white">{TIPOS_MENTORIA[tipo].label}</span>
-                      {a && (
-                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-danger">
-                          <Trash2 className="h-3 w-3" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
+                    <FilaBiblioteca
+                      key={tipo}
+                      etiqueta={TIPOS_MENTORIA[tipo].label}
+                      subido={!!a}
+                      cargando={subiendoDirecto === tipo}
+                      onElegirArchivo={(archivo) => reemplazarAsset("fondo", tipo, archivo)}
+                      onEliminar={a ? () => eliminarAsset(a.id) : undefined}
+                    />
                   );
                 })}
-              </div>
+              </ul>
             </div>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fotos por mentor ({fotos.length}/{mentores.length})</p>
-              <div className="grid max-h-60 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+              <ul className="max-h-80 divide-y divide-silver/60 overflow-y-auto rounded-xl border border-silver">
                 {mentores.map((m) => {
                   const a = fotos.find((f) => f.etiqueta === m.nombre);
                   return (
-                    <div key={m.id} className="relative aspect-square overflow-hidden rounded-lg border border-silver bg-surface-2">
-                      {a ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full items-center justify-center p-1 text-center text-[9px] text-muted">Sin foto</span>
-                      )}
-                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[9px] text-white">{m.nombre}</span>
-                      {a && (
-                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-danger">
-                          <Trash2 className="h-2.5 w-2.5" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
+                    <FilaBiblioteca
+                      key={m.id}
+                      etiqueta={m.nombre}
+                      subido={!!a}
+                      cargando={subiendoDirecto === m.nombre}
+                      onElegirArchivo={(archivo) => reemplazarAsset("foto", m.nombre, archivo)}
+                      onEliminar={a ? () => eliminarAsset(a.id) : undefined}
+                    />
                   );
                 })}
-              </div>
+              </ul>
             </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function FilaBiblioteca({
+  etiqueta,
+  subido,
+  cargando,
+  onElegirArchivo,
+  onEliminar,
+}: {
+  etiqueta: string;
+  subido: boolean;
+  cargando: boolean;
+  onElegirArchivo: (archivo: File) => void;
+  onEliminar?: () => void;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+      <span className="min-w-0 flex-1 truncate text-foreground">{etiqueta}</span>
+      <span className={`flex-none text-xs ${subido ? "text-success" : "text-muted"}`}>{subido ? "Subida" : "Sin imagen"}</span>
+      <label className={`ease-spring flex-none cursor-pointer text-xs font-medium text-primary transition hover:underline ${cargando ? "pointer-events-none opacity-50" : ""}`}>
+        {cargando ? "Subiendo…" : subido ? "Reemplazar" : "Subir"}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const archivo = e.target.files?.[0];
+            if (archivo) onElegirArchivo(archivo);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      {onEliminar && (
+        <button onClick={onEliminar} className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-danger">
+          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+      )}
+    </li>
   );
 }
