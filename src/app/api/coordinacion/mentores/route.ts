@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { listarMentores, crearMentor, type RangoMentor } from "@/lib/coordinacion";
 
-export async function GET() {
+export async function GET(req: Request) {
   const permiso = await requerirPermiso("verCoordinacion");
   if (!permiso.ok) return permiso.respuesta;
 
+  const { searchParams } = new URL(req.url);
+  const soloActivos = searchParams.get("activos") === "1";
+
   try {
-    const mentores = await listarMentores();
+    const mentores = await listarMentores(soloActivos);
     return NextResponse.json({ mentores });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudieron cargar los mentores";

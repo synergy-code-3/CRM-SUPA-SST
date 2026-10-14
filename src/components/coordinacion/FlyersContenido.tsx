@@ -194,6 +194,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// Viernes de Caso de Éxito se excluye de la biblioteca de fondos: no tiene
+// imagen propia (no hay tarjeta de marca equivalente en Skool, ver
+// TIPOS_MENTORIA en coordinacion.ts) y se decidió no generarle flyer.
+const TIPOS_FONDO_BIBLIOTECA = TIPOS_MENTORIA_VALIDOS.filter((t) => t !== "viernes");
+
 const CAMPOS_SLIDER: { k: keyof LayoutFlyer; label: string; min: number; max: number }[] = [
   { k: "pz", label: "Zoom de fotografía (%)", min: 40, max: 220 },
   { k: "tw", label: "Ancho del tema (%)", min: 15, max: 95 },
@@ -234,7 +239,7 @@ export function FlyersContenido() {
     setCargando(true);
     Promise.all([
       fetch("/api/coordinacion/flyers/assets").then((r) => r.json()),
-      fetch("/api/coordinacion/mentores").then((r) => r.json()),
+      fetch("/api/coordinacion/mentores?activos=1").then((r) => r.json()),
       fetch("/api/coordinacion/flyers/layouts").then((r) => r.json()),
     ])
       .then(([a, m, l]) => {
@@ -588,125 +593,10 @@ export function FlyersContenido() {
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
 
-      {/* 1. Biblioteca de imágenes */}
-      <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core space-y-4 rounded-[calc(1.75rem-0.5rem)] p-6">
-          <h3 className="text-sm font-semibold text-foreground">1. Biblioteca de imágenes</h3>
-          <p className="text-xs text-muted">
-            Sube varias a la vez. El tipo de mentoría o el mentor se detecta por el nombre del archivo — revisa antes de
-            guardar, por si alguna no se detectó o la planeación trae el nombre distinto.
-          </p>
-          <label className="ease-spring flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-silver px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2">
-            <ImagePlus className="h-4 w-4" strokeWidth={1.75} />
-            Elegir imágenes
-            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => alSeleccionarArchivos(e.target.files)} />
-          </label>
-
-          {pendientes.length > 0 && (
-            <div className="space-y-2 rounded-xl border border-silver p-3">
-              {pendientes.map((p, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-3 border-b border-silver/60 pb-2 last:border-0 last:pb-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.previewUrl} alt="" className="h-12 w-20 flex-none rounded-lg object-cover" />
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted">{p.archivo.name}</span>
-                  <select
-                    value={p.categoria}
-                    onChange={(e) => actualizarPendiente(i, { categoria: e.target.value as CategoriaAsset, etiqueta: "" })}
-                    className="rounded-lg border border-silver bg-surface-2 px-2 py-1.5 text-xs outline-none"
-                  >
-                    <option value="fondo">Fondo</option>
-                    <option value="foto">Foto de mentor</option>
-                  </select>
-                  <select
-                    value={p.etiqueta}
-                    onChange={(e) => actualizarPendiente(i, { etiqueta: e.target.value })}
-                    className={`rounded-lg border px-2 py-1.5 text-xs outline-none ${p.etiqueta ? "border-silver bg-surface-2" : "border-warning bg-warning/10"}`}
-                  >
-                    <option value="">Sin detectar — elige una</option>
-                    {p.categoria === "fondo"
-                      ? TIPOS_MENTORIA_VALIDOS.map((t) => (
-                          <option key={t} value={t}>
-                            {TIPOS_MENTORIA[t].label}
-                          </option>
-                        ))
-                      : mentores.map((m) => (
-                          <option key={m.id} value={m.nombre}>
-                            {m.nombre}
-                          </option>
-                        ))}
-                  </select>
-                  <button onClick={() => quitarPendiente(i)} className="ease-spring flex-none rounded-lg p-1.5 text-muted transition hover:bg-surface-2 hover:text-danger">
-                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={confirmarSubidas}
-                disabled={subiendo || pendientes.every((p) => !p.etiqueta)}
-                className="ease-spring rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
-              >
-                {subiendo ? "Subiendo…" : `Guardar ${pendientes.filter((p) => p.etiqueta).length} imagen(es)`}
-              </button>
-            </div>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fondos por tipo ({fondos.length}/6)</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {TIPOS_MENTORIA_VALIDOS.map((tipo) => {
-                  const a = assetFondoDe(tipo);
-                  return (
-                    <div key={tipo} className="relative aspect-video overflow-hidden rounded-lg border border-silver bg-surface-2">
-                      {a ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-muted">Sin fondo</span>
-                      )}
-                      <span className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 py-1 text-[10px] text-white">{TIPOS_MENTORIA[tipo].label}</span>
-                      {a && (
-                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-danger">
-                          <Trash2 className="h-3 w-3" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fotos por mentor ({fotos.length}/{mentores.length})</p>
-              <div className="grid max-h-60 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
-                {mentores.map((m) => {
-                  const a = fotos.find((f) => f.etiqueta === m.nombre);
-                  return (
-                    <div key={m.id} className="relative aspect-square overflow-hidden rounded-lg border border-silver bg-surface-2">
-                      {a ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full items-center justify-center p-1 text-center text-[9px] text-muted">Sin foto</span>
-                      )}
-                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[9px] text-white">{m.nombre}</span>
-                      {a && (
-                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-danger">
-                          <Trash2 className="h-2.5 w-2.5" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Planeación semanal */}
+      {/* 1. Planeación semanal */}
       <div className="shell rounded-[1.75rem] p-2 diffused">
         <div className="core space-y-3 rounded-[calc(1.75rem-0.5rem)] p-6">
-          <h3 className="text-sm font-semibold text-foreground">2. Planeación semanal</h3>
+          <h3 className="text-sm font-semibold text-foreground">1. Planeación semanal</h3>
           <textarea
             value={plan}
             onChange={(e) => setPlan(e.target.value)}
@@ -762,7 +652,7 @@ export function FlyersContenido() {
         </div>
       </div>
 
-      {/* 3. Editor */}
+      {/* 2. Editar y descargar */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="shell rounded-[1.75rem] p-2 diffused">
           <div className="core rounded-[calc(1.75rem-0.5rem)] p-4">
@@ -858,6 +748,121 @@ export function FlyersContenido() {
                   </div>
                 </label>
               ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Biblioteca de imágenes */}
+      <div className="shell rounded-[1.75rem] p-2 diffused">
+        <div className="core space-y-4 rounded-[calc(1.75rem-0.5rem)] p-6">
+          <h3 className="text-sm font-semibold text-foreground">3. Biblioteca de imágenes</h3>
+          <p className="text-xs text-muted">
+            Sube varias a la vez. El tipo de mentoría o el mentor se detecta por el nombre del archivo — revisa antes de
+            guardar, por si alguna no se detectó o la planeación trae el nombre distinto.
+          </p>
+          <label className="ease-spring flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-silver px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2">
+            <ImagePlus className="h-4 w-4" strokeWidth={1.75} />
+            Elegir imágenes
+            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => alSeleccionarArchivos(e.target.files)} />
+          </label>
+
+          {pendientes.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-silver p-3">
+              {pendientes.map((p, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-3 border-b border-silver/60 pb-2 last:border-0 last:pb-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.previewUrl} alt="" className="h-12 w-20 flex-none rounded-lg object-cover" />
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted">{p.archivo.name}</span>
+                  <select
+                    value={p.categoria}
+                    onChange={(e) => actualizarPendiente(i, { categoria: e.target.value as CategoriaAsset, etiqueta: "" })}
+                    className="rounded-lg border border-silver bg-surface-2 px-2 py-1.5 text-xs outline-none"
+                  >
+                    <option value="fondo">Fondo</option>
+                    <option value="foto">Foto de mentor</option>
+                  </select>
+                  <select
+                    value={p.etiqueta}
+                    onChange={(e) => actualizarPendiente(i, { etiqueta: e.target.value })}
+                    className={`rounded-lg border px-2 py-1.5 text-xs outline-none ${p.etiqueta ? "border-silver bg-surface-2" : "border-warning bg-warning/10"}`}
+                  >
+                    <option value="">Sin detectar — elige una</option>
+                    {p.categoria === "fondo"
+                      ? TIPOS_FONDO_BIBLIOTECA.map((t) => (
+                          <option key={t} value={t}>
+                            {TIPOS_MENTORIA[t].label}
+                          </option>
+                        ))
+                      : mentores.map((m) => (
+                          <option key={m.id} value={m.nombre}>
+                            {m.nombre}
+                          </option>
+                        ))}
+                  </select>
+                  <button onClick={() => quitarPendiente(i)} className="ease-spring flex-none rounded-lg p-1.5 text-muted transition hover:bg-surface-2 hover:text-danger">
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={confirmarSubidas}
+                disabled={subiendo || pendientes.every((p) => !p.etiqueta)}
+                className="ease-spring rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+              >
+                {subiendo ? "Subiendo…" : `Guardar ${pendientes.filter((p) => p.etiqueta).length} imagen(es)`}
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fondos por tipo ({fondos.length}/{TIPOS_FONDO_BIBLIOTECA.length})</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {TIPOS_FONDO_BIBLIOTECA.map((tipo) => {
+                  const a = assetFondoDe(tipo);
+                  return (
+                    <div key={tipo} className="relative aspect-video overflow-hidden rounded-lg border border-silver bg-surface-2">
+                      {a ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={a.url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-muted">Sin fondo</span>
+                      )}
+                      <span className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 py-1 text-[10px] text-white">{TIPOS_MENTORIA[tipo].label}</span>
+                      {a && (
+                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-danger">
+                          <Trash2 className="h-3 w-3" strokeWidth={2} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Fotos por mentor ({fotos.length}/{mentores.length})</p>
+              <div className="grid max-h-60 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+                {mentores.map((m) => {
+                  const a = fotos.find((f) => f.etiqueta === m.nombre);
+                  return (
+                    <div key={m.id} className="relative aspect-square overflow-hidden rounded-lg border border-silver bg-surface-2">
+                      {a ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={a.url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full items-center justify-center p-1 text-center text-[9px] text-muted">Sin foto</span>
+                      )}
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[9px] text-white">{m.nombre}</span>
+                      {a && (
+                        <button onClick={() => eliminarAsset(a.id)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-danger">
+                          <Trash2 className="h-2.5 w-2.5" strokeWidth={2} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
