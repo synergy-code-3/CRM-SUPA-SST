@@ -497,6 +497,8 @@ export function FlyersContenido() {
           continue;
         }
         const mentorId = mentores.find((m) => norm(m.nombre) === norm(s.mentor))?.id ?? null;
+        // Los copys de difusión se generan solos al crear (ver crearMentoria
+        // en coordinacion.ts) — no hace falta pedirlos aparte aquí.
         const r = await fetch("/api/coordinacion/mentorias", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -508,24 +510,7 @@ export function FlyersContenido() {
             mentorId,
           }),
         });
-        if (r.ok) {
-          creadas++;
-          // Plus: generar y guardar de una vez los copys de difusión (previa
-          // y plataforma) — mismo cálculo que el botón "Generar" de la
-          // pestaña Difusión, solo que automático al crear desde la semana.
-          const { id } = await r.json();
-          const copy = await fetch(`/api/coordinacion/mentorias/${id}`, { method: "POST" }).then((x) => x.json());
-          await fetch(`/api/coordinacion/mentorias/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              seccion: "difusion",
-              copyPrevia: copy.copyPrevia ?? "",
-              copyPlataforma: copy.copyPlataforma ?? "",
-              checklist: { canva: false, telegram: false, whatsapp: false, marketing: false, skool: false },
-            }),
-          });
-        }
+        if (r.ok) creadas++;
       }
       setResultadoCreacion(`${creadas} mentoría(s) creada(s)${saltadas ? `, ${saltadas} ya existían para esa fecha` : ""}.`);
     } catch {

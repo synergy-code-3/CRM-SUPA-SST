@@ -312,16 +312,30 @@ export async function crearMentoria(input: {
   creadoPorId: string;
   creadoPorNombre: string;
 }): Promise<{ id: string }> {
+  // Los copys de difusión se generan solos al crear la mentoría —sea desde
+  // el formulario normal (Nueva mentoría) o desde "Crear mentorías de la
+  // semana" en Flyers—, con lo que ya se tiene a la mano (tipo/tema/mentor/
+  // fecha). El botón "Generar desde tema/mentor" de la pestaña Difusión se
+  // queda para recalcularlos a mano si después cambia el tema o el mentor.
+  let mentorNombre = "";
+  if (input.mentorId) {
+    const { data: mentor } = await supabase.from("coord_mentores").select("nombre").eq("id", input.mentorId).maybeSingle();
+    mentorNombre = mentor?.nombre ?? "";
+  }
+  const tema = input.tema.trim();
+
   const { data, error } = await supabase
     .from("coord_mentorias")
     .insert({
       mentor_id: input.mentorId,
       tipo_mentoria: input.tipoMentoria,
-      tema: input.tema.trim() || null,
+      tema: tema || null,
       fecha: input.fecha,
       hora: input.hora.trim() || null,
       material: input.material,
       notas: input.notas.trim() || null,
+      copy_previa: construirCopyPrevia(input.tipoMentoria, tema, mentorNombre, input.fecha),
+      copy_plataforma: construirCopyPlataforma(input.tipoMentoria, tema, mentorNombre),
       creado_por_id: input.creadoPorId,
       creado_por_nombre: input.creadoPorNombre,
     })
