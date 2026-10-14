@@ -66,17 +66,6 @@ const DEFAULT_CFG: LayoutFlyer = {
   fy: 65,
 };
 
-// Mismas frases "ancla" que el prototipo original para reconocer cada tipo
-// de mentoría dentro de la planeación pegada (texto libre, sin estructura).
-const TYPE_ALIASES: Record<TipoMentoria, string[]> = {
-  "lunes-prin": ["lunes de principiante", "lunes de principiantes", "mentoria de lunes de principiante"],
-  "lunes-sin": ["lunes sinergetico"],
-  martes: ["martes de estrategia digital", "estrategia digital"],
-  miercoles: ["miercoles de creacion de contenido", "creacion de contenido"],
-  jueves: ["jueves de estrategia de venta", "jueves de ventas", "estrategia de ventas", "ventas"],
-  viernes: ["viernes de caso de exito", "caso de exito"],
-};
-
 function norm(s: string): string {
   return (s || "")
     .normalize("NFD")
@@ -99,11 +88,19 @@ function score(a: string, b: string): number {
   return (comunes / (Math.max(aa.length, bb.length) || 1)) * 60;
 }
 
+// Cada día de la semana tiene un solo tipo de mentoría fijo (excepto lunes,
+// que tiene dos) — así que basta con el nombre del día para clasificar,
+// aunque esa semana el título traiga un nombre especial distinto al de
+// siempre (ej. "Miércoles — Sesión Especial Synergy Unlimited" sigue siendo
+// la mentoría de Miércoles). Antes se exigía además alguna de las frases de
+// TYPE_ALIASES, lo que excluía por error sesiones reales con título variable.
 function tipoDesdeTexto(s: string): TipoMentoria | null {
-  const n = norm(s);
-  for (const tipo of TIPOS_MENTORIA_VALIDOS) {
-    if (TYPE_ALIASES[tipo].some((alias) => n.includes(alias) || (alias.includes(n) && n.length > 8))) return tipo;
-  }
+  const palabras = norm(s).split(" ");
+  if (palabras.includes("lunes")) return palabras.includes("principiante") ? "lunes-prin" : "lunes-sin";
+  if (palabras.includes("martes")) return "martes";
+  if (palabras.includes("miercoles")) return "miercoles";
+  if (palabras.includes("jueves")) return "jueves";
+  if (palabras.includes("viernes")) return "viernes";
   return null;
 }
 
