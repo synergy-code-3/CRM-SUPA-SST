@@ -38,6 +38,10 @@ type LayoutFlyer = {
   nx: number; ny: number; ns: number;
   opacidadFondo: number; // 0-100 — opacidad del rectángulo oscuro detrás del tema y del nombre
   alineacionTema: AlineacionTexto;
+  fotoBlur: number; // px — difuminado del contorno de la foto del mentor
+  sombraTamano: number; // px — shadowBlur de la sombra detrás de la foto
+  sombraOpacidad: number; // 0-100
+  fx: number; fy: number; // posición de la fecha (solo Lunes Sinergético) — independiente de nx/ny
 };
 
 type MentorLigero = { id: string; nombre: string };
@@ -57,6 +61,11 @@ const DEFAULT_CFG: LayoutFlyer = {
   nx: 44, ny: 91, ns: 42,
   opacidadFondo: 60,
   alineacionTema: "left",
+  fotoBlur: 4,
+  sombraTamano: 28,
+  sombraOpacidad: 45,
+  fx: 10,
+  fy: 65,
 };
 
 // Mismas frases "ancla" que el prototipo original para reconocer cada tipo
@@ -253,6 +262,9 @@ const CAMPOS_SLIDER: { k: keyof LayoutFlyer; label: string; min: number; max: nu
   { k: "ts", label: "Tamaño del tema (px)", min: 18, max: 95 },
   { k: "ns", label: "Tamaño del nombre (px)", min: 18, max: 95 },
   { k: "opacidadFondo", label: "Opacidad del fondo oscuro (%)", min: 0, max: 100 },
+  { k: "fotoBlur", label: "Difuminado del contorno de la foto (px)", min: 0, max: 20 },
+  { k: "sombraTamano", label: "Tamaño de la sombra (px)", min: 0, max: 80 },
+  { k: "sombraOpacidad", label: "Opacidad de la sombra (%)", min: 0, max: 100 },
 ];
 
 const OPCIONES_ALINEACION: { valor: AlineacionTexto; label: string }[] = [
@@ -298,7 +310,7 @@ export function FlyersContenido() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imagenesRef = useRef<{ bg: HTMLImageElement | null; p: HTMLImageElement | null }>({ bg: null, p: null });
-  const dragRef = useRef<{ target: "photo" | "topic" | "name"; x: number; y: number; cfg: LayoutFlyer } | null>(null);
+  const dragRef = useRef<{ target: "photo" | "topic" | "name" | "date"; x: number; y: number; cfg: LayoutFlyer } | null>(null);
   const peticionImagenRef = useRef(0);
 
   function cargarTodo() {
@@ -558,14 +570,18 @@ export function FlyersContenido() {
       // se nota en el borde, porque el centro queda cubierto por la capa
       // nítida de arriba).
       ctx.globalCompositeOperation = "destination-over";
-      ctx.filter = "blur(4px)";
-      ctx.drawImage(p, r.x, r.y, r.w, r.h);
-      ctx.filter = "none";
+      if (cfg.fotoBlur > 0) {
+        ctx.filter = `blur(${cfg.fotoBlur}px)`;
+        ctx.drawImage(p, r.x, r.y, r.w, r.h);
+        ctx.filter = "none";
+      }
       // Sombra suave hasta el fondo, para dar profundidad.
-      ctx.shadowColor = "rgba(0,0,0,0.45)";
-      ctx.shadowBlur = 28;
-      ctx.shadowOffsetY = 14;
-      ctx.drawImage(p, r.x, r.y, r.w, r.h);
+      if (cfg.sombraOpacidad > 0) {
+        ctx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
+        ctx.shadowBlur = cfg.sombraTamano;
+        ctx.shadowOffsetY = cfg.sombraTamano / 2;
+        ctx.drawImage(p, r.x, r.y, r.w, r.h);
+      }
       ctx.restore();
     }
 
@@ -645,9 +661,8 @@ export function FlyersContenido() {
       if (fecha) {
         const fechaSize = cfg.ns * 0.55;
         ctx.font = `700 ${fechaSize}px ${fuenteSinergetico}`;
-        const fechaY = nameY - cfg.ns * 1.55 - 20;
         ctx.save();
-        ctx.translate(nameX, fechaY);
+        ctx.translate(cfg.fx * 16, cfg.fy * 9);
         ctx.transform(1, 0, -0.18, 1, 0, 0);
         ctx.textAlign = "center";
         ctx.fillStyle = rojoSinergetico;
@@ -715,14 +730,18 @@ export function FlyersContenido() {
     return wrap(ctx, tema || "Aquí aparecerá el tema de la mentoría", cfg.tw * 16, ctx.font).length * cfg.ts * 1.17;
   }
 
-  function hitTest(x: number, y: number): "photo" | "topic" | "name" | null {
+  function hitTest(x: number, y: number): "photo" | "topic" | "name" | "date" | null {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return null;
-    const cajas: { target: "photo" | "topic" | "name"; x: number; y: number; w: number; h: number }[] = [
+    const cajas: { target: "photo" | "topic" | "name" | "date"; x: number; y: number; w: number; h: number }[] = [
       { target: "name", x: cfg.nx * 16, y: cfg.ny * 9, w: Math.max(200, (nombreMentor || "Nombre").length * cfg.ns * 0.63), h: cfg.ns * 1.35 },
       { target: "topic", x: cfg.tx * 16, y: cfg.ty * 9, w: cfg.tw * 16, h: topicHeight(ctx) },
       { target: "photo", ...photoRect(cfg) },
     ];
+    // La fecha solo se dibuja (y se puede arrastrar) en Lunes Sinergético.
+    if (tipoActivo === "lunes-sin" && fecha) {
+      cajas.push({ target: "date", x: cfg.fx * 16, y: cfg.fy * 9, w: Math.max(150, fecha.length * cfg.ns * 0.55 * 0.6), h: cfg.ns * 0.55 * 1.35 });
+    }
     for (const b of cajas) {
       if (b.target === "photo" && !imagenesRef.current.p) continue;
       if (x >= b.x - 12 && x <= b.x + b.w + 12 && y >= b.y - 12 && y <= b.y + b.h + 12) return b.target;
@@ -743,7 +762,14 @@ export function FlyersContenido() {
     if (!dragRef.current) return;
     const dx = (x - dragRef.current.x) / 16;
     const dy = (y - dragRef.current.y) / 9;
-    const [kx, ky] = dragRef.current.target === "photo" ? (["px", "py"] as const) : dragRef.current.target === "topic" ? (["tx", "ty"] as const) : (["nx", "ny"] as const);
+    const [kx, ky] =
+      dragRef.current.target === "photo"
+        ? (["px", "py"] as const)
+        : dragRef.current.target === "topic"
+          ? (["tx", "ty"] as const)
+          : dragRef.current.target === "date"
+            ? (["fx", "fy"] as const)
+            : (["nx", "ny"] as const);
     const base = dragRef.current.cfg;
     actualizarCfg({
       [kx]: Math.max(0, Math.min(100, Math.round((base[kx] + dx) * 10) / 10)),
@@ -850,7 +876,10 @@ export function FlyersContenido() {
               onPointerUp={alPointerUp}
               onPointerCancel={alPointerUp}
             />
-            <p className="mt-2 text-xs text-muted">Arrastra la foto, el tema o el nombre directamente sobre la imagen para moverlos.</p>
+            <p className="mt-2 text-xs text-muted">
+              Arrastra la foto, el tema{tipoActivo === "lunes-sin" ? ", el nombre o la fecha" : " o el nombre"} directamente sobre la imagen para
+              moverlos.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={descargar} className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition">
                 <Download className="h-4 w-4" strokeWidth={1.75} />
