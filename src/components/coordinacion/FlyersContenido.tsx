@@ -94,9 +94,21 @@ function score(a: string, b: string): number {
 // siempre (ej. "Miércoles — Sesión Especial Synergy Unlimited" sigue siendo
 // la mentoría de Miércoles). Antes se exigía además alguna de las frases de
 // TYPE_ALIASES, lo que excluía por error sesiones reales con título variable.
+// Lunes es el único día con 2 tipos — ahí sí hace falta la frase completa
+// para distinguir cuál de los dos es (si no trae ninguna de las 2, se
+// descarta en vez de adivinar). El resto de días solo tiene un tipo, así que
+// basta con el nombre del día (ver tipoDesdeTexto).
+const ALIAS_LUNES_PRINCIPIANTE = ["lunes de principiante", "lunes de principiantes", "mentoria de lunes de principiante"];
+const ALIAS_LUNES_SINERGETICO = ["lunes sinergetico"];
+
 function tipoDesdeTexto(s: string): TipoMentoria | null {
-  const palabras = norm(s).split(" ");
-  if (palabras.includes("lunes")) return palabras.includes("principiante") ? "lunes-prin" : "lunes-sin";
+  const n = norm(s);
+  const palabras = n.split(" ");
+  if (palabras.includes("lunes")) {
+    if (ALIAS_LUNES_PRINCIPIANTE.some((a) => n.includes(a))) return "lunes-prin";
+    if (ALIAS_LUNES_SINERGETICO.some((a) => n.includes(a))) return "lunes-sin";
+    return null;
+  }
   if (palabras.includes("martes")) return "martes";
   if (palabras.includes("miercoles")) return "miercoles";
   if (palabras.includes("jueves")) return "jueves";
