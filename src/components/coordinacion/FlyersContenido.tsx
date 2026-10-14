@@ -320,6 +320,11 @@ export function FlyersContenido() {
   // terminaban detrás del fondo y se veían invisibles sin importar qué tan
   // fuertes fueran los sliders.
   const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Capa aparte solo para la foto (sin la sombra) — así "source-atop" del
+  // difuminado de borde (ver dibujar()) se confina estrictamente a la
+  // silueta de la foto, sin que la sombra (que sí se sale del contorno a
+  // propósito) cuente como "ya pintado" y deje escapar el blur hacia afuera.
+  const photoLayerRef = useRef<HTMLCanvasElement | null>(null);
 
   function cargarTodo() {
     setCargando(true);
@@ -575,13 +580,41 @@ export function FlyersContenido() {
         offCanvasRef.current.width = 1600;
         offCanvasRef.current.height = 900;
       }
+      if (!photoLayerRef.current) {
+        photoLayerRef.current = document.createElement("canvas");
+        photoLayerRef.current.width = 1600;
+        photoLayerRef.current.height = 900;
+      }
       const off = offCanvasRef.current;
       const octx = off.getContext("2d")!;
+      const layer = photoLayerRef.current;
+      const lctx = layer.getContext("2d")!;
       octx.clearRect(0, 0, 1600, 900);
-      // Se arma en un canvas aparte (transparente) para que "sombra" y "halo"
-      // queden aislados y no se compongan contra el fondo ya pintado del
-      // canvas principal — ahí, ambos apilan en orden normal (el primero
-      // dibujado queda más atrás), sin necesitar destination-over.
+      lctx.clearRect(0, 0, 1600, 900);
+
+      // Capa de la foto sola (nítida + difuminado confinado hacia ADENTRO de
+      // su propia silueta — no hacia afuera): "source-atop" solo pinta donde
+      // esta misma capa ya tiene algo opaco (la silueta de la foto que se
+      // acaba de dibujar), así que el blur nunca se sale del contorno real.
+      // Volver a pintar la versión nítida un poco encogida deja ese blur
+      // visible solo como un anillo justo en el borde (que es donde suele
+      // quedar el delineado blanco de las fotos con el fondo mal recortado),
+      // sin tocar la cara.
+      lctx.drawImage(p, r.x, r.y, r.w, r.h);
+      if (cfg.fotoBlur > 0) {
+        lctx.save();
+        lctx.globalCompositeOperation = "source-atop";
+        lctx.filter = `blur(${cfg.fotoBlur}px)`;
+        lctx.drawImage(p, r.x, r.y, r.w, r.h);
+        lctx.restore();
+        const m = cfg.fotoBlur;
+        lctx.drawImage(p, r.x + m, r.y + m, r.w - m * 2, r.h - m * 2);
+      }
+
+      // Sombra aparte (en su propio canvas transparente, SIN la capa de la
+      // foto todavía) — si se calculara en la misma capa, su propio halo
+      // (que sí se sale del contorno a propósito) contaría como "ya pintado"
+      // para el source-atop de arriba y dejaría escapar algo de blur.
       if (cfg.sombraOpacidad > 0) {
         octx.save();
         octx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
@@ -590,15 +623,7 @@ export function FlyersContenido() {
         octx.drawImage(p, r.x, r.y, r.w, r.h);
         octx.restore();
       }
-      if (cfg.fotoBlur > 0) {
-        octx.save();
-        octx.filter = `blur(${cfg.fotoBlur}px)`;
-        octx.drawImage(p, r.x, r.y, r.w, r.h);
-        octx.restore();
-      }
-      // Imagen nítida al final (capa de arriba) — tapa el centro del halo,
-      // que solo se termina notando en el borde.
-      octx.drawImage(p, r.x, r.y, r.w, r.h);
+      octx.drawImage(layer, 0, 0);
       ctx.drawImage(off, 0, 0);
     }
 
