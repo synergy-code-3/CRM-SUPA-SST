@@ -295,6 +295,8 @@ export function FlyersContenido() {
   const [semanaInicio, setSemanaInicio] = useState(lunesDeEstaSemana());
   const [creandoMentorias, setCreandoMentorias] = useState(false);
   const [resultadoCreacion, setResultadoCreacion] = useState<string | null>(null);
+  const [guardandoDefault, setGuardandoDefault] = useState(false);
+  const [mensajeDefault, setMensajeDefault] = useState<string | null>(null);
 
   const [tipoActivo, setTipoActivo] = useState<TipoMentoria>(TIPOS_MENTORIA_VALIDOS[0]);
   const [cfg, setCfg] = useState<LayoutFlyer>(DEFAULT_CFG);
@@ -735,6 +737,37 @@ export function FlyersContenido() {
     guardarLayoutDebounced(tipoActivo, DEFAULT_CFG);
   }
 
+  // Lunes Sinergético tiene su propia plantilla (otro color, otra fuente, con
+  // fecha) — nunca se le pisan sus ajustes desde aquí, solo al resto.
+  const TIPOS_SIN_LUNES_SIN = TIPOS_MENTORIA_VALIDOS.filter((t) => t !== "lunes-sin");
+
+  async function marcarComoDefault() {
+    setGuardandoDefault(true);
+    setMensajeDefault(null);
+    try {
+      await Promise.all(
+        TIPOS_SIN_LUNES_SIN.map((tipo) =>
+          fetch("/api/coordinacion/flyers/layouts", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipoMentoria: tipo, cfg }),
+          })
+        )
+      );
+      setLayouts((l) => {
+        const nuevo = { ...l };
+        for (const tipo of TIPOS_SIN_LUNES_SIN) nuevo[tipo] = cfg;
+        return nuevo;
+      });
+      setMensajeDefault("Aplicado a todos los tipos (menos Lunes Sinergético).");
+    } catch {
+      setMensajeDefault("No se pudo aplicar a todos los tipos.");
+    } finally {
+      setGuardandoDefault(false);
+      setTimeout(() => setMensajeDefault(null), 3000);
+    }
+  }
+
   function canvasPos(e: React.PointerEvent<HTMLCanvasElement>) {
     const r = e.currentTarget.getBoundingClientRect();
     return { x: ((e.clientX - r.left) * 1600) / r.width, y: ((e.clientY - r.top) * 900) / r.height };
@@ -1025,6 +1058,18 @@ export function FlyersContenido() {
                   </div>
                 </label>
               ))}
+              {tipoActivo !== "lunes-sin" && (
+                <div className="border-t border-silver pt-3">
+                  <button
+                    onClick={marcarComoDefault}
+                    disabled={guardandoDefault}
+                    className="ease-spring w-full rounded-xl border border-silver px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    {guardandoDefault ? "Aplicando…" : "Marcar como default (todos los tipos menos Lunes Sinergético)"}
+                  </button>
+                  {mensajeDefault && <p className="mt-2 text-xs text-muted">{mensajeDefault}</p>}
+                </div>
+              )}
             </div>
             )}
           </div>
