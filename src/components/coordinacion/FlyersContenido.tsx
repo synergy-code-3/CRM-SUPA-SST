@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Oswald } from "next/font/google";
-import { ImagePlus, Download, RotateCcw, Trash2, Wand2 } from "lucide-react";
+import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink } from "lucide-react";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
 
 // Fuente propia solo para el flyer de Lunes Sinergético — su fondo ya trae
@@ -1107,6 +1107,7 @@ export function FlyersContenido() {
                       key={tipo}
                       etiqueta={TIPOS_MENTORIA[tipo].label}
                       subido={!!a}
+                      url={a?.url}
                       cargando={subiendoDirecto === tipo}
                       onElegirArchivo={(archivo) => reemplazarAsset("fondo", tipo, archivo)}
                       onEliminar={a ? () => eliminarAsset(a.id) : undefined}
@@ -1125,6 +1126,7 @@ export function FlyersContenido() {
                       key={m.id}
                       etiqueta={m.nombre}
                       subido={!!a}
+                      url={a?.url}
                       cargando={subiendoDirecto === m.nombre}
                       onElegirArchivo={(archivo) => reemplazarAsset("foto", m.nombre, archivo)}
                       onEliminar={a ? () => eliminarAsset(a.id) : undefined}
@@ -1143,12 +1145,14 @@ export function FlyersContenido() {
 function FilaBiblioteca({
   etiqueta,
   subido,
+  url,
   cargando,
   onElegirArchivo,
   onEliminar,
 }: {
   etiqueta: string;
   subido: boolean;
+  url?: string;
   cargando: boolean;
   onElegirArchivo: (archivo: File) => void;
   onEliminar?: () => void;
@@ -1157,6 +1161,17 @@ function FilaBiblioteca({
     <li className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
       <span className="min-w-0 flex-1 truncate text-foreground">{etiqueta}</span>
       <span className={`flex-none text-xs ${subido ? "text-success" : "text-muted"}`}>{subido ? "Subida" : "Sin imagen"}</span>
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-primary"
+          title="Ver imagen en otra pestaña"
+        >
+          <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </a>
+      )}
       <label className={`ease-spring flex-none cursor-pointer text-xs font-medium text-primary transition hover:underline ${cargando ? "pointer-events-none opacity-50" : ""}`}>
         {cargando ? "Subiendo…" : subido ? "Reemplazar" : "Subir"}
         <input
