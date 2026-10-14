@@ -312,19 +312,22 @@ export function FlyersContenido() {
   const imagenesRef = useRef<{ bg: HTMLImageElement | null; p: HTMLImageElement | null }>({ bg: null, p: null });
   const dragRef = useRef<{ target: "photo" | "topic" | "name" | "date"; x: number; y: number; cfg: LayoutFlyer } | null>(null);
   const peticionImagenRef = useRef(0);
-  // Canvas auxiliar para componer sombra + halo difuminado + foto nítida
-  // aisladas entre sí antes de pegarlas sobre el fondo — necesario porque
-  // "destination-over" no solo reordena contra los drawImage anteriores de
-  // la foto, reordena contra TODO lo ya pintado en el canvas principal
-  // (incluido el fondo, que es opaco), así que ahí la sombra/el halo
-  // terminaban detrás del fondo y se veían invisibles sin importar qué tan
-  // fuertes fueran los sliders.
+  // Canvas auxiliar para componer sombra + foto aisladas entre sí antes de
+  // pegarlas sobre el fondo — necesario porque "destination-over" no solo
+  // reordena contra los drawImage anteriores de la foto, reordena contra
+  // TODO lo ya pintado en el canvas principal (incluido el fondo, que es
+  // opaco), así que ahí la sombra se veía invisible sin importar qué tan
+  // fuerte fuera el slider.
   const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Capa aparte solo para la foto (sin la sombra) — así "source-atop" del
-  // difuminado de borde (ver dibujar()) se confina estrictamente a la
-  // silueta de la foto, sin que la sombra (que sí se sale del contorno a
-  // propósito) cuente como "ya pintado" y deje escapar el blur hacia afuera.
-  const photoLayerRef = useRef<HTMLCanvasElement | null>(null);
+  // Filtro SVG erode+blur para el difuminado del contorno de la foto — a
+  // diferencia de un blur plano (que agrega un halo hacia AFUERA del
+  // recorte, sin tocar el delineado blanco que deja el borrado de fondo),
+  // feMorphology "come" el canal alfa hacia ADENTRO desde el borde real de
+  // la silueta (sin importar cuánto relleno transparente traiga la imagen
+  // alrededor), y feGaussianBlur suaviza esa nueva orilla. radius/
+  // stdDeviation se actualizan en cada dibujo según el slider.
+  const erodeRef = useRef<SVGFEMorphologyElement>(null);
+  const blurBordeRef = useRef<SVGFEGaussianBlurElement>(null);
 
   function cargarTodo() {
     setCargando(true);
@@ -580,41 +583,12 @@ export function FlyersContenido() {
         offCanvasRef.current.width = 1600;
         offCanvasRef.current.height = 900;
       }
-      if (!photoLayerRef.current) {
-        photoLayerRef.current = document.createElement("canvas");
-        photoLayerRef.current.width = 1600;
-        photoLayerRef.current.height = 900;
-      }
       const off = offCanvasRef.current;
       const octx = off.getContext("2d")!;
-      const layer = photoLayerRef.current;
-      const lctx = layer.getContext("2d")!;
       octx.clearRect(0, 0, 1600, 900);
-      lctx.clearRect(0, 0, 1600, 900);
 
-      // Capa de la foto sola (nítida + difuminado confinado hacia ADENTRO de
-      // su propia silueta — no hacia afuera): "source-atop" solo pinta donde
-      // esta misma capa ya tiene algo opaco (la silueta de la foto que se
-      // acaba de dibujar), así que el blur nunca se sale del contorno real.
-      // Volver a pintar la versión nítida un poco encogida deja ese blur
-      // visible solo como un anillo justo en el borde (que es donde suele
-      // quedar el delineado blanco de las fotos con el fondo mal recortado),
-      // sin tocar la cara.
-      lctx.drawImage(p, r.x, r.y, r.w, r.h);
-      if (cfg.fotoBlur > 0) {
-        lctx.save();
-        lctx.globalCompositeOperation = "source-atop";
-        lctx.filter = `blur(${cfg.fotoBlur}px)`;
-        lctx.drawImage(p, r.x, r.y, r.w, r.h);
-        lctx.restore();
-        const m = cfg.fotoBlur;
-        lctx.drawImage(p, r.x + m, r.y + m, r.w - m * 2, r.h - m * 2);
-      }
-
-      // Sombra aparte (en su propio canvas transparente, SIN la capa de la
-      // foto todavía) — si se calculara en la misma capa, su propio halo
-      // (que sí se sale del contorno a propósito) contaría como "ya pintado"
-      // para el source-atop de arriba y dejaría escapar algo de blur.
+      // Sombra primero (detrás) — sigue la silueta completa, sin el erode de
+      // abajo (la sombra debe seguir viéndose del tamaño real de la persona).
       if (cfg.sombraOpacidad > 0) {
         octx.save();
         octx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
@@ -623,7 +597,22 @@ export function FlyersContenido() {
         octx.drawImage(p, r.x, r.y, r.w, r.h);
         octx.restore();
       }
-      octx.drawImage(layer, 0, 0);
+
+      // Foto, con el borde erosionado+difuminado hacia ADENTRO si el slider
+      // está arriba de 0 — erode "come" el canal alfa desde el contorno real
+      // de la silueta (sin importar cuánto relleno transparente traiga la
+      // imagen alrededor, a diferencia de encoger el rectángulo destino),
+      // así sí tapa el delineado blanco que deja el borrado de fondo en vez
+      // de solo agregarle un brillo por fuera.
+      octx.save();
+      if (cfg.fotoBlur > 0) {
+        erodeRef.current?.setAttribute("radius", String(cfg.fotoBlur));
+        blurBordeRef.current?.setAttribute("stdDeviation", String(cfg.fotoBlur * 0.6));
+        octx.filter = "url(#flyer-borde-difuminado)";
+      }
+      octx.drawImage(p, r.x, r.y, r.w, r.h);
+      octx.restore();
+
       ctx.drawImage(off, 0, 0);
     }
 
@@ -908,6 +897,16 @@ export function FlyersContenido() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="shell rounded-[1.75rem] p-2 diffused">
           <div className="core rounded-[calc(1.75rem-0.5rem)] p-4">
+            {/* Filtro invisible usado por dibujar() (octx.filter =
+                "url(#flyer-borde-difuminado)") para el difuminado del
+                contorno de la foto — radius/stdDeviation se actualizan en
+                cada dibujo según el slider, no son fijos. */}
+            <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
+              <filter id="flyer-borde-difuminado">
+                <feMorphology ref={erodeRef} operator="erode" radius="0" in="SourceGraphic" result="erosionado" />
+                <feGaussianBlur ref={blurBordeRef} in="erosionado" stdDeviation="0" />
+              </filter>
+            </svg>
             <canvas
               ref={canvasRef}
               width={1600}
