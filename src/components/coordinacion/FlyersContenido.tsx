@@ -517,7 +517,23 @@ export function FlyersContenido() {
     }
     if (p) {
       const r = photoRect(cfg);
+      ctx.save();
+      // Imagen nítida primero (queda como capa de arriba).
       ctx.drawImage(p, r.x, r.y, r.w, r.h);
+      // Halo difuminado detrás de la misma imagen — suaviza el contorno duro
+      // que dejan algunos recortes de fondo sin tapar la cara (el blur solo
+      // se nota en el borde, porque el centro queda cubierto por la capa
+      // nítida de arriba).
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.filter = "blur(4px)";
+      ctx.drawImage(p, r.x, r.y, r.w, r.h);
+      ctx.filter = "none";
+      // Sombra suave hasta el fondo, para dar profundidad.
+      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 14;
+      ctx.drawImage(p, r.x, r.y, r.w, r.h);
+      ctx.restore();
     }
 
     const alpha = cfg.opacidadFondo / 100;
