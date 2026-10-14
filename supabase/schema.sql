@@ -925,3 +925,37 @@ create table if not exists coord_eventos (
 );
 create index if not exists idx_coord_eventos_fecha on coord_eventos (fecha desc);
 alter table coord_eventos enable row level security;
+
+-- Generador de flyers de mentorías (porte de una herramienta local que ya
+-- funcionaba, fuera de este CRM). Las imágenes base suben una sola vez a
+-- Supabase Storage (bucket coord-flyer-assets, público — no es información
+-- sensible) en vez de quedarse en localStorage del navegador como el
+-- prototipo original, para que estén disponibles sin importar desde qué
+-- compu se entre. "fondo" = una imagen por tipo de mentoría (las 6 de
+-- TIPOS_MENTORIA_VALIDOS); "foto" = una imagen por mentor, por nombre
+-- (texto libre, se cruza contra coord_mentores.nombre al armar el flyer,
+-- no FK directa porque el nombre en la planeación pegada puede no calzar
+-- exacto con el catálogo). Subir de nuevo para la misma etiqueta reemplaza
+-- a la anterior (upsert), no se acumulan versiones viejas.
+create table if not exists coord_flyer_assets (
+  id uuid primary key default gen_random_uuid(),
+  categoria text not null check (categoria in ('fondo', 'foto')),
+  etiqueta text not null, -- tipo_mentoria (fondo) o nombre del mentor (foto)
+  archivo_nombre text not null,
+  ruta text not null, -- path dentro del bucket coord-flyer-assets
+  subido_por text not null,
+  creado_en timestamptz not null default now(),
+  unique (categoria, etiqueta)
+);
+alter table coord_flyer_assets enable row level security;
+
+-- Ajustes de tamaño/posición del editor de flyers (arrastrar foto/tema/
+-- nombre, sliders de zoom y tamaño) — uno por tipo de mentoría, igual que el
+-- prototipo, pero guardado en Supabase en vez de localStorage para que el
+-- ajuste hecho en una compu se vea igual en la otra.
+create table if not exists coord_flyer_layouts (
+  tipo_mentoria text primary key check (tipo_mentoria in ('lunes-prin', 'lunes-sin', 'martes', 'miercoles', 'jueves', 'viernes')),
+  cfg jsonb not null,
+  actualizado_en timestamptz not null default now()
+);
+alter table coord_flyer_layouts enable row level security;

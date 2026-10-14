@@ -2,6 +2,7 @@
 // "Coordinacion-Club-Sinergetico"). Ver supabase/schema.sql (tablas
 // coord_*) y el plan de migración para el contexto completo.
 import { supabase } from "@/lib/supabase";
+import { subirAssetFlyer, urlPublicaAssetFlyer, eliminarAssetFlyerStorage } from "@/lib/storage";
 
 export type TipoMentoria = "lunes-prin" | "lunes-sin" | "martes" | "miercoles" | "jueves" | "viernes";
 
@@ -538,4 +539,92 @@ export function construirMarkdownMentorias(mentorias: Mentoria[]): string {
   }
 
   return lineas.join("\n");
+}
+
+// --- Generador de flyers -------------------------------------------------
+
+export type CategoriaFlyerAsset = "fondo" | "foto";
+
+export type FlyerAsset = {
+  id: string;
+  categoria: CategoriaFlyerAsset;
+  etiqueta: string;
+  archivoNombre: string;
+  url: string;
+  creadoEn: string;
+};
+
+export async function listarFlyerAssets(): Promise<FlyerAsset[]> {
+  const { data, error } = await supabase
+    .from("coord_flyer_assets")
+    .select("id, categoria, etiqueta, archivo_nombre, ruta, creado_en")
+    .order("etiqueta");
+  if (error) throw error;
+  return (data ?? []).map((a) => ({
+    id: a.id,
+    categoria: a.categoria as CategoriaFlyerAsset,
+    etiqueta: a.etiqueta,
+    archivoNombre: a.archivo_nombre,
+    url: urlPublicaAssetFlyer(a.ruta),
+    creadoEn: a.creado_en,
+  }));
+}
+
+// Reemplaza (upsert) la imagen de esta categoría+etiqueta si ya existía —
+// mismo criterio que avatares: subir de nuevo pisa la anterior, nunca se
+// acumulan versiones viejas en el bucket.
+export async function guardarFlyerAsset(
+  categoria: CategoriaFlyerAsset,
+  etiqueta: string,
+  archivo: File,
+  autor: string
+): Promise<FlyerAsset> {
+  const ruta = await subirAssetFlyer(categoria, etiqueta, archivo);
+  const { data, error } = await supabase
+    .from("coord_flyer_assets")
+    .upsert(
+      { categoria, etiqueta, archivo_nombre: archivo.name, ruta, subido_por: autor },
+      { onConflict: "categoria,etiqueta" }
+    )
+    .select("id, categoria, etiqueta, archivo_nombre, ruta, creado_en")
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    categoria: data.categoria as CategoriaFlyerAsset,
+    etiqueta: data.etiqueta,
+    archivoNombre: data.archivo_nombre,
+    url: urlPublicaAssetFlyer(data.ruta),
+    creadoEn: data.creado_en,
+  };
+}
+
+export async function eliminarFlyerAsset(id: string): Promise<void> {
+  const { data, error: errLectura } = await supabase.from("coord_flyer_assets").select("ruta").eq("id", id).maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!data) return;
+  await eliminarAssetFlyerStorage(data.ruta);
+  const { error } = await supabase.from("coord_flyer_assets").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export type LayoutFlyer = {
+  px: number; py: number; pw: number; ph: number; pz: number;
+  tx: number; ty: number; tw: number; ts: number;
+  nx: number; ny: number; ns: number;
+};
+
+export async function listarFlyerLayouts(): Promise<Record<string, LayoutFlyer>> {
+  const { data, error } = await supabase.from("coord_flyer_layouts").select("tipo_mentoria, cfg");
+  if (error) throw error;
+  const mapa: Record<string, LayoutFlyer> = {};
+  for (const fila of data ?? []) mapa[fila.tipo_mentoria] = fila.cfg as LayoutFlyer;
+  return mapa;
+}
+
+export async function guardarFlyerLayout(tipoMentoria: TipoMentoria, cfg: LayoutFlyer): Promise<void> {
+  const { error } = await supabase
+    .from("coord_flyer_layouts")
+    .upsert({ tipo_mentoria: tipoMentoria, cfg, actualizado_en: new Date().toISOString() }, { onConflict: "tipo_mentoria" });
+  if (error) throw error;
 }
