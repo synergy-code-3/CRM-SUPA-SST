@@ -400,6 +400,11 @@ alter table usuarios add column if not exists foto_url text;
 -- se queda fija para siempre y no depende de si ya inició sesión.
 alter table usuarios add column if not exists primera_aprobacion_en timestamptz;
 
+-- Preferencia personal (no la decide un admin): apaga la mascota
+-- AsistenteAbeja.tsx para ese usuario, desde "Mi perfil". Default true —
+-- nadie la pierde hasta que la apague a propósito.
+alter table usuarios add column if not exists abeja_activa boolean not null default true;
+
 -- "Fin de acceso" deja de ser un dato guardado aparte (clientes.fin_acceso
 -- queda como columna legado, ya no se lee ni se escribe): a partir de
 -- ahora se calcula siempre como (fecha_renovacion si existe, si no

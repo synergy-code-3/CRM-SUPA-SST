@@ -148,7 +148,7 @@ export function AsistenteAbeja() {
     mostrarGestoTemporal();
   }
 
-  if (!usuario) return null;
+  if (!usuario || !usuario.abejaActiva) return null;
   const preguntasIniciales = preguntasInicialesParaRol(usuario.rol);
 
   return (

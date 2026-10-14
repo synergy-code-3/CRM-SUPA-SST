@@ -15,6 +15,9 @@ export type UsuarioSesion = {
   rol: Rol;
   telefonos: string[];
   fotoUrl: string | null;
+  // Preferencia personal (no admin) — se apaga/enciende desde "Mi perfil".
+  // true por default: todos la ven hasta que alguien decide quitársela.
+  abejaActiva: boolean;
   // false = cuenta autoregistrada (o desactivada) esperando que un admin la
   // active — obtenerUsuarioActual() nunca la deja pasar (sigue siendo null,
   // igual que siempre); solo obtenerSesionCruda() la expone, para que
@@ -47,7 +50,7 @@ export async function obtenerSesionCruda(): Promise<UsuarioSesion | null> {
 
   const { data, error } = await supabase
     .from("usuarios")
-    .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url")
+    .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url,abeja_activa")
     .eq("id", claims.sub)
     .maybeSingle();
   if (error || !data || data.token_version !== claims.tokenVersion) return null;
@@ -59,6 +62,7 @@ export async function obtenerSesionCruda(): Promise<UsuarioSesion | null> {
     rol: data.rol as Rol,
     telefonos: data.telefonos ?? [],
     fotoUrl: data.foto_url,
+    abejaActiva: data.abeja_activa ?? true,
     activo: data.activo,
   };
 }

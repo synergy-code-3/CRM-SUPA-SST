@@ -17,10 +17,13 @@ export async function PATCH(req: NextRequest) {
     .filter((t: unknown): t is string => typeof t === "string" && t.trim() !== "")
     .map((t: string) => t.trim());
 
-  const { error } = await supabase
-    .from("usuarios")
-    .update({ telefonos, actualizado_en: new Date().toISOString() })
-    .eq("id", usuario.id);
+  const patch: { telefonos: string[]; actualizado_en: string; abeja_activa?: boolean } = {
+    telefonos,
+    actualizado_en: new Date().toISOString(),
+  };
+  if (typeof body?.abejaActiva === "boolean") patch.abeja_activa = body.abejaActiva;
+
+  const { error } = await supabase.from("usuarios").update(patch).eq("id", usuario.id);
   if (error) throw error;
 
   return NextResponse.json({ ok: true });

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone, Expand } from "lucide-react";
+import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone, Expand, Bot } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { useTema, type Tema } from "@/lib/theme-context";
 import type { Rol } from "@/lib/permisos";
@@ -51,8 +51,29 @@ export function MiPerfilModal({ onClose, bloqueante = false }: { onClose: () => 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
+  const [abejaActiva, setAbejaActiva] = useState(usuario?.abejaActiva ?? true);
+  const [guardandoAbeja, setGuardandoAbeja] = useState(false);
 
   if (!usuario) return null;
+
+  // Se guarda al toque (no espera al botón "Guardar cambios", que solo
+  // vigila los teléfonos) — manda los teléfonos YA guardados, no el borrador
+  // en edición, para no guardar a medias un número que el usuario todavía
+  // está escribiendo.
+  async function alCambiarAbeja(valor: boolean) {
+    setAbejaActiva(valor);
+    setGuardandoAbeja(true);
+    try {
+      await fetch("/api/perfil", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telefonos: usuario!.telefonos, abejaActiva: valor }),
+      });
+      await refrescar();
+    } finally {
+      setGuardandoAbeja(false);
+    }
+  }
 
   async function onCambiarFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
@@ -265,6 +286,29 @@ export function MiPerfilModal({ onClose, bloqueante = false }: { onClose: () => 
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-xs font-medium text-muted">Abeja asistente</span>
+              <div className="flex gap-1.5 rounded-lg border border-silver bg-surface-2 p-1">
+                {[
+                  { valor: true, label: "Activada" },
+                  { valor: false, label: "Desactivada" },
+                ].map(({ valor, label }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={guardandoAbeja}
+                    onClick={() => alCambiarAbeja(valor)}
+                    className={`ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition disabled:opacity-60 ${
+                      abejaActiva === valor ? "bg-surface text-primary-deep shadow-sm" : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
                     {label}
                   </button>
                 ))}
