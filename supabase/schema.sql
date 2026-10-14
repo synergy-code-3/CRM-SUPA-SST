@@ -964,3 +964,9 @@ create table if not exists coord_flyer_layouts (
   actualizado_en timestamptz not null default now()
 );
 alter table coord_flyer_layouts enable row level security;
+
+-- PNG final del flyer de cada mentoría (ya con tema/nombre/fecha acomodados
+-- a mano desde el editor) — se guarda al presionar "Guardar" en Flyers, en
+-- vez de solo descargarlo, para poder verlo después desde la pestaña
+-- Difusión de esa misma mentoría.
+alter table coord_mentorias add column if not exists flyer_url text;

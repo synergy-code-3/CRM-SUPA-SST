@@ -244,6 +244,15 @@ export function PanelMentoria({
 
           {tab === "difusion" && (
             <>
+              {mentoria.flyerUrl && (
+                <div>
+                  <span className="mb-1.5 block text-sm font-medium text-muted">Flyer</span>
+                  <a href={mentoria.flyerUrl} target="_blank" rel="noreferrer" className="ease-spring block w-40 overflow-hidden rounded-xl border border-silver transition hover:opacity-90">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mentoria.flyerUrl} alt="Flyer de esta mentoría" className="w-full" />
+                  </a>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted">Copys</span>
                 <button onClick={generarCopy} disabled={generando} className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50">

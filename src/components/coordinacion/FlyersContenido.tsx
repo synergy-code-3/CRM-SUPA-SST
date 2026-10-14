@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Oswald } from "next/font/google";
-import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink } from "lucide-react";
+import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink, Save } from "lucide-react";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
 
 // Fuente propia solo para el flyer de Lunes Sinergético — su fondo ya trae
@@ -297,6 +297,11 @@ export function FlyersContenido() {
   const [resultadoCreacion, setResultadoCreacion] = useState<string | null>(null);
   const [guardandoDefault, setGuardandoDefault] = useState(false);
   const [mensajeDefault, setMensajeDefault] = useState<string | null>(null);
+  // Mentoría a la que se enlaza el flyer al guardarlo — null si todavía no
+  // se creó (ver "Crear mentorías de la semana").
+  const [mentoriaIdActual, setMentoriaIdActual] = useState<string | null>(null);
+  const [guardandoFlyer, setGuardandoFlyer] = useState(false);
+  const [mensajeFlyer, setMensajeFlyer] = useState<string | null>(null);
 
   const [tipoActivo, setTipoActivo] = useState<TipoMentoria>(TIPOS_MENTORIA_VALIDOS[0]);
   const [cfg, setCfg] = useState<LayoutFlyer>(DEFAULT_CFG);
@@ -445,15 +450,29 @@ export function FlyersContenido() {
     if (detectadas.length) elegirSesion(detectadas[0]);
   }
 
-  function elegirSesion(s: Sesion) {
+  async function elegirSesion(s: Sesion) {
     setTipoActivo(s.tipo);
     const base = s.tipo === "lunes-sin" ? { ...DEFAULT_CFG, alineacionTema: "center" as const } : DEFAULT_CFG;
     setCfg({ ...base, ...(layouts[s.tipo] || {}) });
     setNombreMentor(s.mentor);
     setTema(s.tema);
-    setFecha(formatearFechaFlyer(fechaDeSesion(s.tipo, semanaInicio)));
+    const fechaIso = fechaDeSesion(s.tipo, semanaInicio);
+    setFecha(formatearFechaFlyer(fechaIso));
     setFondoId(assetFondoDe(s.tipo)?.id ?? "");
     setFotoId(mejorFotoPara(s.mentor)?.id ?? "");
+
+    // Para que "Guardar" sepa a qué mentoría enlazar el flyer — solo existe
+    // si ya se corrió "Crear mentorías de la semana" para esta sesión.
+    setMentoriaIdActual(null);
+    try {
+      const r = await fetch(`/api/coordinacion/mentorias?tipo=${s.tipo}`);
+      const data = await r.json();
+      const match = (data.mentorias ?? []).find((m: { id: string; fecha: string }) => m.fecha === fechaIso);
+      setMentoriaIdActual(match?.id ?? null);
+    } catch {
+      // sin conexión o lo que sea — "Guardar" simplemente pedirá crear la
+      // mentoría primero, no es un error que haya que mostrar aquí.
+    }
   }
 
   // El horario de cada tipo ya es un default fijo (TIPOS_MENTORIA) — lo
@@ -840,6 +859,36 @@ export function FlyersContenido() {
     a.click();
   }
 
+  // A diferencia de "Descargar" (se lleva el archivo a la compu), esto
+  // guarda el flyer ya acomodado y lo enlaza a su mentoría (coord_mentorias.
+  // flyer_url) — se ve después en la pestaña Difusión de esa mentoría.
+  async function guardarFlyer() {
+    if (!mentoriaIdActual) {
+      setMensajeFlyer('Esta mentoría todavía no existe — usa "Crear mentorías de la semana" primero.');
+      setTimeout(() => setMensajeFlyer(null), 4000);
+      return;
+    }
+    dibujar();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setGuardandoFlyer(true);
+    setMensajeFlyer(null);
+    try {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("No se pudo generar la imagen");
+      const form = new FormData();
+      form.append("archivo", blob, "flyer.png");
+      const r = await fetch(`/api/coordinacion/mentorias/${mentoriaIdActual}/flyer`, { method: "POST", body: form });
+      if (!r.ok) throw new Error((await r.json()).error ?? "No se pudo guardar el flyer");
+      setMensajeFlyer("Flyer guardado y enlazado a la mentoría.");
+    } catch (err) {
+      setMensajeFlyer(err instanceof Error ? err.message : "No se pudo guardar el flyer");
+    } finally {
+      setGuardandoFlyer(false);
+      setTimeout(() => setMensajeFlyer(null), 4000);
+    }
+  }
+
   if (cargando) return <p className="py-12 text-center text-sm text-muted">Cargando…</p>;
 
   return (
@@ -929,7 +978,15 @@ export function FlyersContenido() {
               moverlos.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={descargar} className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition">
+              <button
+                onClick={guardarFlyer}
+                disabled={guardandoFlyer}
+                className="ease-spring flex items-center gap-1.5 rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" strokeWidth={1.75} />
+                {guardandoFlyer ? "Guardando…" : "Guardar"}
+              </button>
+              <button onClick={descargar} className="ease-spring flex items-center gap-1.5 rounded-xl border border-silver px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2">
                 <Download className="h-4 w-4" strokeWidth={1.75} />
                 Descargar PNG
               </button>
@@ -938,6 +995,7 @@ export function FlyersContenido() {
                 Restablecer posiciones
               </button>
             </div>
+            {mensajeFlyer && <p className="mt-2 text-xs text-muted">{mensajeFlyer}</p>}
           </div>
         </div>
 

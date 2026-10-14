@@ -188,6 +188,28 @@ export async function eliminarAssetFlyerStorage(ruta: string): Promise<void> {
   if (error) throw error;
 }
 
+// El PNG final de cada flyer (ya con tema/nombre/fecha acomodados), uno por
+// mentoría — path fijo por mentoriaId (upsert): volver a guardar reemplaza
+// la versión anterior en vez de acumular archivos viejos.
+const TAMANO_MAXIMO_FLYER_GENERADO_BYTES = 15 * 1024 * 1024;
+
+export async function subirFlyerGenerado(mentoriaId: string, archivo: Blob): Promise<string> {
+  if (archivo.size > TAMANO_MAXIMO_FLYER_GENERADO_BYTES) {
+    throw new Error("El flyer pesa más de 15 MB");
+  }
+  await asegurarBucketFlyerAssets();
+
+  const ruta = `generado/${mentoriaId}.png`;
+  const buffer = Buffer.from(await archivo.arrayBuffer());
+
+  const { error } = await supabase.storage
+    .from(BUCKET_FLYER_ASSETS)
+    .upload(ruta, buffer, { contentType: "image/png", upsert: true });
+  if (error) throw error;
+
+  return ruta;
+}
+
 export async function subirAvatar(usuarioId: string, archivo: File): Promise<string> {
   if (archivo.size > TAMANO_MAXIMO_AVATAR_BYTES) {
     throw new Error("La imagen pesa más de 4 MB");

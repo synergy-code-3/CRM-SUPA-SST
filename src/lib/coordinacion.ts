@@ -2,7 +2,7 @@
 // "Coordinacion-Club-Sinergetico"). Ver supabase/schema.sql (tablas
 // coord_*) y el plan de migración para el contexto completo.
 import { supabase } from "@/lib/supabase";
-import { subirAssetFlyer, urlPublicaAssetFlyer, eliminarAssetFlyerStorage } from "@/lib/storage";
+import { subirAssetFlyer, urlPublicaAssetFlyer, eliminarAssetFlyerStorage, subirFlyerGenerado } from "@/lib/storage";
 
 export type TipoMentoria = "lunes-prin" | "lunes-sin" | "martes" | "miercoles" | "jueves" | "viernes";
 
@@ -61,6 +61,7 @@ export type Mentoria = {
   preguntas: string | null;
   concluida: boolean;
   difusion: DifusionChecklist;
+  flyerUrl: string | null;
 };
 
 // Objeto "borrador" para abrir el panel sin haber creado nada todavía en
@@ -87,6 +88,7 @@ export function mentoriaVacia(fecha: string, tipoMentoria: TipoMentoria = TIPOS_
     preguntas: null,
     concluida: false,
     difusion: { canva: false, telegram: false, whatsapp: false, marketing: false, skool: false },
+    flyerUrl: null,
   };
 }
 
@@ -251,6 +253,7 @@ type FilaMentoria = {
   ideas: string | null;
   preguntas: string | null;
   concluida: boolean;
+  flyer_url: string | null;
   coord_mentores?: { nombre: string } | null;
   coord_mentoria_difusion?: DifusionChecklist[] | DifusionChecklist | null;
 };
@@ -277,10 +280,11 @@ function filaAMentoria(f: FilaMentoria): Mentoria {
     preguntas: f.preguntas,
     concluida: f.concluida,
     difusion: difusionFila ?? { canva: false, telegram: false, whatsapp: false, marketing: false, skool: false },
+    flyerUrl: f.flyer_url,
   };
 }
 
-const SELECT_MENTORIA = "id, mentor_id, tipo_mentoria, tema, fecha, hora, material, notas, copy_previa, copy_plataforma, aud_inicial, aud_media, aud_final, obs_pub, ideas, preguntas, concluida, coord_mentores(nombre), coord_mentoria_difusion(canva, telegram, whatsapp, marketing, skool)";
+const SELECT_MENTORIA = "id, mentor_id, tipo_mentoria, tema, fecha, hora, material, notas, copy_previa, copy_plataforma, aud_inicial, aud_media, aud_final, obs_pub, ideas, preguntas, concluida, flyer_url, coord_mentores(nombre), coord_mentoria_difusion(canva, telegram, whatsapp, marketing, skool)";
 
 export async function listarMentorias(filtros?: { tipoMentoria?: TipoMentoria; mentorId?: string }): Promise<Mentoria[]> {
   let q = supabase.from("coord_mentorias").select(SELECT_MENTORIA).order("fecha", { ascending: false });
@@ -633,4 +637,19 @@ export async function guardarFlyerLayout(tipoMentoria: TipoMentoria, cfg: Layout
     .from("coord_flyer_layouts")
     .upsert({ tipo_mentoria: tipoMentoria, cfg, actualizado_en: new Date().toISOString() }, { onConflict: "tipo_mentoria" });
   if (error) throw error;
+}
+
+// Guarda el PNG final del flyer (ya acomodado a mano) y lo enlaza a su
+// mentoría — path fijo por mentoriaId (upsert), así que volver a guardar
+// reemplaza la versión anterior en vez de acumular archivos viejos. Se ve
+// después en la pestaña Difusión de esa misma mentoría.
+export async function guardarFlyerMentoria(mentoriaId: string, archivo: Blob): Promise<string> {
+  const ruta = await subirFlyerGenerado(mentoriaId, archivo);
+  const url = urlPublicaAssetFlyer(ruta);
+  const { error } = await supabase
+    .from("coord_mentorias")
+    .update({ flyer_url: url, actualizado_en: new Date().toISOString() })
+    .eq("id", mentoriaId);
+  if (error) throw error;
+  return url;
 }
