@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Oswald } from "next/font/google";
 import { ImagePlus, Download, RotateCcw, Trash2, Wand2 } from "lucide-react";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
+
+// Fuente propia solo para el flyer de Lunes Sinergético — su fondo ya trae
+// la cinta roja "LUNES SINERGÉTICO" con una tipografía condensada/bold
+// distinta a la del resto de fondos (que usan Arial normal); el tema/nombre/
+// fecha que dibuja el canvas encima debe hacer juego con eso, no con el
+// resto de tipos.
+const oswald = Oswald({ subsets: ["latin"], weight: ["600", "700"] });
 
 // Porte de un generador de flyers que ya funcionaba como herramienta local
 // aparte (canvas 2D, sin API de imagen/IA) — ver el HTML original que el
@@ -212,6 +220,18 @@ function fechaDeSesion(tipo: TipoMentoria, semanaInicioIso: string): string {
   return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
 }
 
+const MESES = [
+  "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+  "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
+];
+
+// "2026-10-05" -> "05 OCTUBRE DEL 2026" — mismo formato que ya trae el fondo
+// de Lunes Sinergético en su píldora de fecha.
+function formatearFechaFlyer(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d} ${MESES[Number(m) - 1]} DEL ${y}`;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
@@ -264,6 +284,17 @@ export function FlyersContenido() {
   const [fotoId, setFotoId] = useState("");
   const [nombreMentor, setNombreMentor] = useState("");
   const [tema, setTema] = useState("");
+  // Solo se dibuja/edita para Lunes Sinergético — el resto de fondos no
+  // tienen píldora de fecha.
+  const [fecha, setFecha] = useState("");
+  const [fontListo, setFontListo] = useState(false);
+
+  useEffect(() => {
+    document.fonts
+      .load(`700 40px ${oswald.style.fontFamily}`)
+      .then(() => setFontListo(true))
+      .catch(() => setFontListo(true));
+  }, []);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imagenesRef = useRef<{ bg: HTMLImageElement | null; p: HTMLImageElement | null }>({ bg: null, p: null });
@@ -388,9 +419,11 @@ export function FlyersContenido() {
 
   function elegirSesion(s: Sesion) {
     setTipoActivo(s.tipo);
-    setCfg({ ...DEFAULT_CFG, ...(layouts[s.tipo] || {}) });
+    const base = s.tipo === "lunes-sin" ? { ...DEFAULT_CFG, alineacionTema: "center" as const } : DEFAULT_CFG;
+    setCfg({ ...base, ...(layouts[s.tipo] || {}) });
     setNombreMentor(s.mentor);
     setTema(s.tema);
+    setFecha(formatearFechaFlyer(fechaDeSesion(s.tipo, semanaInicio)));
     setFondoId(assetFondoDe(s.tipo)?.id ?? "");
     setFotoId(mejorFotoPara(s.mentor)?.id ?? "");
   }
@@ -537,12 +570,19 @@ export function FlyersContenido() {
     }
 
     const alpha = cfg.opacidadFondo / 100;
+    // Lunes Sinergético usa un fondo distinto (ya trae la cinta roja "LUNES
+    // SINERGÉTICO" y dos píldoras blancas vacías para fecha/nombre) — el
+    // tema va directo sobre la foto sin caja oscura, y nombre/fecha se
+    // escriben en rojo DENTRO de esas píldoras en vez de en una caja negra.
+    const esLunesSin = tipoActivo === "lunes-sin";
+    const rojoSinergetico = "#E2141C";
+    const fuenteSinergetico = oswald.style.fontFamily;
 
     ctx.textBaseline = "top";
     ctx.fillStyle = "#fff";
     ctx.shadowColor = "rgba(0,0,0,.65)";
-    ctx.shadowBlur = 8;
-    ctx.font = `800 ${cfg.ts}px Arial`;
+    ctx.shadowBlur = esLunesSin ? 14 : 8;
+    ctx.font = esLunesSin ? `700 ${cfg.ts}px ${fuenteSinergetico}` : `800 ${cfg.ts}px Arial`;
     const topic = tema || "Aquí aparecerá el tema de la mentoría";
     const ls = wrap(ctx, topic, cfg.tw * 16, ctx.font);
     const tx = cfg.tx * 16;
@@ -560,17 +600,63 @@ export function FlyersContenido() {
         : cfg.alineacionTema === "right"
           ? tx + anchoContenedor - anchoLinea
           : tx;
-    ctx.save();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = `rgba(9,23,43,${alpha})`;
-    ctx.beginPath();
-    ctx.roundRect(cajaX - padX, ty - padY, anchoLinea + padX * 2, ls.length * lh + padY * 2, 18);
-    ctx.fill();
-    ctx.restore();
+    if (!esLunesSin) {
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `rgba(9,23,43,${alpha})`;
+      ctx.beginPath();
+      ctx.roundRect(cajaX - padX, ty - padY, anchoLinea + padX * 2, ls.length * lh + padY * 2, 18);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.textAlign = cfg.alineacionTema;
     const textoX = cfg.alineacionTema === "center" ? cajaX + anchoLinea / 2 : cfg.alineacionTema === "right" ? cajaX + anchoLinea : cajaX;
+    if (esLunesSin) {
+      // Sin caja detrás, el fondo (foto + viñeta) puede variar de contraste
+      // — un contorno negro grueso mantiene el texto legible en cualquier
+      // foto, no solo en la de prueba.
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(0,0,0,0.85)";
+      ctx.lineJoin = "round";
+      ls.forEach((l, i) => ctx.strokeText(l, textoX, ty + i * lh));
+    }
     ls.forEach((l, i) => ctx.fillText(l, textoX, ty + i * lh));
     ctx.textAlign = "left";
+    ctx.shadowBlur = 0;
+
+    if (esLunesSin) {
+      // Nombre y fecha van DENTRO de las dos píldoras blancas que ya trae el
+      // fondo — nx/ny se arrastran hasta el centro de la píldora de abajo
+      // (nombre) una sola vez por tipo, y la fecha se calcula a una
+      // distancia fija arriba de esa misma posición (las dos píldoras del
+      // fondo están siempre a la misma distancia entre sí).
+      ctx.font = `700 ${cfg.ns}px ${fuenteSinergetico}`;
+      const mentorText = (nombreMentor || "Nombre del especialista").toUpperCase();
+      const nameX = cfg.nx * 16;
+      const nameY = cfg.ny * 9;
+      ctx.save();
+      ctx.translate(nameX, nameY);
+      ctx.transform(1, 0, -0.18, 1, 0, 0);
+      ctx.textAlign = "center";
+      ctx.fillStyle = rojoSinergetico;
+      ctx.fillText(mentorText, 0, 0);
+      ctx.restore();
+
+      if (fecha) {
+        const fechaSize = cfg.ns * 0.55;
+        ctx.font = `700 ${fechaSize}px ${fuenteSinergetico}`;
+        const fechaY = nameY - cfg.ns * 1.55 - 20;
+        ctx.save();
+        ctx.translate(nameX, fechaY);
+        ctx.transform(1, 0, -0.18, 1, 0, 0);
+        ctx.textAlign = "center";
+        ctx.fillStyle = rojoSinergetico;
+        ctx.fillText(fecha.toUpperCase(), 0, 0);
+        ctx.restore();
+      }
+      ctx.textAlign = "left";
+      return;
+    }
 
     ctx.font = `bold ${cfg.ns}px Arial`;
     const mentorText = nombreMentor || "Nombre del especialista";
@@ -591,7 +677,7 @@ export function FlyersContenido() {
     ctx.shadowBlur = 0;
   }
 
-  useEffect(dibujar, [cfg, tema, nombreMentor]);
+  useEffect(dibujar, [cfg, tema, nombreMentor, fecha, tipoActivo, fontListo]);
 
   function actualizarCfg(parcial: Partial<LayoutFlyer>) {
     setCfg((c) => {
@@ -828,6 +914,17 @@ export function FlyersContenido() {
                 className="h-24 w-full rounded-lg border border-silver bg-surface-2 px-3 py-2 text-sm outline-none"
               />
             </div>
+            {tipoActivo === "lunes-sin" && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted">Fecha (solo este flyer la muestra)</label>
+                <input
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
+                  placeholder="05 OCTUBRE DEL 2026"
+                  className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none"
+                />
+              </div>
+            )}
 
             <div className="space-y-3 border-t border-silver pt-3">
               <div>
