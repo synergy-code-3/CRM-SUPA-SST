@@ -312,6 +312,14 @@ export function FlyersContenido() {
   const imagenesRef = useRef<{ bg: HTMLImageElement | null; p: HTMLImageElement | null }>({ bg: null, p: null });
   const dragRef = useRef<{ target: "photo" | "topic" | "name" | "date"; x: number; y: number; cfg: LayoutFlyer } | null>(null);
   const peticionImagenRef = useRef(0);
+  // Canvas auxiliar para componer sombra + halo difuminado + foto nítida
+  // aisladas entre sí antes de pegarlas sobre el fondo — necesario porque
+  // "destination-over" no solo reordena contra los drawImage anteriores de
+  // la foto, reordena contra TODO lo ya pintado en el canvas principal
+  // (incluido el fondo, que es opaco), así que ahí la sombra/el halo
+  // terminaban detrás del fondo y se veían invisibles sin importar qué tan
+  // fuertes fueran los sliders.
+  const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   function cargarTodo() {
     setCargando(true);
@@ -562,27 +570,36 @@ export function FlyersContenido() {
     }
     if (p) {
       const r = photoRect(cfg);
-      ctx.save();
-      // Imagen nítida primero (queda como capa de arriba).
-      ctx.drawImage(p, r.x, r.y, r.w, r.h);
-      // Halo difuminado detrás de la misma imagen — suaviza el contorno duro
-      // que dejan algunos recortes de fondo sin tapar la cara (el blur solo
-      // se nota en el borde, porque el centro queda cubierto por la capa
-      // nítida de arriba).
-      ctx.globalCompositeOperation = "destination-over";
-      if (cfg.fotoBlur > 0) {
-        ctx.filter = `blur(${cfg.fotoBlur}px)`;
-        ctx.drawImage(p, r.x, r.y, r.w, r.h);
-        ctx.filter = "none";
+      if (!offCanvasRef.current) {
+        offCanvasRef.current = document.createElement("canvas");
+        offCanvasRef.current.width = 1600;
+        offCanvasRef.current.height = 900;
       }
-      // Sombra suave hasta el fondo, para dar profundidad.
+      const off = offCanvasRef.current;
+      const octx = off.getContext("2d")!;
+      octx.clearRect(0, 0, 1600, 900);
+      // Se arma en un canvas aparte (transparente) para que "sombra" y "halo"
+      // queden aislados y no se compongan contra el fondo ya pintado del
+      // canvas principal — ahí, ambos apilan en orden normal (el primero
+      // dibujado queda más atrás), sin necesitar destination-over.
       if (cfg.sombraOpacidad > 0) {
-        ctx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
-        ctx.shadowBlur = cfg.sombraTamano;
-        ctx.shadowOffsetY = cfg.sombraTamano / 2;
-        ctx.drawImage(p, r.x, r.y, r.w, r.h);
+        octx.save();
+        octx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
+        octx.shadowBlur = cfg.sombraTamano;
+        octx.shadowOffsetY = cfg.sombraTamano / 2;
+        octx.drawImage(p, r.x, r.y, r.w, r.h);
+        octx.restore();
       }
-      ctx.restore();
+      if (cfg.fotoBlur > 0) {
+        octx.save();
+        octx.filter = `blur(${cfg.fotoBlur}px)`;
+        octx.drawImage(p, r.x, r.y, r.w, r.h);
+        octx.restore();
+      }
+      // Imagen nítida al final (capa de arriba) — tapa el centro del halo,
+      // que solo se termina notando en el borde.
+      octx.drawImage(p, r.x, r.y, r.w, r.h);
+      ctx.drawImage(off, 0, 0);
     }
 
     const alpha = cfg.opacidadFondo / 100;
