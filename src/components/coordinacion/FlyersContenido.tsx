@@ -38,7 +38,6 @@ type LayoutFlyer = {
   nx: number; ny: number; ns: number;
   opacidadFondo: number; // 0-100 — opacidad del rectángulo oscuro detrás del tema y del nombre
   alineacionTema: AlineacionTexto;
-  fotoBlur: number; // px — difuminado del contorno de la foto del mentor
   sombraTamano: number; // px — shadowBlur de la sombra detrás de la foto
   sombraOpacidad: number; // 0-100
   fx: number; fy: number; // posición de la fecha (solo Lunes Sinergético) — independiente de nx/ny
@@ -61,7 +60,6 @@ const DEFAULT_CFG: LayoutFlyer = {
   nx: 44, ny: 91, ns: 42,
   opacidadFondo: 60,
   alineacionTema: "left",
-  fotoBlur: 4,
   sombraTamano: 28,
   sombraOpacidad: 45,
   fx: 10,
@@ -262,7 +260,6 @@ const CAMPOS_SLIDER: { k: keyof LayoutFlyer; label: string; min: number; max: nu
   { k: "ts", label: "Tamaño del tema (px)", min: 18, max: 95 },
   { k: "ns", label: "Tamaño del nombre (px)", min: 18, max: 95 },
   { k: "opacidadFondo", label: "Opacidad del fondo oscuro (%)", min: 0, max: 100 },
-  { k: "fotoBlur", label: "Difuminado del contorno de la foto (px)", min: 0, max: 20 },
   { k: "sombraTamano", label: "Tamaño de la sombra (px)", min: 0, max: 80 },
   { k: "sombraOpacidad", label: "Opacidad de la sombra (%)", min: 0, max: 100 },
 ];
@@ -320,15 +317,6 @@ export function FlyersContenido() {
   // opaco), así que ahí la sombra se veía invisible sin importar qué tan
   // fuerte fuera el slider.
   const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Filtro SVG erode+blur para el difuminado del contorno de la foto — a
-  // diferencia de un blur plano (que agrega un halo hacia AFUERA del
-  // recorte, sin tocar el delineado blanco que deja el borrado de fondo),
-  // feMorphology "come" el canal alfa hacia ADENTRO desde el borde real de
-  // la silueta (sin importar cuánto relleno transparente traiga la imagen
-  // alrededor), y feGaussianBlur suaviza esa nueva orilla. radius/
-  // stdDeviation se actualizan en cada dibujo según el slider.
-  const erodeRef = useRef<SVGFEMorphologyElement>(null);
-  const blurBordeRef = useRef<SVGFEGaussianBlurElement>(null);
 
   function cargarTodo() {
     setCargando(true);
@@ -588,8 +576,8 @@ export function FlyersContenido() {
       const octx = off.getContext("2d")!;
       octx.clearRect(0, 0, 1600, 900);
 
-      // Sombra primero (detrás) — sigue la silueta completa, sin el erode de
-      // abajo (la sombra debe seguir viéndose del tamaño real de la persona).
+      // Sombra primero (detrás), luego la foto nítida encima — sin tocar el
+      // contorno de la imagen.
       if (cfg.sombraOpacidad > 0) {
         octx.save();
         octx.shadowColor = `rgba(0,0,0,${cfg.sombraOpacidad / 100})`;
@@ -598,21 +586,7 @@ export function FlyersContenido() {
         octx.drawImage(p, r.x, r.y, r.w, r.h);
         octx.restore();
       }
-
-      // Foto, con el borde erosionado+difuminado hacia ADENTRO si el slider
-      // está arriba de 0 — erode "come" el canal alfa desde el contorno real
-      // de la silueta (sin importar cuánto relleno transparente traiga la
-      // imagen alrededor, a diferencia de encoger el rectángulo destino),
-      // así sí tapa el delineado blanco que deja el borrado de fondo en vez
-      // de solo agregarle un brillo por fuera.
-      octx.save();
-      if (cfg.fotoBlur > 0) {
-        erodeRef.current?.setAttribute("radius", String(cfg.fotoBlur));
-        blurBordeRef.current?.setAttribute("stdDeviation", String(cfg.fotoBlur * 0.6));
-        octx.filter = "url(#flyer-borde-difuminado)";
-      }
       octx.drawImage(p, r.x, r.y, r.w, r.h);
-      octx.restore();
 
       ctx.drawImage(off, 0, 0);
     }
@@ -898,16 +872,6 @@ export function FlyersContenido() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="shell rounded-[1.75rem] p-2 diffused">
           <div className="core rounded-[calc(1.75rem-0.5rem)] p-4">
-            {/* Filtro invisible usado por dibujar() (octx.filter =
-                "url(#flyer-borde-difuminado)") para el difuminado del
-                contorno de la foto — radius/stdDeviation se actualizan en
-                cada dibujo según el slider, no son fijos. */}
-            <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
-              <filter id="flyer-borde-difuminado">
-                <feMorphology ref={erodeRef} operator="erode" radius="0" in="SourceGraphic" result="erosionado" />
-                <feGaussianBlur ref={blurBordeRef} in="erosionado" stdDeviation="0" />
-              </filter>
-            </svg>
             <canvas
               ref={canvasRef}
               width={1600}

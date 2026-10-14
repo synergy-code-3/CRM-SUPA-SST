@@ -614,7 +614,6 @@ export type LayoutFlyer = {
   nx: number; ny: number; ns: number;
   opacidadFondo: number;
   alineacionTema: "left" | "center" | "right";
-  fotoBlur: number;
   sombraTamano: number;
   sombraOpacidad: number;
   fx: number;
