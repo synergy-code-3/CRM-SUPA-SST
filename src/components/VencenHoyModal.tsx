@@ -76,7 +76,7 @@ export function VencenHoyModal({ onClose, onRevocado }: { onClose: () => void; o
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 overflow-y-auto bg-foreground/30 p-6 backdrop-blur-[2px] md:flex-row"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="shell w-full max-w-lg rounded-[2rem] p-2 diffused-lg animate-fade-in">
@@ -148,6 +148,9 @@ export function VencenHoyModal({ onClose, onRevocado }: { onClose: () => void; o
         </div>
       </div>
 
+      {/* Panel lateral (hermano del modal, no un overlay encima) — clic en
+          "Ver perfil" de otro cliente reemplaza este mismo panel (verPerfilId
+          es un solo valor), no se van apilando. */}
       {verPerfilId && <MiniPerfilVenceHoy clienteId={verPerfilId} onClose={() => setVerPerfilId(null)} />}
     </div>
   );
@@ -181,24 +184,20 @@ function MiniPerfilVenceHoy({ clienteId, onClose }: { clienteId: string; onClose
     : [];
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground/40 p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-silver bg-surface p-5 shadow-xl">
-        {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
-        {!cliente && !error && <p className="py-8 text-center text-sm text-muted">Cargando perfil…</p>}
-        {cliente && (
-          <>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{cliente.nombre}</h3>
-                <p className="text-xs text-muted">{cliente.email}</p>
-              </div>
-              <button onClick={onClose} className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2">
-                <X className="h-4.5 w-4.5" strokeWidth={1.75} />
-              </button>
+    <div className="w-full max-w-sm flex-none animate-fade-in rounded-2xl border border-silver bg-surface p-5 shadow-xl md:max-h-[85vh] md:overflow-y-auto">
+      {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
+      {!cliente && !error && <p className="py-8 text-center text-sm text-muted">Cargando perfil…</p>}
+      {cliente && (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">{cliente.nombre}</h3>
+              <p className="text-xs text-muted">{cliente.email}</p>
             </div>
+            <button onClick={onClose} className="ease-spring rounded-full p-1.5 text-muted transition hover:bg-surface-2">
+              <X className="h-4.5 w-4.5" strokeWidth={1.75} />
+            </button>
+          </div>
 
             <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
               <DatoMini label="Teléfono" valor={cliente.telefono} />
@@ -251,9 +250,8 @@ function MiniPerfilVenceHoy({ clienteId, onClose }: { clienteId: string; onClose
               Abrir perfil completo (pestaña nueva)
               <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
             </Link>
-          </>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
