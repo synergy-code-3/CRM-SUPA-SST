@@ -24,6 +24,11 @@ export type MensajeHistorial = { role: "user" | "assistant"; content: string };
 // completions), un solo endpoint que da acceso a varios proveedores/modelos
 // con una misma key. OPENROUTER_MODEL es configurable sin tocar código, por
 // si el modelo default deja de estar disponible o se quiere cambiar.
+// Se probó GroqCloud (2026-10-15) pero su tier gratis limita a 8,000
+// tokens/minuto en TODA la organización, sin importar el modelo — la base
+// de conocimiento sola ya pesa ~19,000 tokens por petición, así que ningún
+// modelo gratis de Groq la soporta. Se queda en OpenRouter hasta que haya
+// un plan pago de Groq o se recorte la base de conocimiento por pregunta.
 // `historial` = los últimos mensajes de la MISMA conversación (ver
 // AsistenteAbeja.tsx) — sin esto, cada pregunta se respondía aislada, sin
 // memoria de lo que ya se había dicho.
