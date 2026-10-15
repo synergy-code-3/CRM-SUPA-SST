@@ -760,8 +760,13 @@ export function FlyersContenido() {
     ctx.fill();
     ctx.restore();
 
+    // El resto del texto del flyer usa textBaseline "top" — para el nombre
+    // se cambia a "middle" solo aquí, centrado en la píldora (si no, queda
+    // pegado arriba por el espacio de ascendentes que deja "top").
+    ctx.textBaseline = "middle";
     ctx.fillStyle = "#fff";
-    ctx.fillText(mentorText, nombreX, nameY);
+    ctx.fillText(mentorText, nombreX, iconCy);
+    ctx.textBaseline = "top";
     ctx.shadowBlur = 0;
   }
 
