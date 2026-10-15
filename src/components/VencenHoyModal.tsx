@@ -242,6 +242,17 @@ function MiniPerfilVenceHoy({ clienteId, onClose }: { clienteId: string; onClose
               )}
             </div>
 
+            <div className="mt-3">
+              <p className="text-xs font-medium text-muted">Notas de soporte</p>
+              {cliente.notasSoporte ? (
+                <p className="mt-1 whitespace-pre-wrap rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-foreground">
+                  {cliente.notasSoporte}
+                </p>
+              ) : (
+                <p className="mt-1 rounded-lg bg-surface-2 p-2.5 text-xs text-muted">Sin notas de soporte.</p>
+              )}
+            </div>
+
             <Link
               href="/clientes"
               target="_blank"
