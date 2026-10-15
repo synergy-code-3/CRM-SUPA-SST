@@ -119,6 +119,43 @@ export async function listarTodosClientes(): Promise<ClienteResumen[]> {
   }));
 }
 
+export type ClienteVenceHoy = { id: string; nombre: string; email: string };
+
+type FilaVenceHoy = Pick<
+  ClienteRow,
+  "id" | "nombre" | "email" | "acceso_plataforma" | "fecha_inscripcion" | "fecha_renovacion" | "etiqueta" | "etiqueta_asignada_en" | "etiquetas_extra"
+>;
+
+// Membresía anual del Club (finAccesoConEtiqueta: fecha_renovacion o
+// fecha_inscripcion +1 año, con el bono de Black Access) — NO es lo mismo
+// que vencimiento_skool (listarTodosClientes/api/resumen), que es la fecha
+// de acceso a Skool, un dato aparte. Se escanea todo porque el cálculo
+// depende de la etiqueta por cliente, no de una columna lista para filtrar
+// en SQL — en la práctica "vence hoy" son pocos clientes por día.
+export async function listarClientesQueVencenHoy(): Promise<ClienteVenceHoy[]> {
+  const filas = await traerTodo<FilaVenceHoy>((from, to) =>
+    supabase
+      .from("clientes")
+      .select("id,nombre,email,acceso_plataforma,fecha_inscripcion,fecha_renovacion,etiqueta,etiqueta_asignada_en,etiquetas_extra")
+      .is("eliminado_en", null)
+      .range(from, to)
+  );
+
+  const hoy = new Date();
+  const hoyY = hoy.getFullYear();
+  const hoyM = hoy.getMonth();
+  const hoyD = hoy.getDate();
+
+  return filas
+    .filter((r) => {
+      if ((r.acceso_plataforma ?? "").trim().toLowerCase() === "revocado") return false;
+      const info = finAccesoConEtiqueta(r.fecha_inscripcion, r.fecha_renovacion, r.etiqueta, r.etiqueta_asignada_en, r.etiquetas_extra ?? []);
+      if (info.vitalicio || !info.fecha) return false;
+      return info.fecha.getFullYear() === hoyY && info.fecha.getMonth() === hoyM && info.fecha.getDate() === hoyD;
+    })
+    .map((r) => ({ id: r.id, nombre: r.nombre, email: r.email }));
+}
+
 export type EstadoFiltro = "todos" | "activos" | "revocados";
 export type RegionFiltro = "todos" | "MX" | "US" | "LATAM";
 export type VigenciaFiltro = "actuales" | "futuros" | "todos";

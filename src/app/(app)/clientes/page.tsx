@@ -14,11 +14,13 @@ import {
   Check,
   Upload,
   Download,
+  ShieldX,
 } from "lucide-react";
 import type { Cliente } from "@/lib/types";
 import { ClientePanel } from "@/components/ClientePanel";
 import { NuevoClienteModal } from "@/components/NuevoClienteModal";
 import { ImportarClientesModal } from "@/components/ImportarClientesModal";
+import { VencenHoyModal } from "@/components/VencenHoyModal";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
@@ -98,6 +100,8 @@ function ClientesPageInner() {
   const puedeCrear = !!usuario && tienePermiso(usuario.rol, "crearCliente");
   const puedeImportar = !!usuario && tienePermiso(usuario.rol, "importarCsv");
   const puedeExportar = !!usuario && tienePermiso(usuario.rol, "exportarCsv");
+  const puedeRevocar = !!usuario && tienePermiso(usuario.rol, "revocarAccesoCliente");
+  const [mostrarVencenHoy, setMostrarVencenHoy] = useState(false);
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [total, setTotal] = useState(0);
@@ -396,6 +400,16 @@ function ClientesPageInner() {
             >
               <Upload className="h-4 w-4" strokeWidth={2} />
               Importar CSV
+            </button>
+          )}
+          {puedeRevocar && (
+            <button
+              onClick={() => setMostrarVencenHoy(true)}
+              title="Membresía anual del Club (no Skool) que vence hoy exactamente"
+              className="ease-spring flex items-center gap-2 rounded-xl border border-silver bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2"
+            >
+              <ShieldX className="h-4 w-4" strokeWidth={2} />
+              Vence hoy
             </button>
           )}
           {puedeCrear && (
@@ -847,6 +861,10 @@ function ClientesPageInner() {
           onClose={() => setMostrarImportar(false)}
           onTerminado={() => setRecargaKey((k) => k + 1)}
         />
+      )}
+
+      {mostrarVencenHoy && (
+        <VencenHoyModal onClose={() => setMostrarVencenHoy(false)} onRevocado={() => setRecargaKey((k) => k + 1)} />
       )}
     </div>
   );
