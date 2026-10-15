@@ -614,11 +614,25 @@ export function FlyersContenido() {
     const esLunesSin = tipoActivo === "lunes-sin";
     const rojoSinergetico = "#E2141C";
     const fuenteSinergetico = oswald.style.fontFamily;
+    // Color de acento del tema/nombre — el mismo con el que cada tipo de
+    // mentoría ya se identifica en Skool (ver TIPOS_MENTORIA), así el flyer
+    // hace juego con el fondo sin tener que fijar un verde a mano.
+    const colorAcento = TIPOS_MENTORIA[tipoActivo].color;
+    const textoOscuro = "#10241a";
 
     ctx.textBaseline = "top";
-    ctx.fillStyle = "#fff";
-    ctx.shadowColor = "rgba(0,0,0,.65)";
-    ctx.shadowBlur = esLunesSin ? 14 : 8;
+    if (esLunesSin) {
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "rgba(0,0,0,.65)";
+      ctx.shadowBlur = 14;
+    } else {
+      // Caja clara (ver más abajo) en vez de la caja oscura de antes — el
+      // texto blanco con sombra ya no contrasta ahí, pasa a oscuro con una
+      // sombra suave solo para despegarlo un poco del fondo claro.
+      ctx.fillStyle = textoOscuro;
+      ctx.shadowColor = "rgba(0,0,0,.18)";
+      ctx.shadowBlur = 3;
+    }
     ctx.font = esLunesSin ? `700 ${cfg.ts}px ${fuenteSinergetico}` : `800 ${cfg.ts}px Arial`;
     const topic = tema || "Aquí aparecerá el tema de la mentoría";
     const ls = wrap(ctx, topic, cfg.tw * 16, ctx.font);
@@ -638,11 +652,22 @@ export function FlyersContenido() {
           ? tx + anchoContenedor - anchoLinea
           : tx;
     if (!esLunesSin) {
+      // Caja clara con una barra de acento a la izquierda (tipo "cita"),
+      // como en la referencia de diseño — reemplaza la caja oscura/opaca de
+      // antes, que no hacía juego con fondos claros tipo Jueves.
+      const cajaY = ty - padY;
+      const cajaW = anchoLinea + padX * 2;
+      const cajaH = ls.length * lh + padY * 2;
+      const barraW = 8;
       ctx.save();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = `rgba(9,23,43,${alpha})`;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
       ctx.beginPath();
-      ctx.roundRect(cajaX - padX, ty - padY, anchoLinea + padX * 2, ls.length * lh + padY * 2, 18);
+      ctx.roundRect(cajaX - padX, cajaY, cajaW, cajaH, 14);
+      ctx.fill();
+      ctx.fillStyle = colorAcento;
+      ctx.beginPath();
+      ctx.roundRect(cajaX - padX, cajaY, barraW, cajaH, [14, 0, 0, 14]);
       ctx.fill();
       ctx.restore();
     }
@@ -701,15 +726,42 @@ export function FlyersContenido() {
     const namePadX = 22;
     const namePadY = 10;
     const nameW = ctx.measureText(mentorText).width;
+    // Píldora (totalmente redondeada) con un ícono de persona a la
+    // izquierda del nombre, como en la referencia de diseño — antes era una
+    // caja rectangular sin ícono.
+    const boxH = cfg.ns * 1.22 + namePadY * 2;
+    const boxY = nameY - namePadY;
+    const iconMargen = 7;
+    const iconD = boxH - iconMargen * 2;
+    const iconHueco = 12;
+    const nombreX = nameX - namePadX + iconMargen + iconD + iconHueco;
+    const boxX = nameX - namePadX;
+    const boxW = nombreX - boxX + nameW + namePadX;
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.fillStyle = `rgba(0,0,0,${Math.min(1, alpha + 0.1)})`;
     ctx.beginPath();
-    ctx.roundRect(nameX - namePadX, nameY - namePadY, nameW + namePadX * 2, cfg.ns * 1.22 + namePadY * 2, 16);
+    ctx.roundRect(boxX, boxY, boxW, boxH, boxH / 2);
+    ctx.fill();
+
+    const iconCx = boxX + iconMargen + iconD / 2;
+    const iconCy = boxY + boxH / 2;
+    ctx.fillStyle = colorAcento;
+    ctx.beginPath();
+    ctx.arc(iconCx, iconCy, iconD / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    const r = iconD / 2;
+    ctx.beginPath();
+    ctx.arc(iconCx, iconCy - r * 0.32, r * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(iconCx, iconCy + r * 0.78, r * 0.52, Math.PI, 0, false);
     ctx.fill();
     ctx.restore();
+
     ctx.fillStyle = "#fff";
-    ctx.fillText(mentorText, nameX, nameY);
+    ctx.fillText(mentorText, nombreX, nameY);
     ctx.shadowBlur = 0;
   }
 
@@ -786,7 +838,7 @@ export function FlyersContenido() {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return null;
     const cajas: { target: "photo" | "topic" | "name" | "date"; x: number; y: number; w: number; h: number }[] = [
-      { target: "name", x: cfg.nx * 16, y: cfg.ny * 9, w: Math.max(200, (nombreMentor || "Nombre").length * cfg.ns * 0.63), h: cfg.ns * 1.35 },
+      { target: "name", x: cfg.nx * 16, y: cfg.ny * 9, w: 60 + Math.max(200, (nombreMentor || "Nombre").length * cfg.ns * 0.63), h: cfg.ns * 1.35 },
       { target: "topic", x: cfg.tx * 16, y: cfg.ty * 9, w: cfg.tw * 16, h: topicHeight(ctx) },
       { target: "photo", ...photoRect(cfg) },
     ];
