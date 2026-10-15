@@ -19,6 +19,46 @@ const TAMANO_BOTON = 80; // h-20 w-20
 const MARGEN_PANTALLA = 8;
 const UMBRAL_ARRASTRE_PX = 6; // menos que esto se trata como clic, no arrastre
 const LLAVE_POSICION = "abeja_posicion";
+const ANCHO_PANEL_MAX = 352; // 22rem — mismo tope que min(88vw,22rem) de abajo
+const GAP_PANEL_BOTON = 12;
+
+type PosicionPanel = { left: number; top: number; maxHeight: number };
+
+// Antes el panel era hijo del mismo contenedor flex que la abejita
+// (items-end + flex-col), así que su posición dependía por completo de
+// dónde hubiera quedado la abejita arrastrada — si estaba cerca de una
+// orilla, el panel se salía de la pantalla (por abajo si estaba abajo, por
+// la derecha si estaba muy a la izquierda, etc.). Esto calcula su posición
+// en píxeles reales cada vez que se abre, igual que un tooltip: intenta
+// arriba del botón, se voltea hacia abajo si no cabe, y siempre se recorta
+// al espacio disponible.
+function calcularPosicionPanel(botonEl: HTMLElement | null): PosicionPanel {
+  const rect = botonEl?.getBoundingClientRect() ?? {
+    left: window.innerWidth - TAMANO_BOTON - MARGEN_PANTALLA,
+    right: window.innerWidth - MARGEN_PANTALLA,
+    top: window.innerHeight - TAMANO_BOTON - MARGEN_PANTALLA,
+    bottom: window.innerHeight - MARGEN_PANTALLA,
+  };
+
+  const anchoPanel = Math.min(window.innerWidth * 0.88, ANCHO_PANEL_MAX);
+  const left = Math.max(MARGEN_PANTALLA, Math.min(rect.right - anchoPanel, window.innerWidth - anchoPanel - MARGEN_PANTALLA));
+
+  const espacioArriba = rect.top - GAP_PANEL_BOTON - MARGEN_PANTALLA;
+  const espacioAbajo = window.innerHeight - rect.bottom - GAP_PANEL_BOTON - MARGEN_PANTALLA;
+  const alturaMax = window.innerHeight * 0.7;
+
+  let top: number;
+  let maxHeight: number;
+  if (espacioArriba >= espacioAbajo) {
+    maxHeight = Math.max(120, Math.min(espacioArriba, alturaMax));
+    top = Math.max(MARGEN_PANTALLA, rect.top - GAP_PANEL_BOTON - maxHeight);
+  } else {
+    maxHeight = Math.max(120, Math.min(espacioAbajo, alturaMax));
+    top = rect.bottom + GAP_PANEL_BOTON;
+  }
+
+  return { left, top, maxHeight };
+}
 
 // preguntaOriginal solo se llena cuando no hubo match (tema null) — es lo
 // que la persona escribió, para precargarlo en el mensaje de WhatsApp.
@@ -40,6 +80,7 @@ export function AsistenteAbeja() {
   // por navegador (localStorage) — conveniencia de por-visitante, no datos
   // que haga falta sincronizar entre dispositivos.
   const [posicion, setPosicion] = useState<{ x: number; y: number } | null>(null);
+  const [posicionPanel, setPosicionPanel] = useState<PosicionPanel | null>(null);
 
   const timeoutGestoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arrastrandoRef = useRef(false);
@@ -56,6 +97,16 @@ export function AsistenteAbeja() {
       // localStorage no disponible — se queda en la posición por defecto.
     }
   }, []);
+
+  // Recalcula la posición del panel al abrirlo y si cambia el tamaño de
+  // pantalla mientras está abierto (ej. girar el celular).
+  useEffect(() => {
+    if (!abierto) return;
+    const recalcular = () => setPosicionPanel(calcularPosicionPanel(botonRef.current));
+    recalcular();
+    window.addEventListener("resize", recalcular);
+    return () => window.removeEventListener("resize", recalcular);
+  }, [abierto]);
 
   function alPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     if (e.button !== undefined && e.button !== 0) return; // solo clic izquierdo en mouse
@@ -152,13 +203,22 @@ export function AsistenteAbeja() {
   const preguntasIniciales = preguntasInicialesParaRol(usuario.rol);
 
   return (
-    <div
-      className={`fixed z-[90] flex flex-col items-end gap-3 ${posicion ? "" : "bottom-5 right-5"}`}
-      style={posicion ? { left: posicion.x, top: posicion.y, right: "auto", bottom: "auto" } : undefined}
-    >
-      {abierto && (
-        <div className="animate-abeja-pop shell w-[min(88vw,22rem)] rounded-[1.5rem] p-2 diffused-lg">
-          <div className="core flex max-h-[70vh] flex-col overflow-hidden rounded-[calc(1.5rem-0.5rem)]">
+    <>
+      {/* El panel ya no comparte contenedor con el botón (antes era
+          flex-col+items-end, así que la posición del botón determinaba por
+          completo dónde caía el panel — si la abejita estaba cerca de una
+          orilla, el panel se salía de la pantalla). Ahora es un elemento
+          aparte, posicionado en píxeles ya recortados al espacio disponible
+          (ver calcularPosicionPanel). */}
+      {abierto && posicionPanel && (
+        <div
+          className="animate-abeja-pop shell fixed z-[90] rounded-[1.5rem] p-2 diffused-lg"
+          style={{ left: posicionPanel.left, top: posicionPanel.top, width: `min(88vw, ${ANCHO_PANEL_MAX}px)` }}
+        >
+          <div
+            className="core flex flex-col overflow-hidden rounded-[calc(1.5rem-0.5rem)]"
+            style={{ maxHeight: posicionPanel.maxHeight }}
+          >
             <div className="flex items-center justify-between border-b border-silver px-4 py-3">
               <p className="text-sm font-semibold text-foreground">Abejita · Asistente</p>
               <button
@@ -244,15 +304,19 @@ export function AsistenteAbeja() {
         </div>
       )}
 
-      <button
-        ref={botonRef}
-        onPointerDown={alPointerDown}
-        onPointerMove={alPointerMove}
-        onPointerUp={alPointerUp}
-        onDragStart={(e) => e.preventDefault()}
-        aria-label="Abrir asistente (mantén presionado para arrastrar)"
-        className="ease-spring relative h-20 w-20 touch-none select-none transition hover:scale-105"
+      <div
+        className={`fixed z-[90] ${posicion ? "" : "bottom-5 right-5"}`}
+        style={posicion ? { left: posicion.x, top: posicion.y, right: "auto", bottom: "auto" } : undefined}
       >
+        <button
+          ref={botonRef}
+          onPointerDown={alPointerDown}
+          onPointerMove={alPointerMove}
+          onPointerUp={alPointerUp}
+          onDragStart={(e) => e.preventDefault()}
+          aria-label="Abrir asistente (mantén presionado para arrastrar)"
+          className="ease-spring relative h-20 w-20 touch-none select-none transition hover:scale-105"
+        >
         {/* Solo son 2 fotos fijas (no una serie de frames todavía) — el
             "movimiento" entre pose 1 y 2 es un crossfade + un pequeño pop de
             escala, no una animación cuadro por cuadro. Si en algún momento
@@ -278,7 +342,8 @@ export function AsistenteAbeja() {
             }`}
           />
         </span>
-      </button>
-    </div>
+        </button>
+      </div>
+    </>
   );
 }

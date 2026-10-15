@@ -269,7 +269,12 @@ function Marca({ workspaceActual, opciones }: { workspaceActual: string; opcione
             <ChevronsUpDown className="h-4 w-4" strokeWidth={1.75} />
           </button>
           {abierto && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-silver bg-surface py-1 diffused-lg">
+            // right-0 (no left-0): el botón que lo abre está pegado al borde
+            // derecho de su fila — anclarlo a la izquierda hacía que el menú
+            // creciera hacia la derecha y se saliera de la pantalla en
+            // espacios angostos (celular). Creciendo hacia la izquierda desde
+            // el botón se queda dentro salvo casos extremos.
+            <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-silver bg-surface py-1 diffused-lg">
               {opciones.map((o) => (
                 <Link
                   key={o.id}
