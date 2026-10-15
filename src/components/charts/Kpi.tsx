@@ -64,13 +64,17 @@ export function Kpi({
   return (
     <div className="shell rounded-[1.25rem] p-1.5 diffused">
       <div className="core rounded-[calc(1.25rem-0.375rem)] p-3.5">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${TONE_ICONO[tone]}`}>
-          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        {/* En celular, ícono y número van en la misma fila (ahorra una fila
+            de alto) — desde `sm` vuelve a apilarse como siempre. */}
+        <div className="flex items-center gap-3 sm:block">
+          <div className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg ${TONE_ICONO[tone]}`}>
+            <Icon className="h-4 w-4" strokeWidth={1.75} />
+          </div>
+          <p className="text-xl font-semibold text-foreground sm:mt-3">
+            {value !== undefined ? value.toLocaleString("es-MX") : "—"}
+          </p>
         </div>
-        <p className="mt-3 text-xl font-semibold text-foreground">
-          {value !== undefined ? value.toLocaleString("es-MX") : "—"}
-        </p>
-        <p className="text-[11px] text-muted">{label}</p>
+        <p className="mt-1.5 text-[11px] text-muted sm:mt-0">{label}</p>
         <span className={`mt-2 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium ${TONE_SUB[tone]}`}>
           {sub}
         </span>
