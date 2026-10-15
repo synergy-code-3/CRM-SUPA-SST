@@ -1246,38 +1246,47 @@ function FilaBiblioteca({
   onEliminar?: () => void;
 }) {
   return (
-    <li className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-      <span className="min-w-0 flex-1 truncate text-foreground">{etiqueta}</span>
-      <span className={`flex-none text-xs ${subido ? "text-success" : "text-muted"}`}>{subido ? "Subida" : "Sin imagen"}</span>
-      {url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-primary"
-          title="Ver imagen en otra pestaña"
-        >
-          <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </a>
-      )}
-      <label className={`ease-spring flex-none cursor-pointer text-xs font-medium text-primary transition hover:underline ${cargando ? "pointer-events-none opacity-50" : ""}`}>
-        {cargando ? "Subiendo…" : subido ? "Reemplazar" : "Subir"}
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const archivo = e.target.files?.[0];
-            if (archivo) onElegirArchivo(archivo);
-            e.target.value = "";
-          }}
-        />
-      </label>
-      {onEliminar && (
-        <button onClick={onEliminar} className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-danger">
-          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </button>
-      )}
+    // Una sola fila (como antes) desde `sm` en adelante — en celular se
+    // partía en 5 elementos apretados en el mismo renglón y el nombre
+    // terminaba cortado. `sm:contents` hace que estos 2 divs "desaparezcan"
+    // del layout en pantallas grandes, dejando a sus hijos como items
+    // directos del <li> (que ahí sí vuelve a ser una sola fila).
+    <li className="flex flex-col gap-1.5 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-2 sm:py-2">
+      <div className="flex items-center justify-between gap-2 sm:contents">
+        <span className="min-w-0 flex-1 truncate text-foreground">{etiqueta}</span>
+        <span className={`flex-none text-xs ${subido ? "text-success" : "text-muted"}`}>{subido ? "Subida" : "Sin imagen"}</span>
+      </div>
+      <div className="flex items-center justify-end gap-2 sm:contents">
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-primary"
+            title="Ver imagen en otra pestaña"
+          >
+            <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </a>
+        )}
+        <label className={`ease-spring flex-none cursor-pointer text-xs font-medium text-primary transition hover:underline ${cargando ? "pointer-events-none opacity-50" : ""}`}>
+          {cargando ? "Subiendo…" : subido ? "Reemplazar" : "Subir"}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const archivo = e.target.files?.[0];
+              if (archivo) onElegirArchivo(archivo);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {onEliminar && (
+          <button onClick={onEliminar} className="ease-spring flex-none rounded-lg p-1 text-muted transition hover:text-danger">
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        )}
+      </div>
     </li>
   );
 }
