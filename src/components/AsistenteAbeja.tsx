@@ -27,11 +27,12 @@ type PosicionPanel = { left: number; top: number; maxHeight: number };
 // Antes el panel era hijo del mismo contenedor flex que la abejita
 // (items-end + flex-col), así que su posición dependía por completo de
 // dónde hubiera quedado la abejita arrastrada — si estaba cerca de una
-// orilla, el panel se salía de la pantalla (por abajo si estaba abajo, por
-// la derecha si estaba muy a la izquierda, etc.). Esto calcula su posición
-// en píxeles reales cada vez que se abre, igual que un tooltip: intenta
-// arriba del botón, se voltea hacia abajo si no cabe, y siempre se recorta
-// al espacio disponible.
+// orilla, el panel se salía de la pantalla. Esto calcula su posición en
+// píxeles reales cada vez que se abre, igual que un tooltip, pero AL LADO
+// del botón (derecha si hay espacio, si no izquierda) en vez de arriba —
+// pedido explícito, para no taparle la cara a la abejita con el panel.
+// Verticalmente se alinea con la parte de arriba del botón, y se recorta
+// (o se ancla por abajo) si no cabe hasta el fondo de la pantalla.
 function calcularPosicionPanel(botonEl: HTMLElement | null): PosicionPanel {
   const rect = botonEl?.getBoundingClientRect() ?? {
     left: window.innerWidth - TAMANO_BOTON - MARGEN_PANTALLA,
@@ -41,20 +42,22 @@ function calcularPosicionPanel(botonEl: HTMLElement | null): PosicionPanel {
   };
 
   const anchoPanel = Math.min(window.innerWidth * 0.88, ANCHO_PANEL_MAX);
-  const left = Math.max(MARGEN_PANTALLA, Math.min(rect.right - anchoPanel, window.innerWidth - anchoPanel - MARGEN_PANTALLA));
+  const espacioDerecha = window.innerWidth - rect.right - GAP_PANEL_BOTON - MARGEN_PANTALLA;
+  const espacioIzquierda = rect.left - GAP_PANEL_BOTON - MARGEN_PANTALLA;
+  const abrirALaDerecha = espacioDerecha >= anchoPanel || espacioDerecha >= espacioIzquierda;
+  let left = abrirALaDerecha ? rect.right + GAP_PANEL_BOTON : rect.left - GAP_PANEL_BOTON - anchoPanel;
+  left = Math.max(MARGEN_PANTALLA, Math.min(left, window.innerWidth - anchoPanel - MARGEN_PANTALLA));
 
-  const espacioArriba = rect.top - GAP_PANEL_BOTON - MARGEN_PANTALLA;
-  const espacioAbajo = window.innerHeight - rect.bottom - GAP_PANEL_BOTON - MARGEN_PANTALLA;
   const alturaMax = window.innerHeight * 0.7;
-
+  const espacioDesdeArriba = window.innerHeight - rect.top - MARGEN_PANTALLA;
   let top: number;
   let maxHeight: number;
-  if (espacioArriba >= espacioAbajo) {
-    maxHeight = Math.max(120, Math.min(espacioArriba, alturaMax));
-    top = Math.max(MARGEN_PANTALLA, rect.top - GAP_PANEL_BOTON - maxHeight);
+  if (espacioDesdeArriba >= Math.min(200, alturaMax)) {
+    maxHeight = Math.min(espacioDesdeArriba, alturaMax);
+    top = rect.top;
   } else {
-    maxHeight = Math.max(120, Math.min(espacioAbajo, alturaMax));
-    top = rect.bottom + GAP_PANEL_BOTON;
+    maxHeight = Math.min(rect.bottom - MARGEN_PANTALLA, alturaMax);
+    top = Math.max(MARGEN_PANTALLA, rect.bottom - maxHeight);
   }
 
   return { left, top, maxHeight };
@@ -182,14 +185,31 @@ export function AsistenteAbeja() {
     setResultado({ tema, respuesta });
   }
 
-  function preguntar(texto: string) {
+  // Los temas fijos (uso del CRM) se quedan instantáneos y gratis, por
+  // palabra clave. Lo que no calza con ninguno ya no cae directo al "sin
+  // resultado" — se manda a la IA con la base de conocimiento de soporte
+  // (BASE_CONOCIMIENTO_SINERGETICOS_BOT.md) de contexto; si eso falla (sin
+  // API key, sin internet, etc.) sí cae al botón de WhatsApp de siempre.
+  async function preguntar(texto: string) {
     if (!texto.trim() || !usuario) return;
     const tema = buscarTema(texto, usuario.rol);
-    setResultado(
-      tema
-        ? { tema, respuesta: respuestaAleatoria(tema, usuario.rol)! }
-        : { tema: null, respuesta: respuestaSinResultado(), preguntaOriginal: texto }
-    );
+    if (tema) {
+      setResultado({ tema, respuesta: respuestaAleatoria(tema, usuario.rol)! });
+      return;
+    }
+    setResultado({ tema: null, respuesta: "Buscando en la base de conocimiento…", preguntaOriginal: texto });
+    try {
+      const res = await fetch("/api/asistente-abeja/preguntar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta: texto }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "No se pudo generar la respuesta");
+      setResultado({ tema: null, respuesta: data.respuesta, preguntaOriginal: texto });
+    } catch {
+      setResultado({ tema: null, respuesta: respuestaSinResultado(), preguntaOriginal: texto });
+    }
   }
 
   function entendido() {
