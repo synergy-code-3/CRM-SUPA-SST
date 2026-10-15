@@ -29,6 +29,7 @@ export function FormularioSolicitudCertificacion({ onEnviada }: { onEnviada: () 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState(false);
+  const [yaEsCliente, setYaEsCliente] = useState(false);
 
   useEffect(() => {
     fetch("/api/certificaciones-solicitud/catalogo")
@@ -84,7 +85,11 @@ export function FormularioSolicitudCertificacion({ onEnviada }: { onEnviada: () 
       ]);
       siguienteKey.current = 2;
       setExito(true);
-      setTimeout(() => setExito(false), 4000);
+      setYaEsCliente(!!data.yaEsCliente);
+      setTimeout(() => {
+        setExito(false);
+        setYaEsCliente(false);
+      }, 6000);
       onEnviada();
     } finally {
       setEnviando(false);
@@ -211,6 +216,9 @@ export function FormularioSolicitudCertificacion({ onEnviada }: { onEnviada: () 
 
         {error && <p className="text-xs text-danger">{error}</p>}
         {exito && <p className="text-xs text-success">Solicitud enviada — quedó pendiente de revisión.</p>}
+        {yaEsCliente && (
+          <p className="text-xs text-warning">Esta persona ya es cliente de Certificaciones — el admin la aprobará enlazándola a su perfil existente.</p>
+        )}
 
         <button
           onClick={enviar}

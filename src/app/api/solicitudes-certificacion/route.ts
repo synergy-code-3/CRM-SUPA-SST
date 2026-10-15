@@ -4,6 +4,7 @@ import { requerirPermiso } from "@/lib/auth";
 import { tienePermiso } from "@/lib/permisos";
 import { crearSolicitudCertificacion, listarSolicitudesCertificacion } from "@/lib/solicitudes-certificacion";
 import { subirComprobante, urlFirmadaComprobante } from "@/lib/storage";
+import { existeClienteCertificacion } from "@/lib/certificaciones";
 import type { EstadoSolicitudCertificacion } from "@/lib/certificaciones-tipos";
 
 const ESTADOS_VALIDOS: EstadoSolicitudCertificacion[] = ["pendiente", "aprobada", "rechazada"];
@@ -82,7 +83,12 @@ export async function POST(req: NextRequest) {
       solicitadoPorNombre: permiso.usuario.nombre,
     });
 
-    return NextResponse.json({ solicitud });
+    // Aviso para el vendedor, no un bloqueo — la solicitud se manda igual
+    // (admin la aprueba solo al enlazarla, ver /[id]/aprobar), pero conviene
+    // que quien la mandó sepa de una vez que esa persona ya es cliente.
+    const yaEsCliente = await existeClienteCertificacion(correo);
+
+    return NextResponse.json({ solicitud, yaEsCliente });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido";
     return NextResponse.json({ error: message }, { status: 400 });
