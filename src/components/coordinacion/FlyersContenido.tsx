@@ -536,6 +536,14 @@ export function FlyersContenido() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fondoId, fotoId, assets]);
 
+  // El tema de la mentoría siempre va entre comillas en el flyer — se quitan
+  // las que ya traiga el texto (manual o pegado de la planeación) antes de
+  // ponerlas, para no terminar con comillas dobles.
+  function entreComillas(texto: string): string {
+    const limpio = texto.trim().replace(/^["“”]+|["“”]+$/g, "");
+    return `"${limpio}"`;
+  }
+
   function wrap(ctx: CanvasRenderingContext2D, texto: string, maxWidth: number, font: string): string[] {
     ctx.font = font;
     const lineas: string[] = [];
@@ -634,7 +642,7 @@ export function FlyersContenido() {
       ctx.shadowBlur = 3;
     }
     ctx.font = esLunesSin ? `700 ${cfg.ts}px ${fuenteSinergetico}` : `800 ${cfg.ts}px Arial`;
-    const topic = tema || "Aquí aparecerá el tema de la mentoría";
+    const topic = tema ? entreComillas(tema) : "Aquí aparecerá el tema de la mentoría";
     const ls = wrap(ctx, topic, cfg.tw * 16, ctx.font);
     const tx = cfg.tx * 16;
     const ty = cfg.ty * 9;
@@ -836,7 +844,7 @@ export function FlyersContenido() {
 
   function topicHeight(ctx: CanvasRenderingContext2D) {
     ctx.font = `800 ${cfg.ts}px Arial`;
-    return wrap(ctx, tema || "Aquí aparecerá el tema de la mentoría", cfg.tw * 16, ctx.font).length * cfg.ts * 1.17;
+    return wrap(ctx, tema ? entreComillas(tema) : "Aquí aparecerá el tema de la mentoría", cfg.tw * 16, ctx.font).length * cfg.ts * 1.17;
   }
 
   function hitTest(x: number, y: number): "photo" | "topic" | "name" | "date" | null {
