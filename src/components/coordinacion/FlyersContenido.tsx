@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Oswald } from "next/font/google";
-import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink, Save } from "lucide-react";
+import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink, Save, ChevronDown } from "lucide-react";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
 
 // Fuente propia solo para el flyer de Lunes Sinergético — su fondo ya trae
@@ -1245,18 +1245,25 @@ function FilaBiblioteca({
   onElegirArchivo: (archivo: File) => void;
   onEliminar?: () => void;
 }) {
+  const [abierto, setAbierto] = useState(false);
+
   return (
-    // Una sola fila (como antes) desde `sm` en adelante — en celular se
-    // partía en 5 elementos apretados en el mismo renglón y el nombre
-    // terminaba cortado. `sm:contents` hace que estos 2 divs "desaparezcan"
-    // del layout en pantallas grandes, dejando a sus hijos como items
-    // directos del <li> (que ahí sí vuelve a ser una sola fila).
-    <li className="flex flex-col gap-1.5 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-2 sm:py-2">
-      <div className="flex items-center justify-between gap-2 sm:contents">
+    // Una sola fila desde `sm` en adelante (como siempre fue) — en celular
+    // ya no caben los 5 elementos ni partidos en 2 líneas, así que ahí se
+    // vuelve un acordeón: toca el nombre para desplegar las acciones.
+    // `sm:contents` hace que estos 2 divs "desaparezcan" del layout en
+    // pantallas grandes, dejando a sus hijos como items directos del <li>
+    // (que ahí sí es una sola fila, siempre visible, sin acordeón).
+    <li className="flex flex-col px-3 py-2 text-sm sm:flex-row sm:items-center sm:gap-2">
+      <div
+        onClick={() => setAbierto((a) => !a)}
+        className="flex cursor-pointer items-center justify-between gap-2 py-0.5 sm:cursor-default sm:contents"
+      >
         <span className="min-w-0 flex-1 truncate text-foreground">{etiqueta}</span>
         <span className={`flex-none text-xs ${subido ? "text-success" : "text-muted"}`}>{subido ? "Subida" : "Sin imagen"}</span>
+        <ChevronDown className={`h-4 w-4 flex-none text-muted transition sm:hidden ${abierto ? "rotate-180" : ""}`} strokeWidth={1.75} />
       </div>
-      <div className="flex items-center justify-end gap-2 sm:contents">
+      <div className={`${abierto ? "flex" : "hidden"} items-center justify-end gap-3 pb-2 pt-1.5 sm:contents sm:pb-0 sm:pt-0`}>
         {url && (
           <a
             href={url}
