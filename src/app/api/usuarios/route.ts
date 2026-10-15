@@ -52,8 +52,12 @@ export async function POST(req: NextRequest) {
       activo: true,
       token_version: 1,
       primera_aprobacion_en: new Date().toISOString(),
+      // Default por rol: abeja/coordinador arrancan con acceso solo a Club y
+      // Certificaciones — el admin puede ampliarlo después desde el perfil
+      // del usuario. Admin se queda null (sin restricción, siempre ve todo).
+      subplataformas_permitidas: rol === "admin" ? null : ["club", "certificaciones"],
     })
-    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url,primera_aprobacion_en")
+    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,telefonos,foto_url,primera_aprobacion_en,subplataformas_permitidas")
     .single();
   if (error) throw error;
 

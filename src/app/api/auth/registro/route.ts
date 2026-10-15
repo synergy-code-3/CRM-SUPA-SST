@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const password_hash = await hashPassword(password);
   const { data, error } = await supabase
     .from("usuarios")
-    .insert({ nombre, email, password_hash, rol: "abeja", activo: false, token_version: 1 })
+    .insert({ nombre, email, password_hash, rol: "abeja", activo: false, token_version: 1, subplataformas_permitidas: ["club", "certificaciones"] })
     .select("id,email,nombre,rol,token_version")
     .single();
   if (error) throw error;
