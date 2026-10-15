@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus, MapPin } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus, MapPin, TrendingUp, Trophy, CalendarCheck } from "lucide-react";
 import { TIPOS_MENTORIA, mentoriaVacia, type Mentor, type Mentoria, type EventoInterno } from "@/lib/coordinacion";
 import type { Gira } from "@/lib/coordinacion-sheets";
 import { PanelMentoria } from "./PanelMentoria";
@@ -69,6 +69,7 @@ function eventoVacio(fecha: string) {
 export function CalendarioContenido() {
   const router = useRouter();
   const hoy = new Date();
+  const hoyIso = iso(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mesIndex0, setMesIndex0] = useState(hoy.getMonth());
   const [mentorias, setMentorias] = useState<Mentoria[]>([]);
@@ -156,6 +157,24 @@ export function CalendarioContenido() {
     return mapa;
   }, [giras]);
 
+  // Estadísticas del dashboard — sobre TODAS las mentorías (mentorias ya
+  // viene sin filtro de fecha, no solo las del mes que se está viendo).
+  const stats = useMemo(() => {
+    const conAsistenciaFinal = mentorias.filter((m) => m.audFinal != null && m.audFinal > 0);
+    const mejorAsistencia = conAsistenciaFinal.length
+      ? conAsistenciaFinal.reduce((mejor, m) => (m.audFinal! > mejor.audFinal! ? m : mejor))
+      : null;
+    const mediaAsistencia = conAsistenciaFinal.length
+      ? Math.round(conAsistenciaFinal.reduce((suma, m) => suma + m.audFinal!, 0) / conAsistenciaFinal.length)
+      : null;
+    const concluidas = mentorias.filter((m) => m.concluida).length;
+    const proxima = mentorias
+      .filter((m) => m.fecha >= hoyIso && !m.concluida)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))[0] ?? null;
+    return { total: mentorias.length, concluidas, mejorAsistencia, mediaAsistencia, proxima };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorias]);
+
   function cambiarMes(delta: number) {
     let m = mesIndex0 + delta;
     let a = anio;
@@ -207,8 +226,6 @@ export function CalendarioContenido() {
     cargar();
   }
 
-  const hoyIso = iso(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -256,8 +273,25 @@ export function CalendarioContenido() {
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <TarjetaStat icon={GraduationCap} label="Mentorías totales" valor={String(stats.total)} />
+        <TarjetaStat icon={CalendarCheck} label="Concluidas" valor={`${stats.concluidas}/${stats.total}`} />
+        <TarjetaStat
+          icon={Trophy}
+          label="Más asistencia"
+          valor={stats.mejorAsistencia ? String(stats.mejorAsistencia.audFinal) : "—"}
+          detalle={stats.mejorAsistencia ? `${TIPOS_MENTORIA[stats.mejorAsistencia.tipoMentoria].label}${stats.mejorAsistencia.tema ? ` — ${stats.mejorAsistencia.tema}` : ""}` : "Sin datos de retro todavía"}
+        />
+        <TarjetaStat
+          icon={TrendingUp}
+          label="Media de asistencia"
+          valor={stats.mediaAsistencia != null ? String(stats.mediaAsistencia) : "—"}
+          detalle={stats.proxima ? `Próxima: ${formatearFechaLarga(stats.proxima.fecha)}` : "Sin próximas mentorías"}
+        />
+      </div>
+
       <div className="shell rounded-[1.75rem] p-2 diffused">
-        <div className="core rounded-[calc(1.75rem-0.5rem)] p-6">
+        <div className="core rounded-[calc(1.75rem-0.5rem)] p-4 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
             <button onClick={() => cambiarMes(-1)} className="ease-spring rounded-lg p-2 text-muted transition hover:bg-surface-2 hover:text-foreground">
               <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
@@ -277,76 +311,87 @@ export function CalendarioContenido() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
             {celdas.map(({ fecha, delMes }) => {
               const dia = Number(fecha.slice(8, 10));
               const mentoriasDia = mentoriasPorFecha.get(fecha) ?? [];
               const eventosDia = eventosPorFecha.get(fecha) ?? [];
               const girasDia = girasPorFecha.get(fecha) ?? [];
+
+              // Un solo arreglo (en vez de 3 .map() seguidos sin tope) para
+              // poder limitar cuántas pastillas se dibujan — antes, un día
+              // con varias mentorías/eventos/giras estiraba esa celda mucho
+              // más alto que las demás, dejando la cuadrícula dispareja (el
+              // problema en celular, donde las celdas ya son angostas).
+              const itemsDia = [
+                ...mentoriasDia.map((m) => ({
+                  key: `m-${m.id}`,
+                  label: TIPOS_MENTORIA[m.tipoMentoria].label,
+                  color: TIPOS_MENTORIA[m.tipoMentoria].color,
+                  titulo: `${TIPOS_MENTORIA[m.tipoMentoria].label}${m.tema ? ` — ${m.tema}` : ""}`,
+                  onClick: (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setPanelMentoria(m);
+                  },
+                })),
+                ...eventosDia.map((e) => ({
+                  key: `e-${e.id}`,
+                  label: e.titulo,
+                  color: e.color ?? COLORES_EVENTO[3],
+                  titulo: e.titulo,
+                  onClick: (ev: React.MouseEvent) => {
+                    ev.stopPropagation();
+                    setModal({
+                      id: e.id,
+                      titulo: e.titulo,
+                      fecha: e.fecha,
+                      color: e.color ?? COLORES_EVENTO[3],
+                      horaInicio: e.horaInicio ?? "",
+                      horaFin: e.horaFin ?? "",
+                      enlace: e.enlace ?? "",
+                      invitados: e.invitados ?? "",
+                      notas: e.notas ?? "",
+                      descripcion: e.descripcion ?? "",
+                    });
+                  },
+                })),
+                ...girasDia.map((g, i) => ({
+                  key: `g-${i}`,
+                  label: g.nombre,
+                  color: colorGira(g.nombre),
+                  titulo: `Gira: ${g.nombre}${g.horario ? ` — ${g.horario}` : ""}${g.hotel ? ` — ${g.hotel}` : ""}`,
+                  onClick: (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    router.push("/coordinacion/giras");
+                  },
+                })),
+              ];
+              const LIMITE_ITEMS = 2;
+              const visibles = itemsDia.slice(0, LIMITE_ITEMS);
+              const restantes = itemsDia.length - visibles.length;
+
               return (
                 <div
                   key={fecha}
                   onClick={() => setDiaSeleccionado(fecha)}
-                  className={`min-h-[88px] cursor-pointer rounded-lg border p-1.5 text-left align-top transition hover:border-primary/40 ${
+                  className={`min-h-[56px] cursor-pointer rounded-lg border p-1 text-left align-top transition hover:border-primary/40 sm:min-h-[88px] sm:p-1.5 ${
                     fecha === hoyIso ? "border-primary/50 bg-primary-dim" : "border-silver/60"
                   } ${delMes ? "" : "opacity-40"}`}
                 >
                   <p className="mb-1 text-xs font-medium text-muted">{dia}</p>
                   <div className="space-y-1">
-                    {mentoriasDia.map((m) => (
+                    {visibles.map((item) => (
                       <button
-                        key={m.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPanelMentoria(m);
-                        }}
-                        title={`${TIPOS_MENTORIA[m.tipoMentoria].label}${m.tema ? ` — ${m.tema}` : ""}`}
+                        key={item.key}
+                        onClick={item.onClick}
+                        title={item.titulo}
                         className="ease-spring block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
-                        style={{ backgroundColor: TIPOS_MENTORIA[m.tipoMentoria].color }}
+                        style={{ backgroundColor: item.color }}
                       >
-                        {TIPOS_MENTORIA[m.tipoMentoria].label}
+                        {item.label}
                       </button>
                     ))}
-                    {eventosDia.map((e) => (
-                      <button
-                        key={e.id}
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          setModal({
-                            id: e.id,
-                            titulo: e.titulo,
-                            fecha: e.fecha,
-                            color: e.color ?? COLORES_EVENTO[3],
-                            horaInicio: e.horaInicio ?? "",
-                            horaFin: e.horaFin ?? "",
-                            enlace: e.enlace ?? "",
-                            invitados: e.invitados ?? "",
-                            notas: e.notas ?? "",
-                            descripcion: e.descripcion ?? "",
-                          });
-                        }}
-                        title={e.titulo}
-                        className="ease-spring block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
-                        style={{ backgroundColor: e.color ?? COLORES_EVENTO[3] }}
-                      >
-                        {e.titulo}
-                      </button>
-                    ))}
-                    {girasDia.map((g, i) => (
-                      <button
-                        key={`${g.nombre}-${i}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push("/coordinacion/giras");
-                        }}
-                        title={`Gira: ${g.nombre}${g.horario ? ` — ${g.horario}` : ""}${g.hotel ? ` — ${g.hotel}` : ""}`}
-                        className="ease-spring flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white transition hover:brightness-95"
-                        style={{ backgroundColor: colorGira(g.nombre) }}
-                      >
-                        <MapPin className="h-2.5 w-2.5 flex-none" strokeWidth={2} />
-                        <span className="truncate">{g.nombre}</span>
-                      </button>
-                    ))}
+                    {restantes > 0 && <p className="px-1.5 text-[10px] font-medium text-muted">+{restantes} más</p>}
                   </div>
                 </div>
               );
@@ -543,6 +588,31 @@ export function CalendarioContenido() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TarjetaStat({
+  icon: Icon,
+  label,
+  valor,
+  detalle,
+}: {
+  icon: typeof GraduationCap;
+  label: string;
+  valor: string;
+  detalle?: string;
+}) {
+  return (
+    <div className="shell rounded-[1.5rem] p-2 diffused">
+      <div className="core space-y-1 rounded-[calc(1.5rem-0.5rem)] p-3.5 sm:p-4">
+        <div className="flex items-center gap-1.5 text-muted">
+          <Icon className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+          <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+        </div>
+        <p className="text-xl font-semibold text-foreground sm:text-2xl">{valor}</p>
+        {detalle && <p className="truncate text-xs text-muted" title={detalle}>{detalle}</p>}
+      </div>
     </div>
   );
 }
