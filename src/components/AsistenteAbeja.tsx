@@ -21,6 +21,11 @@ const UMBRAL_ARRASTRE_PX = 6; // menos que esto se trata como clic, no arrastre
 const LLAVE_POSICION = "abeja_posicion";
 const ANCHO_PANEL_MAX = 352; // 22rem — mismo tope que min(88vw,22rem) de abajo
 const GAP_PANEL_BOTON = 12;
+// Mismo quiebre que el `sm:` de Tailwind — en celular el panel flotante de
+// ancho fijo quedaba angosto y empalmado con el resto de la pantalla
+// (tarjetas del Dashboard detrás, botones pegados a la orilla de abajo).
+// Pedido explícito: en celular el chat ocupa toda la pantalla.
+const QUIEBRE_MOVIL_PX = 640;
 
 type PosicionPanel = { left: number; top: number; maxHeight: number };
 
@@ -88,6 +93,7 @@ export function AsistenteAbeja() {
   // que haga falta sincronizar entre dispositivos.
   const [posicion, setPosicion] = useState<{ x: number; y: number } | null>(null);
   const [posicionPanel, setPosicionPanel] = useState<PosicionPanel | null>(null);
+  const [esMovil, setEsMovil] = useState(false);
 
   const timeoutGestoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arrastrandoRef = useRef(false);
@@ -103,6 +109,14 @@ export function AsistenteAbeja() {
     } catch {
       // localStorage no disponible — se queda en la posición por defecto.
     }
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${QUIEBRE_MOVIL_PX - 1}px)`);
+    setEsMovil(mq.matches);
+    const alCambiar = (e: MediaQueryListEvent) => setEsMovil(e.matches);
+    mq.addEventListener("change", alCambiar);
+    return () => mq.removeEventListener("change", alCambiar);
   }, []);
 
   // Recalcula la posición del panel al abrirlo y si cambia el tamaño de
@@ -255,16 +269,26 @@ export function AsistenteAbeja() {
           orilla, el panel se salía de la pantalla). Ahora es un elemento
           aparte, posicionado en píxeles ya recortados al espacio disponible
           (ver calcularPosicionPanel). */}
-      {abierto && posicionPanel && (
+      {abierto && (esMovil || posicionPanel) && (
         <div
-          className="animate-abeja-pop shell fixed z-[90] rounded-[1.5rem] p-2 diffused-lg"
-          style={{ left: posicionPanel.left, top: posicionPanel.top, width: `min(88vw, ${ANCHO_PANEL_MAX}px)` }}
+          className={
+            esMovil
+              ? "animate-abeja-pop shell fixed inset-0 z-[90] rounded-none p-0 diffused-lg"
+              : "animate-abeja-pop shell fixed z-[90] rounded-[1.5rem] p-2 diffused-lg"
+          }
+          style={esMovil ? undefined : { left: posicionPanel!.left, top: posicionPanel!.top, width: `min(88vw, ${ANCHO_PANEL_MAX}px)` }}
         >
           <div
-            className="core flex flex-col overflow-hidden rounded-[calc(1.5rem-0.5rem)]"
-            style={{ maxHeight: posicionPanel.maxHeight }}
+            className={
+              esMovil
+                ? "core flex h-full flex-col overflow-hidden rounded-none"
+                : "core flex flex-col overflow-hidden rounded-[calc(1.5rem-0.5rem)]"
+            }
+            style={esMovil ? undefined : { maxHeight: posicionPanel!.maxHeight }}
           >
-            <div className="flex items-center justify-between border-b border-silver px-4 py-3">
+            <div
+              className={`flex flex-none items-center justify-between border-b border-silver px-4 py-3 ${esMovil ? "pt-[calc(0.75rem+env(safe-area-inset-top))]" : ""}`}
+            >
               <p className="text-sm font-semibold text-foreground">Abejita · Asistente</p>
               <button
                 onClick={() => setAbierto(false)}
@@ -295,7 +319,7 @@ export function AsistenteAbeja() {
                   {mensajes.map((m, i) => (
                     <div key={i} className={`flex ${m.autor === "usuario" ? "justify-end" : "justify-start"}`}>
                       <p
-                        className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                        className={`max-w-[85%] min-w-0 whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-sm leading-relaxed ${
                           m.autor === "usuario" ? "bg-primary text-white" : "bg-surface-2 text-foreground"
                         }`}
                       >
@@ -313,7 +337,9 @@ export function AsistenteAbeja() {
               )}
             </div>
 
-            <div className="space-y-2 border-t border-silver p-3">
+            <div
+              className={`flex-none space-y-2 border-t border-silver p-3 ${esMovil ? "pb-[calc(0.75rem+env(safe-area-inset-bottom))]" : ""}`}
+            >
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
