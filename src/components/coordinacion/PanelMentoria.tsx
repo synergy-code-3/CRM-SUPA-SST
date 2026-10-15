@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check, Copy } from "lucide-react";
+import { X, Check, Copy, Download } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion";
 
@@ -97,19 +97,47 @@ export function PanelMentoria({
     }
   }
 
+  // Genera Y guarda de una vez (antes solo llenaba los campos en pantalla —
+  // si no se le daba "Guardar" aparte, el copy generado se perdía al salir
+  // del panel sin avisar. Una vez generado, no debe poder perderse solo).
   async function generarCopy() {
     if (!idActual) return;
     setGenerando(true);
+    setError(null);
     try {
       const res = await fetch(`/api/coordinacion/mentorias/${idActual}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "No se pudo generar");
       setCopyPrevia(data.copyPrevia);
       setCopyPlataforma(data.copyPlataforma);
+
+      const resGuardar = await fetch(`/api/coordinacion/mentorias/${idActual}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seccion: "difusion", copyPrevia: data.copyPrevia, copyPlataforma: data.copyPlataforma, checklist }),
+      });
+      if (!resGuardar.ok) throw new Error("Se generó el copy pero no se pudo guardar");
+      onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo generar el copy");
     } finally {
       setGenerando(false);
+    }
+  }
+
+  async function descargarFlyer() {
+    if (!mentoria.flyerUrl) return;
+    try {
+      const res = await fetch(mentoria.flyerUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Flyer-${mentoria.tipoMentoria}-${mentoria.fecha}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("No se pudo descargar el flyer");
     }
   }
 
@@ -247,10 +275,19 @@ export function PanelMentoria({
               {mentoria.flyerUrl && (
                 <div>
                   <span className="mb-1.5 block text-sm font-medium text-muted">Flyer</span>
-                  <a href={mentoria.flyerUrl} target="_blank" rel="noreferrer" className="ease-spring block w-40 overflow-hidden rounded-xl border border-silver transition hover:opacity-90">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mentoria.flyerUrl} alt="Flyer de esta mentoría" className="w-full" />
-                  </a>
+                  <div className="flex items-start gap-3">
+                    <a href={mentoria.flyerUrl} target="_blank" rel="noreferrer" className="ease-spring block w-40 flex-none overflow-hidden rounded-xl border border-silver transition hover:opacity-90">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={mentoria.flyerUrl} alt="Flyer de esta mentoría" className="w-full" />
+                    </a>
+                    <button
+                      onClick={descargarFlyer}
+                      className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                    >
+                      <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      Descargar
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="flex items-center justify-between">
