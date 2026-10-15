@@ -18,11 +18,16 @@ async function cargarBaseConocimiento(): Promise<string> {
   return baseConocimientoCache;
 }
 
+export type MensajeHistorial = { role: "user" | "assistant"; content: string };
+
 // Vía OpenRouter (no Anthropic directo) — API estilo OpenAI (chat
 // completions), un solo endpoint que da acceso a varios proveedores/modelos
 // con una misma key. OPENROUTER_MODEL es configurable sin tocar código, por
 // si el modelo default deja de estar disponible o se quiere cambiar.
-export async function responderConIA(pregunta: string): Promise<string> {
+// `historial` = los últimos mensajes de la MISMA conversación (ver
+// AsistenteAbeja.tsx) — sin esto, cada pregunta se respondía aislada, sin
+// memoria de lo que ya se había dicho.
+export async function responderConIA(pregunta: string, historial: MensajeHistorial[] = []): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("Falta configurar OPENROUTER_API_KEY");
   const modelo = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
@@ -50,10 +55,7 @@ ${baseConocimiento}`;
     body: JSON.stringify({
       model: modelo,
       max_tokens: 600,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: pregunta },
-      ],
+      messages: [{ role: "system", content: system }, ...historial, { role: "user", content: pregunta }],
     }),
   });
 
@@ -66,4 +68,48 @@ ${baseConocimiento}`;
   const texto = data.choices?.[0]?.message?.content?.trim();
   if (!texto) throw new Error("Respuesta vacía de OpenRouter");
   return texto;
+}
+
+const PALABRAS_VACIAS = new Set([
+  "de", "la", "el", "en", "y", "a", "que", "los", "las", "un", "una", "con", "para", "por", "se", "su", "del",
+  "al", "es", "como", "cual", "cuales", "cuanto", "cuanta", "mas", "lo", "si", "no", "tu", "te", "me",
+]);
+
+function normalizar(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+// Respaldo sin IA: si OpenRouter falla (sin internet, sin saldo, key mala,
+// etc.), en vez de rendirse directo al "no encontré nada" se busca la
+// sección del .md con más palabras clave de la pregunta en común — el mismo
+// documento que se le da de contexto a la IA, pero recorrido a mano. No es
+// tan bueno como una respuesta real de IA (no entiende sinónimos ni
+// paráfrasis), pero es mejor que nada cuando la IA está caída.
+export async function buscarEnBaseConocimiento(pregunta: string): Promise<string | null> {
+  const palabrasClave = normalizar(pregunta)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((p) => p.length > 2 && !PALABRAS_VACIAS.has(p));
+  if (palabrasClave.length === 0) return null;
+
+  const base = await cargarBaseConocimiento();
+  // Por encabezado (## / ###) — una unidad con contexto completo, no una
+  // línea suelta sin el resto de la sección.
+  const secciones = base.split(/\n(?=#{1,3} )/);
+
+  let mejor: { texto: string; puntaje: number } | null = null;
+  for (const seccion of secciones) {
+    const normalizada = normalizar(seccion);
+    const puntaje = palabrasClave.reduce((acc, p) => acc + (normalizada.includes(p) ? 1 : 0), 0);
+    if (puntaje > 0 && (!mejor || puntaje > mejor.puntaje)) mejor = { texto: seccion, puntaje };
+  }
+  // Umbral: al menos la mitad de las palabras clave de la pregunta deben
+  // aparecer en la sección — si no, es más probable que sea ruido que una
+  // respuesta de verdad relacionada.
+  if (!mejor || mejor.puntaje < Math.ceil(palabrasClave.length / 2)) return null;
+
+  return `(Sin conexión con la IA en este momento — esto es un fragmento encontrado por palabras clave en la base de conocimiento, puede no responder exactamente tu pregunta)\n\n${mejor.texto.trim().slice(0, 800)}`;
 }

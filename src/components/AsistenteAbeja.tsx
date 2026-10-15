@@ -63,9 +63,7 @@ function calcularPosicionPanel(botonEl: HTMLElement | null): PosicionPanel {
   return { left, top, maxHeight };
 }
 
-// preguntaOriginal solo se llena cuando no hubo match (tema null) — es lo
-// que la persona escribió, para precargarlo en el mensaje de WhatsApp.
-type Resultado = { tema: TemaAsistente | null; respuesta: string; preguntaOriginal?: string };
+type Mensaje = { autor: "usuario" | "abeja"; texto: string };
 
 // Mascota flotante + mini-asistente de ayuda por palabras clave (no es un
 // modelo de lenguaje: respuestas fijas en asistente-abeja-datos.ts, con
@@ -76,8 +74,14 @@ export function AsistenteAbeja() {
   const { usuario } = useSesion();
   const [abierto, setAbierto] = useState(false);
   const [pose, setPose] = useState<1 | 2>(1);
-  const [resultado, setResultado] = useState<Resultado | null>(null);
+  // Antes era un solo { tema, respuesta } (una pregunta, una respuesta, se
+  // acabó — "Entendido" cerraba todo). Ahora es un hilo real: varias
+  // preguntas seguidas sin que se resetee entre una y otra, con historial
+  // mandado a la IA para que las respuestas tengan contexto de lo anterior.
+  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [enviando, setEnviando] = useState(false);
   const [texto, setTexto] = useState("");
+  const finMensajesRef = useRef<HTMLDivElement>(null);
   // null = posición por defecto (abajo a la derecha, vía clases CSS). Una
   // vez que se arrastra, se fija en coordenadas absolutas y se recuerda
   // por navegador (localStorage) — conveniencia de por-visitante, no datos
@@ -167,57 +171,78 @@ export function AsistenteAbeja() {
     };
   }, []);
 
+  useEffect(() => {
+    finMensajesRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensajes, enviando]);
+
   function abrirORecerrar() {
     setAbierto((a) => {
       const siguiente = !a;
       if (siguiente) {
-        setResultado(null);
+        setMensajes([]);
         setTexto("");
       }
       return siguiente;
     });
   }
 
-  function mostrarTema(tema: TemaAsistente) {
+  // Chip de pregunta fija: respuesta ya escrita a mano, no pasa por la IA —
+  // se agrega al hilo igual que cualquier otro intercambio, para que se
+  // pueda seguir la conversación desde ahí con una pregunta libre.
+  function elegirTema(tema: TemaAsistente) {
     if (!usuario) return;
     const respuesta = respuestaAleatoria(tema, usuario.rol);
     if (!respuesta) return; // no debería pasar — los chips ya vienen filtrados por rol
-    setResultado({ tema, respuesta });
+    setMensajes((m) => [...m, { autor: "usuario", texto: tema.pregunta }, { autor: "abeja", texto: respuesta }]);
   }
 
   // Los temas fijos (uso del CRM) se quedan instantáneos y gratis, por
-  // palabra clave. Lo que no calza con ninguno ya no cae directo al "sin
-  // resultado" — se manda a la IA con la base de conocimiento de soporte
-  // (BASE_CONOCIMIENTO_SINERGETICOS_BOT.md) de contexto; si eso falla (sin
-  // API key, sin internet, etc.) sí cae al botón de WhatsApp de siempre.
-  async function preguntar(texto: string) {
-    if (!texto.trim() || !usuario) return;
-    const tema = buscarTema(texto, usuario.rol);
+  // palabra clave. Lo que no calza con ninguno se manda a la IA —con el
+  // historial de la conversación, no solo la última pregunta— con la base
+  // de conocimiento de soporte (BASE_CONOCIMIENTO_SINERGETICOS_BOT.md) de
+  // contexto. Si la IA falla (sin API key, sin internet, etc.) el propio
+  // servidor cae a buscar por palabras clave dentro de esa misma base antes
+  // de rendirse del todo (ver /api/asistente-abeja/preguntar).
+  async function enviarMensaje(textoPregunta: string) {
+    const pregunta = textoPregunta.trim();
+    if (!pregunta || !usuario || enviando) return;
+    setTexto("");
+
+    const tema = buscarTema(pregunta, usuario.rol);
     if (tema) {
-      setResultado({ tema, respuesta: respuestaAleatoria(tema, usuario.rol)! });
+      elegirTema(tema);
       return;
     }
-    setResultado({ tema: null, respuesta: "Buscando en la base de conocimiento…", preguntaOriginal: texto });
+
+    const historial = mensajes
+      .slice(-12)
+      .map((m) => ({ role: m.autor === "usuario" ? ("user" as const) : ("assistant" as const), content: m.texto }));
+    setMensajes((m) => [...m, { autor: "usuario", texto: pregunta }]);
+    setEnviando(true);
     try {
       const res = await fetch("/api/asistente-abeja/preguntar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pregunta: texto }),
+        body: JSON.stringify({ pregunta, historial }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "No se pudo generar la respuesta");
-      setResultado({ tema: null, respuesta: data.respuesta, preguntaOriginal: texto });
+      setMensajes((m) => [...m, { autor: "abeja", texto: data.respuesta }]);
     } catch {
-      setResultado({ tema: null, respuesta: respuestaSinResultado(), preguntaOriginal: texto });
+      setMensajes((m) => [...m, { autor: "abeja", texto: respuestaSinResultado() }]);
+    } finally {
+      setEnviando(false);
     }
   }
 
   function entendido() {
     setAbierto(false);
-    setResultado(null);
+    setMensajes([]);
     setTexto("");
     mostrarGestoTemporal();
   }
+
+  const ultimaPreguntaUsuario = [...mensajes].reverse().find((m) => m.autor === "usuario")?.texto ?? "";
 
   if (!usuario || !usuario.abejaActiva) return null;
   const preguntasIniciales = preguntasInicialesParaRol(usuario.rol);
@@ -250,21 +275,14 @@ export function AsistenteAbeja() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-3">
-              {resultado ? (
-                <div className="space-y-3">
-                  {resultado.tema?.pregunta && (
-                    <p className="text-xs font-medium text-muted">{resultado.tema.pregunta}</p>
-                  )}
-                  <p className="text-sm leading-relaxed text-foreground">{resultado.respuesta}</p>
-                </div>
-              ) : (
+              {mensajes.length === 0 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-muted">¿Cómo te ayudo? Elige una pregunta o escribe la tuya.</p>
                   <div className="flex flex-wrap gap-1.5">
                     {preguntasIniciales.map((t) => (
                       <button
                         key={t.id}
-                        onClick={() => mostrarTema(t)}
+                        onClick={() => elegirTema(t)}
                         className="ease-spring rounded-full border border-silver bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
                       >
                         {t.pregunta}
@@ -272,52 +290,70 @@ export function AsistenteAbeja() {
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {mensajes.map((m, i) => (
+                    <div key={i} className={`flex ${m.autor === "usuario" ? "justify-end" : "justify-start"}`}>
+                      <p
+                        className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                          m.autor === "usuario" ? "bg-primary text-white" : "bg-surface-2 text-foreground"
+                        }`}
+                      >
+                        {m.texto}
+                      </p>
+                    </div>
+                  ))}
+                  {enviando && (
+                    <div className="flex justify-start">
+                      <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">Pensando…</p>
+                    </div>
+                  )}
+                  <div ref={finMensajesRef} />
+                </div>
               )}
             </div>
 
             <div className="space-y-2 border-t border-silver p-3">
-              {resultado ? (
-                <>
-                  {!resultado.tema && (
-                    <a
-                      href={urlWhatsappPropietario(resultado.preguntaOriginal ?? "")}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ease-spring flex w-full items-center justify-center gap-1.5 rounded-xl bg-success/15 px-4 py-2 text-sm font-medium text-success transition hover:bg-success/25"
-                    >
-                      <MessageCircle className="h-4 w-4" strokeWidth={1.75} />
-                      Contactar al propietario
-                    </a>
-                  )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  enviarMensaje(texto);
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  placeholder="Dime qué necesitas…"
+                  disabled={enviando}
+                  className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2 disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={!texto.trim() || enviando}
+                  className="ease-spring flex-none rounded-lg bg-primary/10 p-2 text-primary transition hover:bg-primary/20 disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </form>
+              {mensajes.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <a
+                    href={urlWhatsappPropietario(ultimaPreguntaUsuario)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-success/15 px-3 py-2 text-xs font-medium text-success transition hover:bg-success/25"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    Contactar al propietario
+                  </a>
                   <button
                     onClick={entendido}
-                    className="ease-spring w-full rounded-xl brand-plate px-4 py-2 text-sm font-medium text-white transition"
+                    className="ease-spring flex-1 rounded-xl brand-plate px-3 py-2 text-xs font-medium text-white transition"
                   >
-                    Entendido
+                    Terminar
                   </button>
-                </>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    preguntar(texto);
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <input
-                    value={texto}
-                    onChange={(e) => setTexto(e.target.value)}
-                    placeholder="Dime qué necesitas…"
-                    className="w-full rounded-lg border border-silver bg-surface-2 px-3 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!texto.trim()}
-                    className="ease-spring flex-none rounded-lg bg-primary/10 p-2 text-primary transition hover:bg-primary/20 disabled:opacity-40"
-                  >
-                    <Send className="h-4 w-4" strokeWidth={1.75} />
-                  </button>
-                </form>
+                </div>
               )}
             </div>
           </div>
