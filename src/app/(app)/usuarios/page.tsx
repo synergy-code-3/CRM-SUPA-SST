@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { KeyRound, Plus, Search, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus } from "lucide-react";
+import { KeyRound, Plus, Search, Trash2, UserRound, X, Mail, Phone, ShieldCheck, LogIn, CalendarPlus, LayoutGrid } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import type { Rol } from "@/lib/permisos";
 import { FotoAmpliada } from "@/components/FotoAmpliada";
+import { WORKSPACES } from "@/components/Sidebar";
 
 type Usuario = {
   id: string;
@@ -19,6 +20,9 @@ type Usuario = {
   telefonos: string[];
   foto_url: string | null;
   primera_aprobacion_en: string | null;
+  // null = sin restricción extra (ve todo lo que su rol permite, default de
+  // todo usuario existente) — array = lista blanca de ids de WORKSPACES.
+  subplataformas_permitidas: string[] | null;
 };
 
 // Se autoregistró desde /login y ningún admin lo ha activado todavía —
@@ -309,6 +313,11 @@ export default function UsuariosPage() {
               setVerPerfil((v) => (v ? { ...v, rol } : v));
             }
           }}
+          onCambiarSubplataformas={async (subplataformasPermitidas) => {
+            if (await actualizar(verPerfil.id, { subplataformasPermitidas })) {
+              setVerPerfil((v) => (v ? { ...v, subplataformas_permitidas: subplataformasPermitidas } : v));
+            }
+          }}
         />
       )}
     </div>
@@ -328,15 +337,32 @@ function PerfilUsuarioDetalle({
   onAceptar,
   onRechazar,
   onCambiarRol,
+  onCambiarSubplataformas,
 }: {
   usuario: Usuario;
   onClose: () => void;
   onAceptar: () => void;
   onRechazar: () => void;
   onCambiarRol: (rol: Rol) => void;
+  onCambiarSubplataformas: (subplataformasPermitidas: string[] | null) => void;
 }) {
   const pendiente = esPendienteDeAprobar(usuario);
   const [fotoAmpliada, setFotoAmpliada] = useState(false);
+  // Checkbox "sin restricción" (null) desmarcado = usa la lista; marcado =
+  // ve todo lo que su rol permite, sin lista blanca extra. Admin ni ve este
+  // bloque (siempre ve todo).
+  const sinRestriccion = usuario.subplataformas_permitidas === null;
+  const seleccionadas = new Set(usuario.subplataformas_permitidas ?? WORKSPACES.map((w) => w.id));
+
+  function alternarSubplataforma(id: string) {
+    // Al tocar cualquier checkbox estando en "sin restricción", arranca
+    // desde "todas marcadas" (no desde vacío) — que destildar una sea lo
+    // único que cambia, en vez de tener que volver a marcar las demás.
+    const base = sinRestriccion ? new Set(WORKSPACES.map((w) => w.id)) : new Set(seleccionadas);
+    if (base.has(id)) base.delete(id);
+    else base.add(id);
+    onCambiarSubplataformas([...base]);
+  }
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-6 backdrop-blur-[2px]"
@@ -399,6 +425,27 @@ function PerfilUsuarioDetalle({
                 ))}
               </select>
             </div>
+            {usuario.rol !== "admin" && (
+              <div className="flex items-start gap-2 text-foreground">
+                <LayoutGrid className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
+                <div className="flex-1">
+                  <span className="text-muted">Subplataformas que puede ver:</span>
+                  <div className="mt-1.5 space-y-1">
+                    {WORKSPACES.map((w) => (
+                      <label key={w.id} className="flex items-center gap-2 text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={seleccionadas.has(w.id)}
+                          onChange={() => alternarSubplataforma(w.id)}
+                          className="h-4 w-4 rounded border-silver-deep/60 accent-primary"
+                        />
+                        {w.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex items-start gap-2 text-foreground">
               <Phone className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" strokeWidth={1.75} />
               <span>

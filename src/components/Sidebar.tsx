@@ -81,7 +81,9 @@ const GRUPOS_COMMUNITY_MANAGER: GrupoNav[] = [
 // abajo) es lo único que hace falta para que aparezca en la lista.
 type Workspace = { id: string; label: string; href: string; permiso: Accion };
 
-const WORKSPACES: Workspace[] = [
+// Exportado para que Usuarios (checkboxes de "subplataformas permitidas" por
+// usuario) use los mismos id/label en vez de duplicar la lista.
+export const WORKSPACES: Workspace[] = [
   { id: "club", label: "Club Sinergético", href: "/clientes", permiso: "verClientes" },
   { id: "certificaciones", label: "Certificaciones", href: "/certificaciones", permiso: "verCertificaciones" },
   { id: "community-manager", label: "Community Manager", href: "/community-manager", permiso: "verCommunityManager" },
@@ -760,7 +762,14 @@ export function Sidebar() {
   const items = (NAV_POR_WORKSPACE[workspaceActual] ?? NAV_CLUB).filter((item) =>
     tienePermiso(usuario.rol, item.permiso)
   );
-  const opcionesWorkspace = WORKSPACES.filter((w) => tienePermiso(usuario.rol, w.permiso));
+  // subplataformasPermitidas: lista blanca extra por-usuario (ver auth.ts),
+  // nunca restringe a un admin — null = sin restricción extra (todos los
+  // usuarios quedan como siempre hasta que un admin marque algo a mano).
+  const opcionesWorkspace = WORKSPACES.filter(
+    (w) =>
+      tienePermiso(usuario.rol, w.permiso) &&
+      (usuario.rol === "admin" || usuario.subplataformasPermitidas === null || usuario.subplataformasPermitidas.includes(w.id))
+  );
 
   return (
     <>

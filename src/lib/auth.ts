@@ -18,6 +18,11 @@ export type UsuarioSesion = {
   // Preferencia personal (no admin) — se apaga/enciende desde "Mi perfil".
   // true por default: todos la ven hasta que alguien decide quitársela.
   abejaActiva: boolean;
+  // Control de acceso por usuario a las subplataformas (ids de WORKSPACES en
+  // Sidebar.tsx) — encima del control por rol. null = sin restricción extra
+  // (ve todo lo que su rol ya permite, igual que siempre). Nunca se aplica a
+  // un admin, vea lo que vea aquí (ver filtro en Sidebar.tsx).
+  subplataformasPermitidas: string[] | null;
   // false = cuenta autoregistrada (o desactivada) esperando que un admin la
   // active — obtenerUsuarioActual() nunca la deja pasar (sigue siendo null,
   // igual que siempre); solo obtenerSesionCruda() la expone, para que
@@ -50,7 +55,7 @@ export async function obtenerSesionCruda(): Promise<UsuarioSesion | null> {
 
   const { data, error } = await supabase
     .from("usuarios")
-    .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url,abeja_activa")
+    .select("id,email,nombre,rol,activo,token_version,telefonos,foto_url,abeja_activa,subplataformas_permitidas")
     .eq("id", claims.sub)
     .maybeSingle();
   if (error || !data || data.token_version !== claims.tokenVersion) return null;
@@ -63,6 +68,7 @@ export async function obtenerSesionCruda(): Promise<UsuarioSesion | null> {
     telefonos: data.telefonos ?? [],
     fotoUrl: data.foto_url,
     abejaActiva: data.abeja_activa ?? true,
+    subplataformasPermitidas: data.subplataformas_permitidas ?? null,
     activo: data.activo,
   };
 }

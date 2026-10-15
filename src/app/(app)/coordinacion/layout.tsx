@@ -7,10 +7,14 @@ import { tienePermiso } from "@/lib/permisos";
 // Workspace solo-admin (permiso verCoordinacion) — quien no lo tenga ve
 // este aviso en vez del contenido, aunque entre directo por URL (el
 // Sidebar ya ni le muestra el workspace, esto es la segunda barrera).
+// También respeta la lista por-usuario de subplataformas permitidas (nunca
+// aplica a un admin) — mismo criterio que el filtro del Sidebar.
 export default function CoordinacionLayout({ children }: { children: React.ReactNode }) {
   const { usuario } = useSesion();
+  const sinAccesoPorUsuario =
+    !!usuario && usuario.rol !== "admin" && usuario.subplataformasPermitidas !== null && !usuario.subplataformasPermitidas.includes("coordinacion");
 
-  if (!usuario || !tienePermiso(usuario.rol, "verCoordinacion")) {
+  if (!usuario || !tienePermiso(usuario.rol, "verCoordinacion") || sinAccesoPorUsuario) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-2xl border border-silver bg-surface px-6 py-16 text-center">
         <Construction className="h-8 w-8 text-muted" strokeWidth={1.5} />

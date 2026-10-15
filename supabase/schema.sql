@@ -405,6 +405,15 @@ alter table usuarios add column if not exists primera_aprobacion_en timestamptz;
 -- nadie la pierde hasta que la apague a propósito.
 alter table usuarios add column if not exists abeja_activa boolean not null default true;
 
+-- Control de acceso por usuario a las subplataformas (workspaces del
+-- Sidebar: "club", "certificaciones", "community-manager", "coordinacion" —
+-- mismos ids que WORKSPACES en Sidebar.tsx), encima del control por rol que
+-- ya existe en permisos.ts. null = sin restricción adicional (todos los
+-- usuarios existentes quedan igual que antes al migrar); un array (aunque
+-- esté vacío) es la lista blanca que un admin marcó a mano desde Usuarios.
+-- Nunca aplica a un admin (siempre ve todas las que su rol ya permite).
+alter table usuarios add column if not exists subplataformas_permitidas text[];
+
 -- "Fin de acceso" deja de ser un dato guardado aparte (clientes.fin_acceso
 -- queda como columna legado, ya no se lee ni se escribe): a partir de
 -- ahora se calcula siempre como (fecha_renovacion si existe, si no

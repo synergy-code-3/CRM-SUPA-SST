@@ -64,6 +64,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!activo) requiereNuevaVersion = true;
   }
 
+  if (body?.subplataformasPermitidas !== undefined) {
+    const lista = body.subplataformasPermitidas;
+    // null = sin restricción extra (quitar la lista blanca); si no, debe ser
+    // un array de ids de workspace (texto) — no se valida contra WORKSPACES
+    // aquí para no acoplar la API a Sidebar.tsx, el frontend ya solo manda
+    // ids reales.
+    if (lista !== null && !Array.isArray(lista)) {
+      return NextResponse.json({ error: "subplataformasPermitidas debe ser un array o null" }, { status: 400 });
+    }
+    cambios.subplataformas_permitidas = lista;
+  }
+
   if (body?.nuevaPassword !== undefined) {
     const nuevaPassword = String(body.nuevaPassword);
     if (nuevaPassword.length < 8) {
@@ -85,7 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .from("usuarios")
     .update(cambios)
     .eq("id", id)
-    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,primera_aprobacion_en")
+    .select("id,email,nombre,rol,activo,creado_en,ultimo_login,primera_aprobacion_en,subplataformas_permitidas")
     .single();
   if (error) throw error;
 
