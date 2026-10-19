@@ -343,9 +343,13 @@ export function calcularAccesos(
   // evento = "Synergy" (exacto) — fila del inventario sin datos reales, es
   // una regla fija: 2 boletos General MX al evento Synergy Unlimited MX,
   // sin importar duración de membresía ni país del cliente (el boleto es
-  // para ESE evento en México, no "el que le toque según dónde vive").
+  // para ESE evento en México, no "el que le toque según dónde vive"). Si
+  // además tiene la etiqueta MÁS+ (los 3 VIP de extraVip, vitalicios), esos
+  // 2 General del evento NO se le dan — MÁS+ reemplaza al boleto del
+  // evento, no se suma encima (pedido explícito).
   if (eventoKey === "synergy") {
-    return conExtras({ ...ACCESO_VACIO, general: [accesoDe(2, "MX")] }, false);
+    const generalSynergy = extraVip.length > 0 ? [] : [accesoDe(2, "MX")];
+    return conExtras({ ...ACCESO_VACIO, general: generalSynergy }, false);
   }
 
   // Sección 4 — Acceso = "Renovación": regla fija por país, ignora inventario.
