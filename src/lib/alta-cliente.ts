@@ -65,6 +65,7 @@ export type AltaClienteInput = {
   evento?: string | null;
   tipoMembresia?: string | null;
   etiqueta?: string | null;
+  tags?: string[];
   // Oferta EXTRA (no la del Club) elegida opcionalmente al dar de alta —
   // ver "Agregar oferta" en el panel del cliente para el mismo mecanismo
   // aplicado a un cliente ya existente.

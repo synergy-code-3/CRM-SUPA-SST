@@ -143,8 +143,10 @@ export function ImportarClientesModal({
   const [filtroResultados, setFiltroResultados] = useState<FiltroResultados>("todos");
   const [eventos, setEventos] = useState<{ valor: string; etiqueta: string }[]>([]);
   const [etiquetas, setEtiquetas] = useState<{ valor: string; etiqueta: string }[]>([]);
+  const [tagsCatalogo, setTagsCatalogo] = useState<{ valor: string; etiqueta: string }[]>([]);
   const [eventoGlobal, setEventoGlobal] = useState("");
   const [etiquetaGlobal, setEtiquetaGlobal] = useState("");
+  const [tagGlobal, setTagGlobal] = useState("");
 
   useEffect(() => {
     fetch("/api/biblioteca?tipo=evento")
@@ -155,6 +157,10 @@ export function ImportarClientesModal({
       .then((r) => r.json())
       .then((data) => setEtiquetas((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
       .catch(() => setEtiquetas([]));
+    fetch("/api/biblioteca?tipo=tag")
+      .then((r) => r.json())
+      .then((data) => setTagsCatalogo((data.opciones ?? []).map((v: string) => ({ valor: v, etiqueta: v }))))
+      .catch(() => setTagsCatalogo([]));
   }, []);
 
   function onArchivo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -220,6 +226,7 @@ export function ImportarClientesModal({
             evento: eventoGlobal || undefined,
             tipoMembresia: fila.tipoMembresia || undefined,
             etiqueta: etiquetaGlobal || undefined,
+            tags: tagGlobal ? [tagGlobal] : undefined,
           }),
         });
         const data = await res.json();
@@ -479,7 +486,7 @@ export function ImportarClientesModal({
                     </table>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="mt-4 grid grid-cols-3 gap-2">
                     <Campo label="Evento (se aplica a todos)">
                       <ComboboxBuscador
                         opciones={eventos}
@@ -496,6 +503,15 @@ export function ImportarClientesModal({
                         onChange={setEtiquetaGlobal}
                         placeholder="Seleccionar…"
                         etiquetaVacio="— Ninguna —"
+                      />
+                    </Campo>
+                    <Campo label="Tag (se aplica a todos)">
+                      <ComboboxBuscador
+                        opciones={tagsCatalogo}
+                        valor={tagGlobal}
+                        onChange={setTagGlobal}
+                        placeholder="Seleccionar…"
+                        etiquetaVacio="— Ninguno —"
                       />
                     </Campo>
                   </div>

@@ -662,6 +662,10 @@ export async function crearCliente(input: {
   evento?: string | null;
   tipoMembresia?: string | null;
   etiqueta?: string | null;
+  // Tags (clasificación propia del CRM, independiente de etiqueta/evento —
+  // ver Cliente.tags en types.ts) — opcional al dar de alta, igual que el
+  // resto de los campos del formulario/importador.
+  tags?: string[];
   autor: string;
   // Nombre del vendedor que llenó la Solicitud original, si el alta viene
   // de ahí (ver POST /api/solicitudes/[id]/aprobar) — queda aparte de
@@ -710,6 +714,7 @@ export async function crearCliente(input: {
       // ya cuenta como "asignada de aquí en adelante", así que el ajuste de
       // Fin de acceso (MÁS+/Black Access) sí le aplica desde el día uno.
       etiqueta_asignada_en: etiqueta ? ahora : null,
+      tags: input.tags ?? [],
       // Muy por encima de cualquier fila del CSV: los altas manuales
       // siempre encabezan la lista, como corresponde a "lo más reciente".
       orden_csv: Date.now(),
