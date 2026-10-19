@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Oswald } from "next/font/google";
 import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink, Save, ChevronDown } from "lucide-react";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
@@ -367,6 +368,34 @@ export function FlyersContenido() {
     }
     return mejor && mejor.s >= 55 ? mejor.asset : null;
   }
+
+  // Llegada desde "Crear flyer" en la pestaña Difusión de una mentoría (ver
+  // PanelMentoria.tsx) — a diferencia de elegirSesion() (usado por la
+  // planeación semanal, que calcula fecha/mentoriaId), aquí ya se conocen
+  // los dos de antemano, no hace falta adivinarlos.
+  const searchParams = useSearchParams();
+  const aplicoDesdeQuery = useRef(false);
+  useEffect(() => {
+    if (cargando || aplicoDesdeQuery.current) return;
+    const mentoriaId = searchParams.get("mentoriaId");
+    const tipo = searchParams.get("tipo") as TipoMentoria | null;
+    if (!mentoriaId || !tipo || !TIPOS_MENTORIA_VALIDOS.includes(tipo)) return;
+    aplicoDesdeQuery.current = true;
+    const mentor = searchParams.get("mentor") ?? "";
+    const temaQuery = searchParams.get("tema") ?? "";
+    const fechaIso = searchParams.get("fecha") ?? "";
+
+    setTipoActivo(tipo);
+    const base = tipo === "lunes-sin" ? { ...DEFAULT_CFG, alineacionTema: "center" as const } : DEFAULT_CFG;
+    setCfg({ ...base, ...(layouts[tipo] || {}) });
+    setNombreMentor(mentor);
+    setTema(temaQuery);
+    if (fechaIso) setFecha(formatearFechaFlyer(fechaIso));
+    setFondoId(assetFondoDe(tipo)?.id ?? "");
+    setFotoId(mejorFotoPara(mentor)?.id ?? "");
+    setMentoriaIdActual(mentoriaId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargando, searchParams]);
 
   // --- Subida de imágenes --------------------------------------------
 

@@ -667,3 +667,40 @@ export async function guardarFlyerMentoria(mentoriaId: string, archivo: Blob): P
   if (error) throw error;
   return url;
 }
+
+// Borra los PNG de flyer ya guardados de mentorías con más de 30 días desde
+// su fecha (pedido explícito: evitar que el bucket de Storage crezca sin
+// límite) — la mentoría en sí NUNCA se toca, sigue viéndose en Mentorías/
+// Calendario con su historial completo, solo se le quita el flyer. Invocado
+// por el Cron Job de Vercel (ver vercel.json), una vez al día.
+export async function limpiarFlyersVencidos(): Promise<{ eliminados: number; fallidos: number }> {
+  const haceUnMes = new Date();
+  haceUnMes.setDate(haceUnMes.getDate() - 30);
+  const corte = haceUnMes.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("coord_mentorias")
+    .select("id")
+    .not("flyer_url", "is", null)
+    .lt("fecha", corte);
+  if (error) throw error;
+
+  let eliminados = 0;
+  let fallidos = 0;
+  for (const fila of data ?? []) {
+    try {
+      // Best-effort en el storage: si el archivo ya no estuviera (borrado a
+      // mano, lo que sea), no debe impedir limpiar el campo en la mentoría.
+      await eliminarAssetFlyerStorage(`generado/${fila.id}.png`).catch(() => {});
+      const { error: errUpdate } = await supabase
+        .from("coord_mentorias")
+        .update({ flyer_url: null })
+        .eq("id", fila.id);
+      if (errUpdate) throw errUpdate;
+      eliminados++;
+    } catch {
+      fallidos++;
+    }
+  }
+  return { eliminados, fallidos };
+}

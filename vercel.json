@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/sincronizar-kajabi", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/sincronizar-vsl", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/sincronizar-vsl", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/limpiar-flyers", "schedule": "0 7 * * *" }
   ]
 }

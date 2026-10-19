@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check, Copy, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { X, Check, Copy, Download, ImagePlus } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion";
 
@@ -35,6 +36,7 @@ export function PanelMentoria({
   onGuardado: () => void;
   onEliminar: (id: string) => void;
 }) {
+  const router = useRouter();
   const [idActual, setIdActual] = useState(mentoria.id);
   const esBorrador = !idActual;
   const [tab, setTab] = useState<"info" | "difusion" | "retro">("info");
@@ -123,6 +125,24 @@ export function PanelMentoria({
     } finally {
       setGenerando(false);
     }
+  }
+
+  // Manda a Flyers con los datos de esta mentoría prellenados (tipo/mentor/
+  // tema/fecha) y el id para que "Guardar" allá la enlace directo — cubre el
+  // caso de una mentoría creada a mano (no desde "Crear mentorías de la
+  // semana" en Flyers), que antes no tenía forma de terminar enlazada a su
+  // flyer salvo coincidiendo tipo+fecha por casualidad.
+  function irACrearFlyer() {
+    if (!idActual) return;
+    const mentorNombreActual = opcionesMentor.find((o) => o.valor === mentorId)?.etiqueta ?? "";
+    const params = new URLSearchParams({
+      mentoriaId: idActual,
+      tipo: tipoMentoria,
+      mentor: mentorNombreActual,
+      tema,
+      fecha,
+    });
+    router.push(`/coordinacion/flyers?${params.toString()}`);
   }
 
   async function descargarFlyer() {
@@ -272,9 +292,18 @@ export function PanelMentoria({
 
           {tab === "difusion" && (
             <>
-              {mentoria.flyerUrl && (
-                <div>
-                  <span className="mb-1.5 block text-sm font-medium text-muted">Flyer</span>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted">Flyer</span>
+                  <button
+                    onClick={irACrearFlyer}
+                    className="ease-spring flex items-center gap-1.5 rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    {mentoria.flyerUrl ? "Editar flyer" : "Crear flyer"}
+                  </button>
+                </div>
+                {mentoria.flyerUrl && (
                   <div className="flex items-start gap-3">
                     <a href={mentoria.flyerUrl} target="_blank" rel="noreferrer" className="ease-spring block w-40 flex-none overflow-hidden rounded-xl border border-silver transition hover:opacity-90">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -288,8 +317,8 @@ export function PanelMentoria({
                       Descargar
                     </button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted">Copys</span>
                 <button onClick={generarCopy} disabled={generando} className="ease-spring rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50">
