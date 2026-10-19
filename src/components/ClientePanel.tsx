@@ -1440,11 +1440,11 @@ export function ClientePanel({
                   demás ya son imágenes autocontenidas. */}
               <div
                 className={`absolute inset-0 bg-cover bg-center ${
-                  logoParaCliente(cliente.evento, cliente.etiqueta) === LOGO_NECESITA_FONDO_SOLIDO
+                  logoParaCliente(cliente.evento, cliente.etiqueta, cliente.etiquetasExtra) === LOGO_NECESITA_FONDO_SOLIDO
                     ? "bg-[#050b1f]"
                     : ""
                 }`}
-                style={{ backgroundImage: `url(${RUTA_LOGO_EVENTO[logoParaCliente(cliente.evento, cliente.etiqueta)]})` }}
+                style={{ backgroundImage: `url(${RUTA_LOGO_EVENTO[logoParaCliente(cliente.evento, cliente.etiqueta, cliente.etiquetasExtra)]})` }}
                 aria-hidden="true"
               />
               {/* Degradado oscuro encima de la imagen para que el texto
