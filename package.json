@@ -17,7 +17,8 @@
     "registrar-webhook-kajabi": "tsx scripts/registrar-webhook-kajabi.ts",
     "crear-admin": "tsx scripts/crear-admin.ts",
     "backfill-kajabi-clientes": "tsx scripts/backfill-kajabi-clientes.ts",
-    "setup-storage-comprobantes": "tsx scripts/setup-storage-comprobantes.ts"
+    "setup-storage-comprobantes": "tsx scripts/setup-storage-comprobantes.ts",
+    "setup-storage-captura-datos": "tsx scripts/setup-storage-captura-datos.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

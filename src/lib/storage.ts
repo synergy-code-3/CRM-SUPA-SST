@@ -236,3 +236,55 @@ export async function subirAvatar(usuarioId: string, archivo: File): Promise<str
   const { data } = supabase.storage.from(BUCKET_AVATARES).getPublicUrl(ruta);
   return `${data.publicUrl}?v=${Date.now()}`;
 }
+
+// Captura de Datos — fotos de hojas de inscripción subidas desde la
+// computadora (no las que ya están en Drive). Privado (no público como los
+// buckets de arriba): traen datos personales (nombre, teléfono, últimos 4
+// dígitos de tarjeta en el voucher) — se crea una sola vez con
+// scripts/setup-storage-captura-datos.ts, mismo criterio que
+// BUCKET_COMPROBANTES (no se auto-crea perezoso porque los buckets privados
+// necesitan configurarse sin "public: true").
+export const BUCKET_CAPTURA_FOTOS = "cap-fotos";
+const TAMANO_MAXIMO_FOTO_HOJA_BYTES = 15 * 1024 * 1024;
+
+export async function subirFotoHoja(hojaId: string, jpeg: Buffer): Promise<string> {
+  if (jpeg.byteLength > TAMANO_MAXIMO_FOTO_HOJA_BYTES) throw new Error("La foto pesa más de 15 MB");
+  const ruta = `${hojaId}.jpg`;
+  const { error } = await supabase.storage.from(BUCKET_CAPTURA_FOTOS).upload(ruta, jpeg, { contentType: "image/jpeg", upsert: true });
+  if (error) throw error;
+  return ruta;
+}
+
+export async function leerFotoHoja(ruta: string): Promise<Buffer | null> {
+  const { data, error } = await supabase.storage.from(BUCKET_CAPTURA_FOTOS).download(ruta);
+  if (error) return null;
+  return Buffer.from(await data.arrayBuffer());
+}
+
+// 10 minutos: alcanza para ver/editar una hoja sin dejar el link activo de más.
+export async function urlFirmadaFotoHoja(ruta: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(BUCKET_CAPTURA_FOTOS).createSignedUrl(ruta, 600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+// Última copia del Excel generado al confirmar un evento (para "Descargar").
+export const BUCKET_CAPTURA_EXCEL = "cap-excel";
+const TAMANO_MAXIMO_EXCEL_EVENTO_BYTES = 20 * 1024 * 1024;
+
+export async function subirExcelEvento(eventoId: string, xlsx: Buffer): Promise<string> {
+  if (xlsx.byteLength > TAMANO_MAXIMO_EXCEL_EVENTO_BYTES) throw new Error("El Excel pesa más de 20 MB");
+  const ruta = `${eventoId}.xlsx`;
+  const { error } = await supabase.storage.from(BUCKET_CAPTURA_EXCEL).upload(ruta, xlsx, {
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    upsert: true,
+  });
+  if (error) throw error;
+  return ruta;
+}
+
+export async function leerExcelEvento(eventoId: string): Promise<Buffer | null> {
+  const { data, error } = await supabase.storage.from(BUCKET_CAPTURA_EXCEL).download(`${eventoId}.xlsx`);
+  if (error) return null;
+  return Buffer.from(await data.arrayBuffer());
+}

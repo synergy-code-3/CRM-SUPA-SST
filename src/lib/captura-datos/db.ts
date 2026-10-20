@@ -1,0 +1,339 @@
+// CRUD de Captura de Datos contra Supabase (cap_eventos / cap_hojas y
+// tablas relacionadas). Reemplaza al "almacen" + "escaneo.ts" del proyecto
+// original (un solo Escaneo guardado como JSON en disco) — aquí cada
+// evento y cada hoja son su propia fila, para que varias personas trabajen
+// el mismo evento en paralelo.
+import { supabase } from "@/lib/supabase";
+import type { Estatus, SheetFields } from "./fields";
+import { validateFields } from "./fields";
+import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
+import type { Box } from "./fields";
+
+type FilaEvento = {
+  id: string;
+  nombre: string;
+  destino: Destino;
+  origen: OrigenEvento;
+  carpeta_fotos_id: string | null;
+  estado: EstadoEvento;
+  drive: EventoCaptura["drive"];
+  creado_por: string | null;
+  creado_en: string;
+  confirmado_por: string | null;
+  confirmado_en: string | null;
+};
+
+function filaAEvento(f: FilaEvento): EventoCaptura {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    destino: f.destino,
+    origen: f.origen,
+    carpetaFotosId: f.carpeta_fotos_id,
+    estado: f.estado,
+    drive: f.drive,
+    creadoPorId: f.creado_por,
+    creadoEn: f.creado_en,
+    confirmadoPorId: f.confirmado_por,
+    confirmadoEn: f.confirmado_en,
+  };
+}
+
+type FilaHoja = {
+  id: string;
+  evento_id: string;
+  estatus: Estatus;
+  origen: FotoRef;
+  estado: EstadoHoja;
+  bloqueada_por: string | null;
+  bloqueada_hasta: string | null;
+  campos: SheetFields | null;
+  voucher_box: Box | null;
+  adjuntas: Adjunta[];
+  confirmada_por: string | null;
+  confirmada_en: string | null;
+  folio: string | null;
+  version: number;
+};
+
+function filaAHoja(f: FilaHoja): HojaCaptura {
+  return {
+    id: f.id,
+    eventoId: f.evento_id,
+    estatus: f.estatus,
+    origen: f.origen,
+    estado: f.estado,
+    bloqueadaPorId: f.bloqueada_por,
+    bloqueadaHasta: f.bloqueada_hasta,
+    campos: f.campos,
+    voucherBox: f.voucher_box,
+    adjuntas: f.adjuntas ?? [],
+    confirmadaPorId: f.confirmada_por,
+    confirmadaEn: f.confirmada_en,
+    folio: f.folio,
+    version: f.version,
+  };
+}
+
+// --- Eventos ---------------------------------------------------------
+
+export async function crearEvento(input: {
+  nombre: string;
+  destino: Destino;
+  origen: OrigenEvento;
+  carpetaFotosId?: string | null;
+  creadoPorId: string;
+  usuariosAsignados: string[];
+}): Promise<EventoCaptura> {
+  const { data, error } = await supabase
+    .from("cap_eventos")
+    .insert({
+      nombre: input.nombre,
+      destino: input.destino,
+      origen: input.origen,
+      carpeta_fotos_id: input.carpetaFotosId ?? null,
+      creado_por: input.creadoPorId,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const asignados = [...new Set([input.creadoPorId, ...input.usuariosAsignados])];
+  if (asignados.length) {
+    const { error: errAsig } = await supabase
+      .from("cap_evento_asignaciones")
+      .insert(asignados.map((usuarioId) => ({ evento_id: data.id, usuario_id: usuarioId })));
+    if (errAsig) throw errAsig;
+  }
+
+  return filaAEvento(data as FilaEvento);
+}
+
+export type ProgresoEvento = Record<EstadoHoja, number>;
+
+export async function listarEventos(): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
+  const { data, error } = await supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
+  if (error) throw error;
+  const eventos = (data as FilaEvento[]).map(filaAEvento);
+  if (eventos.length === 0) return [];
+
+  const [{ data: hojas, error: errHojas }, { data: asignaciones, error: errAsig }] = await Promise.all([
+    supabase.from("cap_hojas").select("evento_id, estado").in("evento_id", eventos.map((e) => e.id)),
+    supabase.from("cap_evento_asignaciones").select("evento_id, usuario_id").in("evento_id", eventos.map((e) => e.id)),
+  ]);
+  if (errHojas) throw errHojas;
+  if (errAsig) throw errAsig;
+
+  const progresoPorEvento = new Map<string, ProgresoEvento>();
+  for (const h of hojas as { evento_id: string; estado: EstadoHoja }[]) {
+    const p = progresoPorEvento.get(h.evento_id) ?? { pendiente: 0, leida: 0, confirmada: 0, no_valida: 0 };
+    p[h.estado]++;
+    progresoPorEvento.set(h.evento_id, p);
+  }
+  const asignadosPorEvento = new Map<string, string[]>();
+  for (const a of asignaciones as { evento_id: string; usuario_id: string }[]) {
+    const lista = asignadosPorEvento.get(a.evento_id) ?? [];
+    lista.push(a.usuario_id);
+    asignadosPorEvento.set(a.evento_id, lista);
+  }
+
+  return eventos.map((e) => ({
+    ...e,
+    progreso: progresoPorEvento.get(e.id) ?? { pendiente: 0, leida: 0, confirmada: 0, no_valida: 0 },
+    usuariosAsignados: asignadosPorEvento.get(e.id) ?? [],
+  }));
+}
+
+export async function obtenerEvento(id: string): Promise<EventoCaptura | null> {
+  const { data, error } = await supabase.from("cap_eventos").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? filaAEvento(data as FilaEvento) : null;
+}
+
+export async function reemplazarAsignaciones(eventoId: string, usuariosAsignados: string[]): Promise<void> {
+  const { error: errBorrar } = await supabase.from("cap_evento_asignaciones").delete().eq("evento_id", eventoId);
+  if (errBorrar) throw errBorrar;
+  if (usuariosAsignados.length === 0) return;
+  const { error } = await supabase
+    .from("cap_evento_asignaciones")
+    .insert(usuariosAsignados.map((usuarioId) => ({ evento_id: eventoId, usuario_id: usuarioId })));
+  if (error) throw error;
+}
+
+export async function confirmarEvento(
+  id: string,
+  usuarioId: string,
+  drive: EventoCaptura["drive"]
+): Promise<EventoCaptura> {
+  const { data, error } = await supabase
+    .from("cap_eventos")
+    .update({ estado: "confirmado", confirmado_por: usuarioId, confirmado_en: new Date().toISOString(), drive })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaAEvento(data as FilaEvento);
+}
+
+export async function reabrirEvento(id: string, adminId: string, motivo: string): Promise<EventoCaptura> {
+  const { data, error } = await supabase
+    .from("cap_eventos")
+    .update({ estado: "abierto", confirmado_por: null, confirmado_en: null })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  const { error: errLog } = await supabase
+    .from("cap_eventos_reaperturas")
+    .insert({ evento_id: id, admin_id: adminId, motivo });
+  if (errLog) throw errLog;
+  return filaAEvento(data as FilaEvento);
+}
+
+export async function eliminarEvento(id: string): Promise<void> {
+  const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// --- Hojas -------------------------------------------------------------
+
+export async function crearHojas(
+  eventoId: string,
+  estatus: Estatus,
+  hojas: { origen: FotoRef }[]
+): Promise<HojaCaptura[]> {
+  if (hojas.length === 0) return [];
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .insert(hojas.map((h) => ({ evento_id: eventoId, estatus, origen: h.origen })))
+    .select("*");
+  if (error) throw error;
+  return (data as FilaHoja[]).map(filaAHoja);
+}
+
+export async function listarHojasDeEvento(eventoId: string): Promise<HojaCaptura[]> {
+  const { data, error } = await supabase.from("cap_hojas").select("*").eq("evento_id", eventoId).order("id");
+  if (error) throw error;
+  return (data as FilaHoja[]).map(filaAHoja);
+}
+
+export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.from("cap_hojas").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? filaAHoja(data as FilaHoja) : null;
+}
+
+/** Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). */
+export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+  if (error) throw error;
+  const fila = data as FilaHoja | null;
+  return fila?.id ? filaAHoja(fila) : null;
+}
+
+export async function liberarHoja(id: string): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").update({ bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+  if (error) throw error;
+}
+
+export class ErrorVersion extends Error {
+  constructor() {
+    super("Esta hoja cambió mientras la editabas — recárgala antes de seguir.");
+  }
+}
+
+/** Autoguardado: actualiza campos/voucherBox mientras la hoja está pendiente/leída. Bloqueo optimista por `version`. */
+export async function actualizarCamposHoja(
+  id: string,
+  cambios: { campos?: SheetFields; voucherBox?: Box | null },
+  versionEsperada?: number
+): Promise<HojaCaptura> {
+  let query = supabase.from("cap_hojas").select("version, estado").eq("id", id);
+  const { data: actual, error: errLectura } = await query.maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!actual) throw new Error("Hoja no encontrada");
+  if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
+
+  const nuevoEstado = actual.estado === "pendiente" ? "leida" : actual.estado;
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({
+      ...(cambios.campos !== undefined ? { campos: cambios.campos } : {}),
+      ...(cambios.voucherBox !== undefined ? { voucher_box: cambios.voucherBox } : {}),
+      estado: nuevoEstado,
+      version: actual.version + 1,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaAHoja(data as FilaHoja);
+}
+
+/** Confirma una hoja: valida los campos según su estatus y marca confirmada_por/en. */
+export async function confirmarHoja(
+  id: string,
+  usuarioId: string,
+  campos: SheetFields,
+  voucherBox: Box | null
+): Promise<HojaCaptura> {
+  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("estatus, estado").eq("id", id).maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!actual) throw new Error("Hoja no encontrada");
+
+  const errores = validateFields(campos, actual.estatus as Estatus);
+  if (Object.keys(errores).length > 0) {
+    throw new Error(`Faltan datos: ${Object.values(errores)[0]}`);
+  }
+
+  const yaConfirmada = actual.estado === "confirmada";
+  if (yaConfirmada) {
+    const { data: antes } = await supabase.from("cap_hojas").select("campos").eq("id", id).single();
+    await supabase.from("cap_hojas_historial").insert({ hoja_id: id, usuario_id: usuarioId, antes: antes?.campos ?? null, despues: campos });
+  }
+
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({
+      campos,
+      voucher_box: voucherBox,
+      estado: "confirmada",
+      confirmada_por: usuarioId,
+      confirmada_en: new Date().toISOString(),
+      bloqueada_por: null,
+      bloqueada_hasta: null,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return filaAHoja(data as FilaHoja);
+}
+
+export async function marcarHojaNoValida(id: string, huella: string): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").update({ estado: "no_valida", bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+  if (error) throw error;
+  await marcarNoValida(huella);
+}
+
+/** Actualiza el origen de una hoja (ej. al subir su foto a Drive, se le agrega driveId). */
+export async function actualizarOrigenHoja(id: string, origen: FotoRef): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").update({ origen }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function actualizarCarpetaFotosEvento(eventoId: string, carpetaFotosId: string): Promise<void> {
+  const { error } = await supabase.from("cap_eventos").update({ carpeta_fotos_id: carpetaFotosId }).eq("id", eventoId);
+  if (error) throw error;
+}
+
+export async function marcarNoValida(huella: string): Promise<void> {
+  const { error } = await supabase.from("cap_imagenes_no_validas").upsert({ huella });
+  if (error) throw error;
+}
+
+export async function esNoValida(huella: string): Promise<boolean> {
+  const { data, error } = await supabase.from("cap_imagenes_no_validas").select("huella").eq("huella", huella).maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
