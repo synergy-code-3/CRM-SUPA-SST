@@ -35,7 +35,7 @@ export const campos = z.object({
   folio: texto(30).default(""),
   nombre: texto(300).default(""),
   correo: texto(320).default(""),
-  lada: texto(10).default("+52"),
+  lada: z.enum(["+52", "+1"]).default("+52"),
   telefono: texto(40).default(""),
   tarjeta: texto(30).default(""),
   marcaTarjeta: texto(30).default(""),
@@ -81,6 +81,8 @@ export const consultaAxis = z.object({ telefono: z.string().regex(/^\d{10}$/) })
 export const patchEvento = z.object({
   accion: z.enum(["confirmar", "reabrir"]),
   motivo: texto(500).optional(), // obligatorio solo para "reabrir", se valida en la ruta
+  crearCarpeta: z.boolean().optional(), // solo para "confirmar": crear la subcarpeta de fotos si falta
+  sinFotos: z.boolean().optional(), // solo para "confirmar": guardar los datos aunque falten fotos por subir
 });
 
 export const putAsignaciones = z.object({ usuariosAsignados: z.array(idUuid).max(50) });

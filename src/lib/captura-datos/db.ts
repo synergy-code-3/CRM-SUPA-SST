@@ -248,8 +248,7 @@ export async function actualizarCamposHoja(
   cambios: { campos?: SheetFields; voucherBox?: Box | null },
   versionEsperada?: number
 ): Promise<HojaCaptura> {
-  let query = supabase.from("cap_hojas").select("version, estado").eq("id", id);
-  const { data: actual, error: errLectura } = await query.maybeSingle();
+  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version, estado").eq("id", id).maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) throw new Error("Hoja no encontrada");
   if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
@@ -270,12 +269,38 @@ export async function actualizarCamposHoja(
   return filaAHoja(data as FilaHoja);
 }
 
+export type DuplicadoFolio = { hojaId: string; eventoId: string; eventoNombre: string };
+
+export class ErrorFolioDuplicado extends Error {
+  constructor(public duplicado: DuplicadoFolio) {
+    super(`El folio ya está registrado en "${duplicado.eventoNombre}"`);
+  }
+}
+
+/** Hoja YA confirmada (en cualquier evento, no solo este) con el mismo folio — los folios son hojas impresas numeradas, un mismo número repetido es casi siempre un error de captura. */
+export async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promise<DuplicadoFolio | null> {
+  if (!folio) return null;
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .select("id, evento_id, cap_eventos(nombre)")
+    .eq("folio", folio)
+    .eq("estado", "confirmada")
+    .neq("id", excluirHojaId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const evento = data.cap_eventos as unknown as { nombre: string } | null;
+  return { hojaId: data.id, eventoId: data.evento_id, eventoNombre: evento?.nombre ?? "otro evento" };
+}
+
 /** Confirma una hoja: valida los campos según su estatus y marca confirmada_por/en. */
 export async function confirmarHoja(
   id: string,
   usuarioId: string,
   campos: SheetFields,
-  voucherBox: Box | null
+  voucherBox: Box | null,
+  opts: { forzarDuplicado?: boolean } = {}
 ): Promise<HojaCaptura> {
   const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("estatus, estado").eq("id", id).maybeSingle();
   if (errLectura) throw errLectura;
@@ -284,6 +309,13 @@ export async function confirmarHoja(
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
     throw new Error(`Faltan datos: ${Object.values(errores)[0]}`);
+  }
+
+  if (!opts.forzarDuplicado) {
+    const duplicado = await buscarFolioDuplicado(campos.folio, id);
+    if (duplicado) {
+      throw new ErrorFolioDuplicado(duplicado);
+    }
   }
 
   const yaConfirmada = actual.estado === "confirmada";
