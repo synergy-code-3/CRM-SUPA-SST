@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, ImagePlus } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, ImagePlus, ClipboardList } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import type { ItemReciente, Plataforma } from "@/lib/community-manager";
 import { useSesion } from "@/lib/session-context";
@@ -88,12 +88,14 @@ export const WORKSPACES: Workspace[] = [
   { id: "certificaciones", label: "Certificaciones", href: "/certificaciones", permiso: "verCertificaciones" },
   { id: "community-manager", label: "Community Manager", href: "/community-manager", permiso: "verCommunityManager" },
   { id: "coordinacion", label: "Coordinación Académica", href: "/coordinacion", permiso: "verCoordinacion" },
+  { id: "captura-datos", label: "Captura de Datos", href: "/captura-datos", permiso: "verCapturaDatos" },
 ];
 
 function workspaceDesdeRuta(pathname: string): string {
   if (pathname.startsWith("/certificaciones")) return "certificaciones";
   if (pathname.startsWith("/community-manager")) return "community-manager";
   if (pathname.startsWith("/coordinacion")) return "coordinacion";
+  if (pathname.startsWith("/captura-datos")) return "captura-datos";
   return "club";
 }
 
@@ -126,6 +128,12 @@ const NAV_COORDINACION: ItemNav[] = [
   { href: "/coordinacion/giras", label: "Giras", icon: MapPin, permiso: "verCoordinacion" },
   { href: "/coordinacion/grupos", label: "Grupos de Comunidad", icon: Globe, permiso: "verCoordinacion" },
   { href: "/coordinacion/flyers", label: "Flyers", icon: ImagePlus, permiso: "verCoordinacion" },
+];
+
+// Captura de Datos — todavía sin contenido real (ver captura-datos/layout.tsx),
+// un solo ítem a propósito hasta que se defina qué va aquí.
+const NAV_CAPTURA_DATOS: ItemNav[] = [
+  { href: "/captura-datos", label: "Captura de Datos", icon: ClipboardList, permiso: "verCapturaDatos" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };
@@ -762,6 +770,7 @@ export function Sidebar() {
   const NAV_POR_WORKSPACE: Record<string, ItemNav[]> = {
     certificaciones: NAV_CERTIFICACIONES,
     coordinacion: NAV_COORDINACION,
+    "captura-datos": NAV_CAPTURA_DATOS,
     club: NAV_CLUB,
   };
   const items = (NAV_POR_WORKSPACE[workspaceActual] ?? NAV_CLUB).filter((item) =>
