@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // al empaquetar las funciones serverless — hay que declararlo a mano o
   // en Vercel se rompe con ENOENT.
   outputFileTracingIncludes: {
-    "/api/**/*": ["./Asignacion de boletos.csv"],
+    "/api/**/*": ["./Asignacion de boletos.csv", "./plantilla-captura-datos/plantilla.xlsx"],
   },
 };
 

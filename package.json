@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "node -e \"try { require('fs').copyFileSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','public/pdf.worker.min.mjs') } catch {}\"",
     "importar-csv": "tsx scripts/importar-csv.ts",
     "asignar-boletos": "tsx scripts/asignar-boletos.ts",
     "migrar-supabase": "tsx scripts/migrar-a-supabase.ts",
@@ -19,14 +20,19 @@
     "setup-storage-comprobantes": "tsx scripts/setup-storage-comprobantes.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@supabase/supabase-js": "^2.112.2",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.4.0",
+    "exceljs": "^4.4.0",
     "jose": "^6.2.8",
     "lucide-react": "^0.469.0",
     "next": "15.5.23",
+    "pdfjs-dist": "^6.4.299",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "react-zoom-pan-pinch": "^4.2.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

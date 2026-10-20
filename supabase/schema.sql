@@ -979,3 +979,114 @@ alter table coord_flyer_layouts enable row level security;
 -- vez de solo descargarlo, para poder verlo después desde la pestaña
 -- Difusión de esa misma mentoría.
 alter table coord_mentorias add column if not exists flyer_url text;
+
+-- Captura de Datos — portado desde una app aparte ("Escáner de hojas") que
+-- lee con IA fotos/PDF de hojas de inscripción en papel. A diferencia de la
+-- app original (un solo operador, guarda en el disco de esa computadora),
+-- aquí varias personas pueden trabajar el mismo evento en paralelo: cada
+-- una "toma" la siguiente hoja libre (bloqueo con "for update skip locked",
+-- ver tomar_hoja_libre más abajo) y la confirma. Solo admin por ahora (ver
+-- verCapturaDatos en permisos.ts) — "varias personas a la vez" hoy es
+-- "varios admins a la vez".
+create table if not exists cap_eventos (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  destino jsonb not null,              -- { id, url, nombre } carpeta principal de Drive
+  origen text not null check (origen in ('drive', 'local')),
+  carpeta_fotos_id text,               -- subcarpeta de Drive donde se suben fotos locales (si aplica)
+  estado text not null default 'abierto' check (estado in ('abierto', 'confirmado')),
+  drive jsonb,                         -- { hojaId, hojaUrl, filas, gid } una vez guardado en Drive
+  creado_por uuid references usuarios (id),
+  creado_en timestamptz not null default now(),
+  confirmado_por uuid references usuarios (id),
+  confirmado_en timestamptz
+);
+
+create table if not exists cap_evento_asignaciones (
+  evento_id uuid references cap_eventos (id) on delete cascade,
+  usuario_id uuid references usuarios (id),
+  primary key (evento_id, usuario_id)
+);
+
+-- Cada foto/página de PDF de una hoja de inscripción. `campos` es el dato en
+-- vivo mientras la hoja está pendiente/leída (el autoguardado es un PATCH
+-- periódico aquí mismo — no hay tabla de borradores aparte, a propósito: no
+-- tiene sentido duplicar el mismo dato en dos lados).
+create table if not exists cap_hojas (
+  id uuid primary key default gen_random_uuid(),
+  evento_id uuid not null references cap_eventos (id) on delete cascade,
+  estatus text not null check (estatus in ('Completo', 'Apartado', 'Interesado')),
+  origen jsonb not null,                -- nombreOriginal/driveId/pagina/paginas/w/h
+  estado text not null default 'pendiente'
+    check (estado in ('pendiente', 'leida', 'confirmada', 'no_valida')),
+  bloqueada_por uuid references usuarios (id),
+  bloqueada_hasta timestamptz,
+  campos jsonb,                         -- SheetFields
+  voucher_box jsonb,
+  adjuntas jsonb not null default '[]', -- Adjunta[] — otro pago/foto de la misma ficha, solo lectura
+  confirmada_por uuid references usuarios (id),
+  confirmada_en timestamptz,
+  folio text generated always as (campos ->> 'folio') stored,
+  version int not null default 1
+);
+create unique index if not exists cap_hojas_folio_por_evento on cap_hojas (evento_id, folio)
+  where folio is not null and folio <> '' and estado = 'confirmada';
+create index if not exists idx_cap_hojas_evento on cap_hojas (evento_id);
+
+-- Cambios hechos a una hoja DESPUÉS de confirmada (corrección posterior) —
+-- auditoría, no se usa para deshacer automáticamente.
+create table if not exists cap_hojas_historial (
+  id bigserial primary key,
+  hoja_id uuid references cap_hojas (id) on delete cascade,
+  usuario_id uuid references usuarios (id),
+  antes jsonb,
+  despues jsonb,
+  en timestamptz not null default now()
+);
+
+-- Reabrir un evento ya confirmado — solo admin, queda registro de quién y
+-- por qué. Al volver a confirmar se reemplazan el Excel y la Hoja de Drive.
+create table if not exists cap_eventos_reaperturas (
+  id bigserial primary key,
+  evento_id uuid references cap_eventos (id),
+  admin_id uuid references usuarios (id),
+  motivo text,
+  en timestamptz not null default now()
+);
+
+-- Huellas de imágenes que la IA ya determinó que NO son una hoja de
+-- registro (recibo, foto suelta, etc.) — se recuerdan para no volver a
+-- intentar leerlas ni dejarlas colar al Excel/Drive.
+create table if not exists cap_imagenes_no_validas (huella text primary key, en timestamptz not null default now());
+
+alter table cap_eventos enable row level security;
+alter table cap_evento_asignaciones enable row level security;
+alter table cap_hojas enable row level security;
+alter table cap_hojas_historial enable row level security;
+alter table cap_eventos_reaperturas enable row level security;
+alter table cap_imagenes_no_validas enable row level security;
+
+-- Toma la siguiente hoja libre de un evento sin que dos personas tomen la
+-- misma ("for update skip locked" — la segunda persona que llama al mismo
+-- tiempo simplemente salta a la siguiente fila disponible en vez de
+-- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
+-- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
+create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
+returns cap_hojas
+language plpgsql
+as $$
+declare
+  fila cap_hojas;
+begin
+  update cap_hojas set bloqueada_por = p_usuario, bloqueada_hasta = now() + interval '10 minutes'
+  where id = (
+    select id from cap_hojas
+    where evento_id = p_evento and estado in ('pendiente', 'leida')
+      and (bloqueada_hasta is null or bloqueada_hasta < now())
+    order by id limit 1
+    for update skip locked
+  )
+  returning * into fila;
+  return fila;
+end;
+$$;
