@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, obtenerHoja } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
 
@@ -10,8 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
-    const hoja = await obtenerHoja(id);
-    if (!hoja) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
+    const hoja = await requerirHoja(permiso.usuario, id);
     return NextResponse.json({ hoja });
   } catch (err) {
     return respuestaError(err, "captura-datos/hojas/[id] GET");
@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
+    await requerirHoja(permiso.usuario, id);
     const b = await leerJson(req, patchHoja);
 
     if (b.confirmar) {

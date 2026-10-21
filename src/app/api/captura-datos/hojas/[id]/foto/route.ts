@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { obtenerHoja } from "@/lib/captura-datos/db";
 import { leerFotoHoja, urlFirmadaFotoHoja } from "@/lib/storage";
 import { descargarArchivo } from "@/lib/captura-datos/google";
 import { respuestaError } from "@/lib/captura-datos/api";
@@ -20,8 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
-    const hoja = await obtenerHoja(id);
-    if (!hoja) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
+    const hoja = await requerirHoja(permiso.usuario, id);
 
     if (hoja.origen.rutaStorage?.endsWith(".pdf")) {
       // El PDF se sirve desde aquí (mismo origen) para poder mostrarlo en un <iframe>.

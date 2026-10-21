@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida, obtenerHoja } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida } from "@/lib/captura-datos/db";
 import { extractFromImage } from "@/lib/captura-datos/extract";
 import { huellaImagen } from "@/lib/captura-datos/huella";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
@@ -28,8 +29,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
-    const hoja = await obtenerHoja(id);
-    if (!hoja) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
+    const hoja = await requerirHoja(permiso.usuario, id);
 
     const { base64, mime } = await fotoBase64(hoja);
     const huella = huellaImagen(base64);

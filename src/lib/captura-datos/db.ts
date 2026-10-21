@@ -129,8 +129,33 @@ async function estadosDeHojas(eventoIds: string[]): Promise<{ evento_id: string;
   return filas;
 }
 
-export async function listarEventos(): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
-  const { data, error } = await supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
+/** Ids de los eventos a los que está asignada una persona. */
+async function eventoIdsDeUsuario(usuarioId: string): Promise<string[]> {
+  const { data, error } = await supabase.from("cap_evento_asignaciones").select("evento_id").eq("usuario_id", usuarioId);
+  if (error) throw error;
+  return (data as { evento_id: string }[]).map((a) => a.evento_id);
+}
+
+export async function usuarioAsignado(eventoId: string, usuarioId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("cap_evento_asignaciones")
+    .select("evento_id")
+    .eq("evento_id", eventoId)
+    .eq("usuario_id", usuarioId)
+    .maybeSingle();
+  if (error) throw error;
+  return data !== null;
+}
+
+/** Sin `soloDeUsuarioId` devuelve todos los eventos (admin); con él, solo aquellos a los que esa persona está asignada. */
+export async function listarEventos(soloDeUsuarioId?: string): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
+  let consulta = supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
+  if (soloDeUsuarioId) {
+    const ids = await eventoIdsDeUsuario(soloDeUsuarioId);
+    if (ids.length === 0) return [];
+    consulta = consulta.in("id", ids);
+  }
+  const { data, error } = await consulta;
   if (error) throw error;
   const eventos = (data as FilaEvento[]).map(filaAEvento);
   if (eventos.length === 0) return [];

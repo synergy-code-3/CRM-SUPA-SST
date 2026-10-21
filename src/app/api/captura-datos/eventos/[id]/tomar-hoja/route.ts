@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { tomarHojaLibre } from "@/lib/captura-datos/db";
 import { respuestaError } from "@/lib/captura-datos/api";
@@ -9,6 +10,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const hoja = await tomarHojaLibre(id, permiso.usuario.id);
     return NextResponse.json({ hoja: hoja ?? null });
   } catch (err) {

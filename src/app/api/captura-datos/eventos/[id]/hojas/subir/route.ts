@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { crearHojas, actualizarOrigenHoja, obtenerEvento } from "@/lib/captura-datos/db";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const evento = await obtenerEvento(id);
     if (!evento) throw new ErrorPeticion(404, "Evento no encontrado");
     if (evento.estado !== "abierto") throw new ErrorPeticion(409, "El evento ya está confirmado.");
