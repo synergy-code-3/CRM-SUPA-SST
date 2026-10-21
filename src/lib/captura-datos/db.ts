@@ -150,6 +150,12 @@ export async function obtenerEvento(id: string): Promise<EventoCaptura | null> {
   return data ? filaAEvento(data as FilaEvento) : null;
 }
 
+export async function listarAsignaciones(eventoId: string): Promise<string[]> {
+  const { data, error } = await supabase.from("cap_evento_asignaciones").select("usuario_id").eq("evento_id", eventoId);
+  if (error) throw error;
+  return (data as { usuario_id: string }[]).map((a) => a.usuario_id);
+}
+
 export async function reemplazarAsignaciones(eventoId: string, usuariosAsignados: string[]): Promise<void> {
   const { error: errBorrar } = await supabase.from("cap_evento_asignaciones").delete().eq("evento_id", eventoId);
   if (errBorrar) throw errBorrar;

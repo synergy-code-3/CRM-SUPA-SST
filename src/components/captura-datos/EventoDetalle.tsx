@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CloudUpload, Download, Loader2, PlayCircle, RotateCcw, Upload } from "lucide-react";
+import { ArrowLeft, CloudUpload, Download, Loader2, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
+import { AsignacionesModal } from "./AsignacionesModal";
 import { EditorHoja } from "./EditorHoja";
 import { api, ErrorApi, imagenAJpeg } from "@/lib/captura-datos/cliente";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
@@ -22,6 +23,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [estatusSubida, setEstatusSubida] = useState<Estatus>("Completo");
+  const [asignando, setAsignando] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
@@ -62,13 +64,17 @@ export function EventoDetalle({ id }: { id: string }) {
     setOcupado("subir");
     setMensaje(null);
     try {
-      const lista = [...archivos].filter((a) => a.type.startsWith("image/"));
+      const lista = [...archivos].filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
       for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
         const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
         const form = new FormData();
         form.set("estatus", estatusSubida);
         form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
-        for (const a of tanda) form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
+        // Los PDF se suben tal cual (sin partir); las imágenes se reducen a JPEG.
+        for (const a of tanda) {
+          if (a.type === "application/pdf") form.append("archivos", a, a.name);
+          else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
+        }
         await api(`/api/captura-datos/eventos/${id}/hojas/subir`, { method: "POST", body: form });
       }
       await cargar();
@@ -143,8 +149,8 @@ export function EventoDetalle({ id }: { id: string }) {
                 <select value={estatusSubida} onChange={(e) => setEstatusSubida(e.target.value as Estatus)} className="rounded-lg border border-silver bg-surface px-2 py-2 text-sm">
                   {ESTATUS.map((e) => <option key={e.value}>{e.value}</option>)}
                 </select>
-                <Boton onClick={() => entrada.current?.click()} cargando={ocupado === "subir"} icono={<Upload className="h-4 w-4" />}>Subir fotos</Boton>
-                <input ref={entrada} type="file" accept="image/*" multiple hidden onChange={(e) => subirFotos(e.target.files)} />
+                <Boton onClick={() => entrada.current?.click()} cargando={ocupado === "subir"} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
+                <input ref={entrada} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => subirFotos(e.target.files)} />
               </>
             )}
             <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && confirmarEvento()} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
@@ -152,8 +158,11 @@ export function EventoDetalle({ id }: { id: string }) {
         ) : (
           usuario?.rol === "admin" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>
         )}
+        {usuario?.rol === "admin" && <Boton onClick={() => setAsignando(true)} icono={<Users className="h-4 w-4" />}>Personas</Boton>}
         <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>
       </div>
+
+      {asignando && <AsignacionesModal eventoId={id} onCerrar={() => setAsignando(false)} />}
 
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {hojas.map((h) => (

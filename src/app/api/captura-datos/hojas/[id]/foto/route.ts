@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { obtenerHoja } from "@/lib/captura-datos/db";
-import { urlFirmadaFotoHoja } from "@/lib/storage";
+import { leerFotoHoja, urlFirmadaFotoHoja } from "@/lib/storage";
 import { descargarArchivo } from "@/lib/captura-datos/google";
 import { respuestaError } from "@/lib/captura-datos/api";
 
@@ -19,6 +19,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const hoja = await obtenerHoja(id);
     if (!hoja) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
 
+    if (hoja.origen.rutaStorage?.endsWith(".pdf")) {
+      // El PDF se sirve desde aquí (mismo origen) para poder mostrarlo en un <iframe>.
+      const buf = await leerFotoHoja(hoja.origen.rutaStorage);
+      if (!buf) return NextResponse.json({ error: "No se encontró el archivo" }, { status: 404 });
+      return new NextResponse(new Uint8Array(buf), { headers: { "Content-Type": "application/pdf", "Content-Disposition": "inline" } });
+    }
     if (hoja.origen.rutaStorage) {
       const url = await urlFirmadaFotoHoja(hoja.origen.rutaStorage);
       return NextResponse.redirect(url);

@@ -247,10 +247,12 @@ export async function subirAvatar(usuarioId: string, archivo: File): Promise<str
 export const BUCKET_CAPTURA_FOTOS = "cap-fotos";
 const TAMANO_MAXIMO_FOTO_HOJA_BYTES = 15 * 1024 * 1024;
 
-export async function subirFotoHoja(hojaId: string, jpeg: Buffer): Promise<string> {
-  if (jpeg.byteLength > TAMANO_MAXIMO_FOTO_HOJA_BYTES) throw new Error("La foto pesa más de 15 MB");
-  const ruta = `${hojaId}.jpg`;
-  const { error } = await supabase.storage.from(BUCKET_CAPTURA_FOTOS).upload(ruta, jpeg, { contentType: "image/jpeg", upsert: true });
+export async function subirFotoHoja(hojaId: string, bytes: Buffer, tipo: "jpeg" | "pdf" = "jpeg"): Promise<string> {
+  if (bytes.byteLength > TAMANO_MAXIMO_FOTO_HOJA_BYTES) throw new Error("El archivo pesa más de 15 MB");
+  const ruta = `${hojaId}.${tipo === "pdf" ? "pdf" : "jpg"}`;
+  const { error } = await supabase.storage
+    .from(BUCKET_CAPTURA_FOTOS)
+    .upload(ruta, bytes, { contentType: tipo === "pdf" ? "application/pdf" : "image/jpeg", upsert: true });
   if (error) throw error;
   return ruta;
 }

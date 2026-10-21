@@ -9,15 +9,15 @@ import { descargarArchivo } from "@/lib/captura-datos/google";
 
 export const maxDuration = 60;
 
-async function fotoBase64(hoja: { origen: { rutaStorage?: string; driveId?: string } }): Promise<string> {
+async function fotoBase64(hoja: { origen: { rutaStorage?: string; driveId?: string } }): Promise<{ base64: string; mime: string }> {
   if (hoja.origen.rutaStorage) {
     const buf = await leerFotoHoja(hoja.origen.rutaStorage);
     if (!buf) throw new ErrorPeticion(404, "No se encontró la foto de esta hoja.");
-    return buf.toString("base64");
+    return { base64: buf.toString("base64"), mime: hoja.origen.rutaStorage.endsWith(".pdf") ? "application/pdf" : "image/jpeg" };
   }
   if (hoja.origen.driveId) {
-    const { base64 } = await descargarArchivo(hoja.origen.driveId);
-    return base64;
+    const { base64, mime } = await descargarArchivo(hoja.origen.driveId);
+    return { base64, mime };
   }
   throw new ErrorPeticion(400, "Esta hoja no tiene foto asociada.");
 }
@@ -31,13 +31,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const hoja = await obtenerHoja(id);
     if (!hoja) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
 
-    const base64 = await fotoBase64(hoja);
+    const { base64, mime } = await fotoBase64(hoja);
     const huella = huellaImagen(base64);
     if (await esNoValida(huella)) {
       return NextResponse.json({ error: "Esta imagen ya se marcó antes como no válida (no es una hoja de registro)." }, { status: 422 });
     }
 
-    const extraccion = await extractFromImage(base64);
+    const extraccion = await extractFromImage(base64, mime);
     if (!extraccion.esHojaDeRegistro) {
       await marcarHojaNoValida(id, huella);
       return NextResponse.json({ error: extraccion.motivoNoHoja || "La imagen no parece una hoja de registro." }, { status: 422 });

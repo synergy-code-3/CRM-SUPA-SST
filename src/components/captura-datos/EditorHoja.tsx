@@ -38,6 +38,8 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   versionRef.current = version;
   camposRef.current = campos;
 
+  const urlFoto = `/api/captura-datos/hojas/${inicial.id}/foto`;
+  const esPdf = inicial.origen.rutaStorage?.endsWith(".pdf") || /\.pdf$/i.test(inicial.origen.nombreOriginal);
   const errores = validateFields(normalizeFields(campos, inicial.estatus), inicial.estatus);
 
   /** Guarda lo pendiente de a un PATCH a la vez; devuelve false si no se pudo guardar. */
@@ -163,12 +165,16 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="h-[50vh] overflow-hidden rounded-2xl border border-silver bg-black/5 lg:sticky lg:top-4 lg:h-[80vh]">
-        <TransformWrapper>
-          <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/captura-datos/hojas/${inicial.id}/foto`} alt="Hoja de inscripción" className="max-h-full w-full object-contain" />
-          </TransformComponent>
-        </TransformWrapper>
+        {esPdf ? (
+          <iframe src={urlFoto} title="Hoja de inscripción (PDF)" className="h-full w-full" />
+        ) : (
+          <TransformWrapper>
+            <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={urlFoto} alt="Hoja de inscripción" className="max-h-full w-full object-contain" />
+            </TransformComponent>
+          </TransformWrapper>
+        )}
       </div>
 
       <div className="space-y-3">

@@ -81,11 +81,12 @@ IMPORTANTE: la hoja trae impresos datos de la empresa que NO son del cliente y d
 de "¿Dudas? Manda Whatsapp" (+52 1 33 2811 6675, +52 332 101 3336), la CLABE bancaria y la URL.
 Si un campo está en blanco, devuélvelo vacío; nunca inventes datos.`;
 
-export async function extractFromImage(base64Jpeg: string): Promise<Extraction> {
+/** `mime`: image/jpeg|png|webp|gif o application/pdf (el PDF se manda completo, sin partirlo). */
+export async function extractFromImage(base64: string, mime = "image/jpeg"): Promise<Extraction> {
   if (!/^sk-ant-\w/.test(process.env.ANTHROPIC_API_KEY ?? "")) {
     throw new Error("Falta configurar ANTHROPIC_API_KEY");
   }
-  const out = await extractWithApi(base64Jpeg);
+  const out = await extractWithApi(base64, mime);
   if (!out.esHojaDeRegistro) {
     return {
       ...normalizeFields({ ...out, folio: "", nombre: "", correo: "", telefono: "", tarjeta: "", marcaTarjeta: "", metodoPago: "", cantidad: "", membresia: "", notas: "" }),
@@ -110,11 +111,15 @@ export async function extractFromImage(base64Jpeg: string): Promise<Extraction> 
   };
 }
 
+function imagenMime(mime: string) {
+  return (["image/png", "image/webp", "image/gif"].includes(mime) ? mime : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+}
+
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
-async function extractWithApi(base64Jpeg: string): Promise<z.infer<typeof ExtractionSchema>> {
+async function extractWithApi(base64: string, mime: string): Promise<z.infer<typeof ExtractionSchema>> {
   const client = new Anthropic();
   const response = await client.beta.messages.parse({
     model: MODEL,
@@ -126,7 +131,9 @@ async function extractWithApi(base64Jpeg: string): Promise<z.infer<typeof Extrac
       {
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Jpeg } },
+          mime === "application/pdf"
+            ? { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 } }
+            : { type: "image" as const, source: { type: "base64" as const, media_type: imagenMime(mime), data: base64 } },
           { type: "text", text: PROMPT },
         ],
       },

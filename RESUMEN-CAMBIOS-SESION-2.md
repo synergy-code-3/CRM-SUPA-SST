@@ -90,5 +90,18 @@ que lea este resumen primero y que continúe con la Fase 4 en adelante.
 - `hojas/[id]` y `extract`: responden 409 si la hoja cambió u otra persona la tiene.
 - `hojas/subir`: valida evento abierto, metadatos (zod), máx. 10 MB y JPEG real, todo antes de crear filas.
 
-**Pendiente:** probar en vivo (Fase 4 con la carpeta de Drive de prueba; Fase 5 sin API key), PDF desde la
-computadora, tests (no hay framework), pantalla de asignación de usuarios, borrar `Escaner de hojas/` en la otra PC.
+**Después (misma sesión):**
+- **PDF tal cual** (sin partir en páginas): `hojas/subir` acepta JPEG o PDF (se detecta por los primeros bytes, máx. 15 MB);
+  se guarda como `<id>.pdf`; `hojas/[id]/foto` lo sirve inline desde el mismo origen; el editor lo muestra en un
+  `<iframe>`; `extract` lo manda a la IA como bloque `document` (`extractFromImage(base64, mime)`).
+- **Asignación de personas por evento:** botón "Personas" (solo admin) en el detalle del evento →
+  `AsignacionesModal.tsx`; nuevo `GET .../asignaciones` y `listarAsignaciones` en `db.ts`. Hoy es informativo: ninguna
+  ruta restringe por asignación.
+- **Tests (vitest 3, `npm test` / `npm run test:coverage`):** 36 tests sobre `fields`, `conciliacion`, `enlaces`,
+  `validacion`/`modelo` y `cliente` (cobertura 81 % de esos archivos). **No** cubren `db.ts`, `google.ts`, `extract.ts`,
+  rutas ni componentes (necesitan Supabase/Drive/IA; se prueban en vivo).
+- **`scripts/evaluar-lectura-ia.ts`** (comparar modelos con poco gasto): por defecto solo cuenta tokens (gratis);
+  `--ejecutar` procesa máx. `--max` archivos (por defecto 2, tope duro 5). Los precios se pasan por flag. Uso:
+  `npx tsx scripts/evaluar-lectura-ia.ts <carpeta> --modelo=claude-sonnet-5-5`.
+
+**Pendiente:** probar en vivo (Fase 4 con la carpeta de Drive de prueba; Fase 5 sin API key), tests de db/rutas, borrar `Escaner de hojas/` en la otra PC.
