@@ -192,7 +192,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
         </button>
 
         <fieldset disabled={leyendo || bloqueada} className="min-w-0 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", e.target.value)} inputMode="numeric" className={CLASE_INPUT} /></Campo>
           <Campo etiqueta="Teléfono" error={campo("telefono") ?? campo("lada")}>
             <div className="flex gap-1">

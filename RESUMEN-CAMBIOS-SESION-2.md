@@ -104,4 +104,15 @@ que lea este resumen primero y que continúe con la Fase 4 en adelante.
   `--ejecutar` procesa máx. `--max` archivos (por defecto 2, tope duro 5). Los precios se pasan por flag. Uso:
   `npx tsx scripts/evaluar-lectura-ia.ts <carpeta> --modelo=claude-sonnet-5-5`.
 
+**Fase 4 (parcial, solo lectura de Drive):** con la carpeta de prueba "Test" funcionan `infoCarpeta`, `listarArchivos` y
+`descargarArchivo` (subcarpetas Interesados: 3 fotos JPEG, Apartados: 4). Falta probar lo que escribe en Drive
+(`guardarEventoEnDrive`) y todo lo que depende de Supabase.
+
+**Prueba de la interfaz con API simulada** (sin Supabase ni Drive): `next dev` con una sesión admin falsa y Chromium
+(Playwright) interceptando `/api/**` con datos de ejemplo. Recorrido OK en escritorio y móvil (390 px, sin scroll
+horizontal): lista de eventos, modal de nuevo evento, detalle, "Personas", tomar hoja, validación al confirmar vacío,
+autoguardado, comparación con Axis, error de "Leer con IA" sin API key, folio duplicado + "Confirmar de todos modos".
+Único hallazgo: en móvil el teléfono quedaba cortado → `EditorHoja.tsx` apila Folio/Teléfono por debajo de `sm`.
+No prueba nada de Supabase, Drive (escritura) ni la IA real.
+
 **Pendiente:** probar en vivo (Fase 4 con la carpeta de Drive de prueba; Fase 5 sin API key), tests de db/rutas, borrar `Escaner de hojas/` en la otra PC.
