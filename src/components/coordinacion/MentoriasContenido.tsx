@@ -11,6 +11,7 @@ import {
   type Mentoria,
   type TipoMentoria,
 } from "@/lib/coordinacion";
+import { descargarCsv } from "@/lib/csv";
 import { PanelMentoria } from "./PanelMentoria";
 
 function hoyISO(): string {
@@ -31,6 +32,20 @@ function descargarMarkdown(mentorias: Mentoria[]): void {
 function formatearFecha(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
+}
+
+// Un CSV por tipo de mentoría (botón propio en cada carpeta) — tema, mentor,
+// asistencia media y notas de cada sesión de ese tipo, para llevar el
+// seguimiento fuera del CRM (ej. en una hoja de cálculo).
+function descargarCsvCarpeta(tipo: TipoMentoria, items: Mentoria[]): void {
+  const filas = items.map((m) => [
+    formatearFecha(m.fecha),
+    m.tema ?? "",
+    m.mentorNombre ?? "",
+    m.audMedia != null ? String(m.audMedia) : "",
+    m.notas ?? "",
+  ]);
+  descargarCsv(`${TIPOS_MENTORIA[tipo].label}-${hoyISO()}.csv`, ["Fecha", "Tema", "Mentor", "Asistencia media", "Notas"], filas);
 }
 
 export function MentoriasContenido() {
@@ -129,18 +144,29 @@ export function MentoriasContenido() {
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {carpetas.map(({ tipo, items }) => (
-              <button
-                key={tipo}
-                onClick={() => setTipoAbierto(tipo)}
-                className="ease-spring group flex aspect-[4/3] flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
-                style={{ backgroundColor: TIPOS_MENTORIA[tipo].color }}
-              >
-                <GraduationCap className="h-6 w-6 opacity-80" strokeWidth={1.75} />
-                <div>
-                  <p className="text-sm font-semibold leading-tight">{TIPOS_MENTORIA[tipo].label}</p>
-                  <p className="mt-1 text-xs text-white/80">{items.length} mentoría{items.length !== 1 ? "s" : ""}</p>
-                </div>
-              </button>
+              <div key={tipo} className="relative">
+                <button
+                  onClick={() => setTipoAbierto(tipo)}
+                  className="ease-spring flex aspect-[4/3] w-full flex-col justify-between rounded-2xl p-4 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  style={{ backgroundColor: TIPOS_MENTORIA[tipo].color }}
+                >
+                  <GraduationCap className="h-6 w-6 opacity-80" strokeWidth={1.75} />
+                  <div>
+                    <p className="text-sm font-semibold leading-tight">{TIPOS_MENTORIA[tipo].label}</p>
+                    <p className="mt-1 text-xs text-white/80">{items.length} mentoría{items.length !== 1 ? "s" : ""}</p>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    descargarCsvCarpeta(tipo, items);
+                  }}
+                  title={`Descargar CSV de ${TIPOS_MENTORIA[tipo].label}`}
+                  className="ease-spring absolute right-2 top-2 rounded-lg bg-black/20 p-1.5 text-white transition hover:bg-black/35"
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              </div>
             ))}
           </div>
         )
