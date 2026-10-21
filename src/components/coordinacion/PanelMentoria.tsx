@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Check, Copy, Download, ImagePlus } from "lucide-react";
+import { X, Check, Copy, Download, ImagePlus, Send } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion";
 
@@ -58,6 +58,8 @@ export function PanelMentoria({
   const [copyPlataforma, setCopyPlataforma] = useState(mentoria.copyPlataforma ?? "");
   const [checklist, setChecklist] = useState<DifusionChecklist>(mentoria.difusion);
   const [generando, setGenerando] = useState(false);
+  const [enviandoTelegram, setEnviandoTelegram] = useState<"previa" | "plataforma" | null>(null);
+  const [mensajeTelegram, setMensajeTelegram] = useState<string | null>(null);
 
   // Retro
   const [audInicial, setAudInicial] = useState(mentoria.audInicial?.toString() ?? "");
@@ -158,6 +160,31 @@ export function PanelMentoria({
       URL.revokeObjectURL(url);
     } catch {
       setError("No se pudo descargar el flyer");
+    }
+  }
+
+  // Manda el flyer + uno de los dos copys al grupo de Telegram del equipo
+  // (reemplaza el copiar/pegar manual) — marca sola la casilla "Telegram"
+  // del checklist al terminar, ver el comentario en la ruta de la API.
+  async function enviarTelegram(cual: "previa" | "plataforma") {
+    if (!idActual) return;
+    setEnviandoTelegram(cual);
+    setMensajeTelegram(null);
+    try {
+      const res = await fetch(`/api/coordinacion/mentorias/${idActual}/telegram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cual }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "No se pudo enviar a Telegram");
+      setChecklist((c) => ({ ...c, telegram: true }));
+      setMensajeTelegram("Enviado a Telegram.");
+    } catch (err) {
+      setMensajeTelegram(err instanceof Error ? err.message : "No se pudo enviar a Telegram");
+    } finally {
+      setEnviandoTelegram(null);
+      setTimeout(() => setMensajeTelegram(null), 4000);
     }
   }
 
@@ -328,9 +355,28 @@ export function PanelMentoria({
               <CampoConCopiar label="Copy de previa (anuncio del día)" valor={copyPrevia}>
                 <textarea value={copyPrevia} onChange={(e) => setCopyPrevia(e.target.value)} rows={6} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
               </CampoConCopiar>
+              <button
+                onClick={() => enviarTelegram("previa")}
+                disabled={!mentoria.flyerUrl || !copyPrevia.trim() || enviandoTelegram !== null}
+                title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
+                className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+              >
+                <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {enviandoTelegram === "previa" ? "Enviando…" : "Enviar previa a Telegram"}
+              </button>
               <CampoConCopiar label="Copy de plataforma (ya disponible en Classroom)" valor={copyPlataforma}>
                 <textarea value={copyPlataforma} onChange={(e) => setCopyPlataforma(e.target.value)} rows={5} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
               </CampoConCopiar>
+              <button
+                onClick={() => enviarTelegram("plataforma")}
+                disabled={!mentoria.flyerUrl || !copyPlataforma.trim() || enviandoTelegram !== null}
+                title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
+                className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+              >
+                <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {enviandoTelegram === "plataforma" ? "Enviando…" : "Enviar \"ya disponible\" a Telegram"}
+              </button>
+              {mensajeTelegram && <p className="text-xs text-muted">{mensajeTelegram}</p>}
               <div>
                 <span className="mb-2 block text-sm font-medium text-muted">Checklist de difusión</span>
                 <div className="grid grid-cols-2 gap-2">
