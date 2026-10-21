@@ -20,33 +20,31 @@ type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
 export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; onTerminar: () => void }) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
-  const [version, setVersion] = useState(inicial.version);
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
   const [leyendo, setLeyendo] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
+  const [saliendo, setSaliendo] = useState(false);
   const [duplicado, setDuplicado] = useState<{ mensaje: string; datos: Duplicado | null } | null>(null);
   const [axis, setAxis] = useState<ResultadoAxis | null>(null);
   const [intentoConfirmar, setIntentoConfirmar] = useState(false);
   const [lockPorVencer, setLockPorVencer] = useState(false);
   const [bloqueada, setBloqueada] = useState(false); // 409: la hoja cambió o la tomó otra persona
-  const enVuelo = useRef(false);
-  const versionRef = useRef(version);
-  const camposRef = useRef(campos);
+  const cola = useRef<Promise<boolean>>(Promise.resolve(true)); // un guardado a la vez, en orden
+  const bloqueadaRef = useRef(false);
+  const versionRef = useRef(inicial.version);
+  const camposRef = useRef(campos); // siempre lo último escrito (el estado va un render atrasado)
   const ultimoGuardado = useRef(Date.now());
   const sucio = useRef(false);
-  versionRef.current = version;
-  camposRef.current = campos;
+  const trabajando = leyendo || confirmando || saliendo;
 
   const urlFoto = `/api/captura-datos/hojas/${inicial.id}/foto`;
   const esPdf = inicial.origen.rutaStorage?.endsWith(".pdf") || /\.pdf$/i.test(inicial.origen.nombreOriginal);
   const errores = validateFields(normalizeFields(campos, inicial.estatus), inicial.estatus);
 
-  /** Guarda lo pendiente de a un PATCH a la vez; devuelve false si no se pudo guardar. */
-  const guardar = useCallback(async (): Promise<boolean> => {
-    while (enVuelo.current) await new Promise((r) => setTimeout(r, 100));
+  const ejecutarGuardado = useCallback(async (): Promise<boolean> => {
+    if (bloqueadaRef.current) return false;
     if (!sucio.current) return true;
-    enVuelo.current = true;
     sucio.current = false;
     setGuardado("guardando");
     try {
@@ -54,7 +52,6 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
         method: "PATCH", json: { campos: camposRef.current, version: versionRef.current },
       });
       versionRef.current = r.hoja.version;
-      setVersion(r.hoja.version);
       ultimoGuardado.current = Date.now();
       setLockPorVencer(false);
       setGuardado(sucio.current ? "pendiente" : "guardado");
@@ -63,22 +60,35 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       sucio.current = true;
       setGuardado("error");
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
-      if (err instanceof ErrorApi && err.status === 409) setBloqueada(true);
+      if (err instanceof ErrorApi && err.status === 409) {
+        bloqueadaRef.current = true;
+        setBloqueada(true);
+      }
       return false;
-    } finally {
-      enVuelo.current = false;
     }
   }, [inicial.id]);
 
+  /** Guarda lo pendiente encolando los PATCH (nunca dos a la vez); devuelve false si no se pudo guardar. */
+  const guardar = useCallback((): Promise<boolean> => {
+    cola.current = cola.current.then(ejecutarGuardado, ejecutarGuardado);
+    return cola.current;
+  }, [ejecutarGuardado]);
+
   async function recargar() {
-    const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}`);
-    setCampos({ ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) });
-    versionRef.current = r.hoja.version;
-    setVersion(r.hoja.version);
-    sucio.current = false;
-    setBloqueada(false);
-    setError(null);
-    setGuardado("guardado");
+    try {
+      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}`);
+      const nuevos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
+      camposRef.current = nuevos;
+      setCampos(nuevos);
+      versionRef.current = r.hoja.version;
+      sucio.current = false;
+      bloqueadaRef.current = false;
+      setBloqueada(false);
+      setError(null);
+      setGuardado("guardado");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo recargar la hoja.");
+    }
   }
 
   // Autoguardado con debounce.
@@ -97,7 +107,8 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   // Consulta a Axis cuando el teléfono está completo.
   const telefono = telefonoConsultable(campos);
   useEffect(() => {
-    if (!telefono) { setAxis(null); return; }
+    setAxis(null); // no mostrar el resultado del teléfono anterior mientras llega el nuevo
+    if (!telefono) return;
     let vigente = true;
     api<ResultadoAxis>("/api/captura-datos/axis", { json: { telefono } })
       .then((r) => vigente && setAxis(r))
@@ -107,8 +118,9 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
   function cambiar<K extends FieldKey>(k: K, valor: SheetFields[K]) {
     sucio.current = true;
+    camposRef.current = { ...camposRef.current, [k]: valor };
     setGuardado("pendiente");
-    setCampos((c) => ({ ...c, [k]: valor }));
+    setCampos(camposRef.current);
   }
 
   async function leerConIa() {
@@ -117,14 +129,16 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
     try {
       if (!(await guardar())) return;
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
-      setCampos({ ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) });
+      const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
+      camposRef.current = leidos;
+      setCampos(leidos);
       versionRef.current = r.hoja.version;
-      setVersion(r.hoja.version);
       sucio.current = false;
       setGuardado("guardado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo leer la hoja.");
       if (err instanceof ErrorApi && err.status === 422) onTerminar(); // no es una hoja de registro: ya quedó marcada
+      else if (err instanceof ErrorApi && err.status === 409) { bloqueadaRef.current = true; setBloqueada(true); }
     } finally {
       setLeyendo(false);
     }
@@ -138,7 +152,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
     try {
       if (!(await guardar())) return;
       await api(`/api/captura-datos/hojas/${inicial.id}${forzar ? "?force=1" : ""}`, {
-        method: "PATCH", json: { campos: normalizeFields(campos, inicial.estatus), voucherBox: inicial.voucherBox, confirmar: true },
+        method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: inicial.voucherBox, confirmar: true, version: versionRef.current },
       });
       onTerminar();
     } catch (err) {
@@ -153,7 +167,11 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   }
 
   async function liberar() {
-    await guardar(); // no perder lo escrito en los últimos segundos
+    setSaliendo(true);
+    if (!(await guardar())) {
+      setSaliendo(false); // no se pudo guardar: no se sale ni se suelta la hoja perdiendo lo escrito
+      return;
+    }
     await api(`/api/captura-datos/hojas/${inicial.id}/liberar`, { method: "POST" }).catch(() => {});
     onTerminar();
   }
@@ -166,7 +184,10 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="h-[50vh] overflow-hidden rounded-2xl border border-silver bg-black/5 lg:sticky lg:top-4 lg:h-[80vh]">
         {esPdf ? (
-          <iframe src={urlFoto} title="Hoja de inscripción (PDF)" className="h-full w-full" />
+          <div className="flex h-full flex-col">
+            <iframe src={urlFoto} title="Hoja de inscripción (PDF)" className="min-h-0 flex-1" />
+            <a href={urlFoto} target="_blank" rel="noopener noreferrer" className="px-3 py-2 text-xs text-primary underline">Abrir el PDF en otra pestaña</a>
+          </div>
         ) : (
           <TransformWrapper>
             <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
@@ -180,26 +201,31 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2 text-xs text-muted">
           <span>{inicial.estatus} · {inicial.origen.nombreOriginal}</span>
-          <span>{{ guardado: "Guardado", pendiente: "Cambios sin guardar…", guardando: "Guardando…", error: "Error al guardar" }[guardado]}</span>
+          <span role="status" aria-live="polite">{{ guardado: "Guardado", pendiente: "Cambios sin guardar…", guardando: "Guardando…", error: "Error al guardar" }[guardado]}</span>
         </div>
 
         {lockPorVencer && <Aviso>Llevas varios minutos sin guardar: la hoja podría liberarse para otra persona. Haz un cambio o confirma.</Aviso>}
         {error && <Aviso peligro>{error}</Aviso>}
-        {bloqueada && <button onClick={recargar} className="rounded-lg border border-silver px-3 py-1.5 text-sm">Recargar hoja</button>}
+        {bloqueada && (
+          <div className="flex gap-2">
+            <button onClick={recargar} className="rounded-lg border border-silver px-3 py-1.5 text-sm">Recargar hoja</button>
+            <button onClick={onTerminar} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-silver/40">Salir sin guardar</button>
+          </div>
+        )}
 
-        <button onClick={leerConIa} disabled={leyendo} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50">
+        <button onClick={leerConIa} disabled={trabajando} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50">
           {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Leer con IA
         </button>
 
-        <fieldset disabled={leyendo || bloqueada} className="min-w-0 space-y-3">
+        <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", e.target.value)} inputMode="numeric" className={CLASE_INPUT} /></Campo>
           <Campo etiqueta="Teléfono" error={campo("telefono") ?? campo("lada")}>
             <div className="flex gap-1">
-              <select value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
+              <select aria-label="Lada" value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
                 {LADAS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
-              <input value={campos.telefono} onChange={(e) => cambiar("telefono", e.target.value.replace(/\D/g, ""))} inputMode="tel" className={CLASE_INPUT} />
+              <input aria-label="Teléfono (10 dígitos)" value={campos.telefono} onChange={(e) => cambiar("telefono", e.target.value.replace(/\D/g, ""))} inputMode="tel" className={CLASE_INPUT} />
             </div>
           </Campo>
         </div>
@@ -257,8 +283,8 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
         )}
 
         <div className="flex justify-between gap-2 pt-2">
-          <button onClick={liberar} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-muted hover:bg-silver/40"><Undo2 className="h-4 w-4" /> Guardar y salir</button>
-          <button onClick={() => confirmar()} disabled={confirmando || leyendo} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <button onClick={liberar} disabled={trabajando} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-muted hover:bg-silver/40"><Undo2 className="h-4 w-4" /> Guardar y salir</button>
+          <button onClick={() => confirmar()} disabled={trabajando} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar hoja
           </button>
         </div>
@@ -280,7 +306,7 @@ function Campo({ etiqueta, error, aviso, children }: { etiqueta: string; error?:
 
 function Aviso({ peligro, children }: { peligro?: boolean; children: React.ReactNode }) {
   return (
-    <p className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${peligro ? "border-danger/30 bg-danger/10 text-danger" : "border-amber-500/30 bg-amber-500/10 text-amber-700"}`}>
+    <p role={peligro ? "alert" : "status"} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${peligro ? "border-danger/30 bg-danger/10 text-danger" : "border-amber-500/30 bg-amber-500/10 text-amber-700"}`}>
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> <span>{children}</span>
     </p>
   );

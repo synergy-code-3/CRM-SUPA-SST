@@ -94,7 +94,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
-        if (window.confirm("Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?")) return confirmarEvento({ ...opciones, crearCarpeta: true });
+        if (window.confirm("Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?")) return await confirmarEvento({ ...opciones, crearCarpeta: true });
       } else {
         setMensaje(err instanceof Error ? err.message : "No se pudo guardar en Drive.");
       }

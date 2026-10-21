@@ -11,7 +11,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
-    await liberarHoja(id);
+    await liberarHoja(id, permiso.usuario.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return respuestaError(err, "captura-datos/hojas/[id]/liberar POST");

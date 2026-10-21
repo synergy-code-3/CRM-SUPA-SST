@@ -34,7 +34,7 @@ const RUTA_INTERNA = /(\/home\/|\/tmp\/|\/Users\/|\/var\/|[A-Z]:\\|node_modules|
 export function mensajeSeguro(err: unknown): string {
   const e = err as Error | undefined;
   if (!e?.message || ERROR_INTERNO.test(e.name) || RUTA_INTERNA.test(e.message)) {
-    return "Error interno del servidor. Revisa la consola donde corre la app.";
+    return "Error interno del servidor. Intenta de nuevo; si sigue, avisa a soporte.";
   }
   return e.message;
 }

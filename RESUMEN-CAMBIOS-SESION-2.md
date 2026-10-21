@@ -22,7 +22,7 @@ Agrega esto a tu `.env.local` (los valores reales, ya configurados en Vercel/Sup
 ANTHROPIC_API_KEY=
 CAPTURA_DATOS_CLAUDE_MODEL=claude-sonnet-5-5
 APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbzpH00pglfmbucCq43GMaV0cNPjJCrdb3D1Z_koGNaF3wxRvG2Cp1YA7vYMAodZlb40/exec
-APPS_SCRIPT_SECRET=KOri7S2BQF-TG0Ool9eCYS55TvFNk5ri
+APPS_SCRIPT_SECRET=<pídeselo a Samuel; no vive en el repo>
 AXIS_TELEFONO_URL=
 ```
 
@@ -114,5 +114,27 @@ horizontal): lista de eventos, modal de nuevo evento, detalle, "Personas", tomar
 autoguardado, comparación con Axis, error de "Leer con IA" sin API key, folio duplicado + "Confirmar de todos modos".
 Único hallazgo: en móvil el teléfono quedaba cortado → `EditorHoja.tsx` apila Folio/Teléfono por debajo de `sm`.
 No prueba nada de Supabase, Drive (escritura) ni la IA real.
+
+**Revisión con agentes ecc (security, database, react) y lo que se corrigió:**
+- *Seguridad:* `/foto` solo sirve `image/jpeg|png|webp` y `application/pdf` (415 si no) y manda `nosniff` +
+  `CSP: sandbox` (un html/svg subido a Drive ya no corre en el origen del CRM); `subcarpetaId` se valida como id de
+  Drive; el redirect de Apps Script solo se sigue si es https a `*.google.com`/`*.googleusercontent.com`; la subida
+  se rechaza por `Content-Length` > 100 MB antes de leerla; `notas` que empiezan con `= + - @` se neutralizan al
+  escribirlas en la Hoja (`neutralizarFormula`); mensaje de error genérico sin "revisa la consola".
+  **El `APPS_SCRIPT_SECRET` se quitó de este archivo pero sigue en el historial de git (commits `aad2f7c`, `2b3189f`):
+  hay que ROTARLO en Apps Script, Vercel y `.env.local`.**
+- *Base de datos (código):* el UPDATE de guardar/confirmar ahora incluye la condición de bloqueo; confirmar valida la
+  `version` que vio el editor y el estado (no confirma `no_valida` ni invalida una confirmada); el historial se escribe
+  después del update; `liberarHoja` solo libera el bloqueo propio; listados paginados (PostgREST corta en 1000 filas).
+- *Base de datos (SQL, sin ejecutar):* `supabase/captura-datos-ajustes.sql` (índices, cascada de reaperturas,
+  `tomar_hoja_libre` que devuelve la hoja vigente, revocar EXECUTE público). Revisar antes de correrlo.
+- *React:* un solo estado `trabajando` bloquea botones y formulario durante IA/confirmar/salir; guardados en cola de
+  promesas (sin sondeo); confirmar manda `version` y lo último escrito; salir no suelta la hoja si no se pudo guardar;
+  tras un 409 hay "Recargar hoja" / "Salir sin guardar"; modal con `role=dialog`, Esc, foco y sin cierre por arrastre;
+  reintentar tras fallar la importación ya no crea un evento duplicado; Axis no muestra el resultado del teléfono anterior.
+- *No corregido (pendiente de decidir):* polling sin pausa con la pestaña oculta ni `memo`; subida por tandas sin
+  progreso ni reintento parcial; `mensajeSeguro` sigue siendo lista negra (los mensajes de Supabase/Google pueden
+  llegar al navegador, hoy solo ven admins); acotar IDOR por evento/asignación si algún día entra otro rol;
+  índice único de folio sigue siendo por evento.
 
 **Pendiente:** probar en vivo (Fase 4 con la carpeta de Drive de prueba; Fase 5 sin API key), tests de db/rutas, borrar `Escaner de hojas/` en la otra PC.

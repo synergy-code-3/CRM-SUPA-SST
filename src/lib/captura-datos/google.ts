@@ -58,7 +58,11 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
   });
   const location = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && location) {
-    res = await fetchConReintento(new URL(location, process.env.APPS_SCRIPT_URL).toString());
+    const destino = new URL(location, process.env.APPS_SCRIPT_URL);
+    if (destino.protocol !== "https:" || !/(^|\.)(google|googleusercontent)\.com$/.test(destino.hostname)) {
+      throw new Error("Google respondió con una redirección inesperada.");
+    }
+    res = await fetchConReintento(destino.toString());
   }
   const text = await res.text();
   let data: T & { error?: string };
@@ -70,6 +74,11 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
   }
   if (data.error) throw new Error(traducirError(data.error));
   return data;
+}
+
+/** Texto libre que empieza como fórmula (=, +, -, @) se guarda como texto en la Hoja: un apóstrofo inicial lo evita. */
+export function neutralizarFormula(texto: string): string {
+  return /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
 }
 
 function traducirError(msg: string): string {
@@ -222,7 +231,10 @@ async function guardar(
   // 2. Hoja de cálculo (copia de la plantilla) en la raíz de la carpeta destino
   if (signal?.aborted) throw new Error("Subida cancelada");
   hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
-  const registros = hojas.map((h) => toRecord(normalizeFields(h.campos!, h.estatus), h.estatus));
+  const registros = hojas.map((h) => {
+    const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
+    return { ...r, notas: neutralizarFormula(r.notas) };
+  });
   const payload = {
     action: "guardarHoja",
     destinoId: evento.destino.id,

@@ -20,15 +20,18 @@ export function AsignacionesModal({ eventoId, onCerrar }: { eventoId: string; on
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let vigente = true;
     Promise.all([
       api<{ usuarios: UsuarioLista[] }>("/api/usuarios"),
       api<{ usuariosAsignados: string[] }>(`/api/captura-datos/eventos/${eventoId}/asignaciones`),
     ])
       .then(([u, a]) => {
+        if (!vigente) return;
         setUsuarios(u.usuarios.filter((x) => x.activo));
         setElegidos(new Set(a.usuariosAsignados));
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "No se pudo cargar la lista."));
+      .catch((err) => vigente && setError(err instanceof Error ? err.message : "No se pudo cargar la lista."));
+    return () => { vigente = false; };
   }, [eventoId]);
 
   function alternar(id: string) {
@@ -53,7 +56,7 @@ export function AsignacionesModal({ eventoId, onCerrar }: { eventoId: string; on
   }
 
   return (
-    <Modal titulo="Personas asignadas al evento" onCerrar={onCerrar}>
+    <Modal titulo="Personas asignadas al evento" onCerrar={onCerrar} bloqueado={guardando}>
       <div className="space-y-3">
         {!usuarios && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
         <ul className="max-h-72 space-y-1 overflow-y-auto">

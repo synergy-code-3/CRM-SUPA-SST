@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, confirmarHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, obtenerHoja } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, obtenerHoja } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
 
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!b.campos) return NextResponse.json({ error: "Faltan los datos de la hoja" }, { status: 400 });
       const forzar = new URL(req.url).searchParams.get("force") === "1";
       try {
-        const hoja = await confirmarHoja(id, permiso.usuario.id, b.campos, b.voucherBox ?? null, { forzarDuplicado: forzar });
+        const hoja = await confirmarHoja(id, permiso.usuario.id, b.campos, b.voucherBox ?? null, { forzarDuplicado: forzar, versionEsperada: b.version });
         return NextResponse.json({ hoja });
       } catch (err) {
         if (err instanceof ErrorFolioDuplicado) {
@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const hoja = await actualizarCamposHoja(id, { campos: b.campos, voucherBox: b.voucherBox }, b.version, permiso.usuario.id);
     return NextResponse.json({ hoja });
   } catch (err) {
-    if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada) return NextResponse.json({ error: err.message }, { status: 409 });
+    if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada || err instanceof ErrorEstadoHoja) return NextResponse.json({ error: err.message }, { status: 409 });
     return respuestaError(err, "captura-datos/hojas/[id] PATCH");
   }
 }

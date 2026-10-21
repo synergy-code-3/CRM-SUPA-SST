@@ -19,6 +19,8 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [nombre, setNombre] = useState("");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enlaceBuscado, setEnlaceBuscado] = useState(""); // el enlace que produjo `info` (no el que se esté editando)
+  const [eventoCreado, setEventoCreado] = useState<EventoCaptura | null>(null); // si falla la importación, se reintenta sin duplicar el evento
 
   async function buscarCarpeta() {
     setCargando(true);
@@ -26,6 +28,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     try {
       const r = await api<{ info: InfoCarpeta }>("/api/captura-datos/drive/carpeta", { json: { enlace } });
       setInfo(r.info);
+      setEnlaceBuscado(enlace);
     } catch (err) {
       setInfo(null);
       setError(err instanceof Error ? err.message : "No se pudo leer la carpeta.");
@@ -39,10 +42,11 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     setCargando(true);
     setError(null);
     try {
-      const { evento } = await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
+      const evento = eventoCreado ?? (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
         json: { nombre, estatus, origen, destino: { id: info.id, url: info.url, nombre: info.nombre } },
-      });
-      if (origen === "drive") await importarDeDrive(evento.id, info, enlace);
+      })).evento;
+      setEventoCreado(evento);
+      if (origen === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
       onCreado(evento);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el evento.");
@@ -51,12 +55,12 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   }
 
   return (
-    <Modal titulo="Nuevo evento" onCerrar={onCerrar}>
+    <Modal titulo="Nuevo evento" onCerrar={onCerrar} bloqueado={cargando}>
       <div className="space-y-4">
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Carpeta de Drive del evento</span>
           <div className="flex gap-2">
-            <input value={enlace} onChange={(e) => setEnlace(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" className={CLASE_INPUT} />
+            <input value={enlace} onChange={(e) => { setEnlace(e.target.value); setInfo(null); }} placeholder="https://drive.google.com/drive/folders/…" className={CLASE_INPUT} />
             <button onClick={buscarCarpeta} disabled={!enlace.trim() || cargando} className={CLASE_BOTON}>
               {cargando && !info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
             </button>
@@ -84,16 +88,16 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
             </div>
 
             {origen === "local" && (
-              <select value={estatus} onChange={(e) => setEstatus(e.target.value as Estatus)} className={CLASE_INPUT}>
+              <select aria-label="Estatus de las hojas" value={estatus} onChange={(e) => setEstatus(e.target.value as Estatus)} className={CLASE_INPUT}>
                 {ESTATUS.map((e) => <option key={e.value} value={e.value}>{e.value} — {e.desc}</option>)}
               </select>
             )}
 
-            <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del evento (opcional)" maxLength={200} className={CLASE_INPUT} />
+            <input aria-label="Nombre del evento" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del evento (opcional)" maxLength={200} className={CLASE_INPUT} />
           </>
         )}
 
-        {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2">
           <button onClick={onCerrar} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>

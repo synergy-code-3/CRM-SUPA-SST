@@ -111,21 +111,37 @@ export async function crearEvento(input: {
 
 export type ProgresoEvento = Record<EstadoHoja, number>;
 
+/** (evento, estado) de todas las hojas de esos eventos, paginado (PostgREST corta en 1000 filas por consulta). */
+async function estadosDeHojas(eventoIds: string[]): Promise<{ evento_id: string; estado: EstadoHoja }[]> {
+  const filas: { evento_id: string; estado: EstadoHoja }[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from("cap_hojas")
+      .select("evento_id, estado")
+      .in("evento_id", eventoIds)
+      .order("id")
+      .range(desde, desde + 999);
+    if (error) throw error;
+    filas.push(...(data as { evento_id: string; estado: EstadoHoja }[]));
+    if (data.length < 1000) break;
+  }
+  return filas;
+}
+
 export async function listarEventos(): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
   const { data, error } = await supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
   if (error) throw error;
   const eventos = (data as FilaEvento[]).map(filaAEvento);
   if (eventos.length === 0) return [];
 
-  const [{ data: hojas, error: errHojas }, { data: asignaciones, error: errAsig }] = await Promise.all([
-    supabase.from("cap_hojas").select("evento_id, estado").in("evento_id", eventos.map((e) => e.id)),
+  const [hojas, { data: asignaciones, error: errAsig }] = await Promise.all([
+    estadosDeHojas(eventos.map((e) => e.id)),
     supabase.from("cap_evento_asignaciones").select("evento_id, usuario_id").in("evento_id", eventos.map((e) => e.id)),
   ]);
-  if (errHojas) throw errHojas;
   if (errAsig) throw errAsig;
 
   const progresoPorEvento = new Map<string, ProgresoEvento>();
-  for (const h of hojas as { evento_id: string; estado: EstadoHoja }[]) {
+  for (const h of hojas) {
     const p = progresoPorEvento.get(h.evento_id) ?? { pendiente: 0, leida: 0, confirmada: 0, no_valida: 0 };
     p[h.estado]++;
     progresoPorEvento.set(h.evento_id, p);
@@ -217,10 +233,22 @@ export async function crearHojas(
   return (data as FilaHoja[]).map(filaAHoja);
 }
 
+const TAMANO_PAGINA = 1000; // PostgREST corta en 1000 filas por consulta sin avisar: se pagina para no truncar
+
 export async function listarHojasDeEvento(eventoId: string): Promise<HojaCaptura[]> {
-  const { data, error } = await supabase.from("cap_hojas").select("*").eq("evento_id", eventoId).order("id");
-  if (error) throw error;
-  return (data as FilaHoja[]).map(filaAHoja);
+  const filas: FilaHoja[] = [];
+  for (let desde = 0; ; desde += TAMANO_PAGINA) {
+    const { data, error } = await supabase
+      .from("cap_hojas")
+      .select("*")
+      .eq("evento_id", eventoId)
+      .order("id")
+      .range(desde, desde + TAMANO_PAGINA - 1);
+    if (error) throw error;
+    filas.push(...(data as FilaHoja[]));
+    if (data.length < TAMANO_PAGINA) break;
+  }
+  return filas.map(filaAHoja);
 }
 
 export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
@@ -237,8 +265,13 @@ export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promi
   return fila?.id ? filaAHoja(fila) : null;
 }
 
-export async function liberarHoja(id: string): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+/** Libera la hoja solo si el bloqueo es de `usuarioId` (nadie libera el bloqueo de otra persona). */
+export async function liberarHoja(id: string, usuarioId: string): Promise<void> {
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("id", id)
+    .eq("bloqueada_por", usuarioId);
   if (error) throw error;
 }
 
@@ -247,6 +280,12 @@ export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoj
 export class ErrorHojaOcupada extends Error {
   constructor() {
     super("Otra persona está editando esta hoja.");
+  }
+}
+
+export class ErrorEstadoHoja extends Error {
+  constructor() {
+    super("Esta hoja ya no se puede editar (está confirmada o marcada como no válida).");
   }
 }
 
@@ -281,10 +320,10 @@ export async function actualizarCamposHoja(
     renovar = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(Date.now() + BLOQUEO_MS).toISOString() };
   }
 
-  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorVersion();
+  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorEstadoHoja();
 
   const nuevoEstado = actual.estado === "pendiente" ? "leida" : actual.estado;
-  const { data, error } = await supabase
+  let consulta = supabase
     .from("cap_hojas")
     .update({
       ...(cambios.campos !== undefined ? { campos: cambios.campos } : {}),
@@ -295,9 +334,10 @@ export async function actualizarCamposHoja(
     })
     .eq("id", id)
     .eq("version", actual.version) // atómico: si otro guardado se coló entre la lectura y este update, no afecta filas
-    .in("estado", ["pendiente", "leida"])
-    .select("*")
-    .maybeSingle();
+    .in("estado", ["pendiente", "leida"]);
+  // El bloqueo también va en el UPDATE (no solo en la lectura de arriba): si B tomó la hoja justo después de leerla, no se pisa.
+  if (usuarioId) consulta = consulta.or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${new Date().toISOString()}`);
+  const { data, error } = await consulta.select("*").maybeSingle();
   if (error) throw error;
   if (!data) throw new ErrorVersion();
   return filaAHoja(data as FilaHoja);
@@ -334,15 +374,18 @@ export async function confirmarHoja(
   usuarioId: string,
   campos: SheetFields,
   voucherBox: Box | null,
-  opts: { forzarDuplicado?: boolean } = {}
+  opts: { forzarDuplicado?: boolean; versionEsperada?: number } = {}
 ): Promise<HojaCaptura> {
   const { data: actual, error: errLectura } = await supabase
     .from("cap_hojas")
-    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta")
+    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta, campos")
     .eq("id", id)
     .maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) throw new Error("Hoja no encontrada");
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
+  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
+  if (opts.versionEsperada !== undefined && actual.version !== opts.versionEsperada) throw new ErrorVersion();
   if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
 
   const errores = validateFields(campos, actual.estatus as Estatus);
@@ -355,12 +398,6 @@ export async function confirmarHoja(
     if (duplicado) {
       throw new ErrorFolioDuplicado(duplicado);
     }
-  }
-
-  const yaConfirmada = actual.estado === "confirmada";
-  if (yaConfirmada) {
-    const { data: antes } = await supabase.from("cap_hojas").select("campos").eq("id", id).single();
-    await supabase.from("cap_hojas_historial").insert({ hoja_id: id, usuario_id: usuarioId, antes: antes?.campos ?? null, despues: campos });
   }
 
   const { data, error } = await supabase
@@ -377,15 +414,28 @@ export async function confirmarHoja(
     })
     .eq("id", id)
     .eq("version", actual.version)
+    .in("estado", ["pendiente", "leida", "confirmada"])
     .select("*")
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new ErrorVersion();
+
+  // El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado.
+  if (actual.estado === "confirmada") {
+    const { error: errHistorial } = await supabase
+      .from("cap_hojas_historial")
+      .insert({ hoja_id: id, usuario_id: usuarioId, antes: actual.campos ?? null, despues: campos });
+    if (errHistorial) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, errHistorial);
+  }
   return filaAHoja(data as FilaHoja);
 }
 
 export async function marcarHojaNoValida(id: string, huella: string): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ estado: "no_valida", bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ estado: "no_valida", bloqueada_por: null, bloqueada_hasta: null })
+    .eq("id", id)
+    .in("estado", ["pendiente", "leida"]); // una hoja ya confirmada no se invalida desde aquí
   if (error) throw error;
   await marcarNoValida(huella);
 }

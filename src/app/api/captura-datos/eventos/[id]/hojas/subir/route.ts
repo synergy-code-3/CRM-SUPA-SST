@@ -9,6 +9,7 @@ import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 export const maxDuration = 120;
 
 const MAX_BYTES = 15 * 1024 * 1024; // mismo tope que Storage
+const MAX_TANDA_BYTES = 100 * 1024 * 1024;
 const metasEsquema = z.array(z.object({ nombreOriginal: z.string().max(500), pagina: z.number().int().min(1).optional(), paginas: z.number().int().min(1).optional() })).max(30);
 const esJpeg = (b: Buffer) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 const esPdf = (b: Buffer) => b.subarray(0, 5).toString("latin1") === "%PDF-";
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!evento) throw new ErrorPeticion(404, "Evento no encontrado");
     if (evento.estado !== "abierto") throw new ErrorPeticion(409, "El evento ya está confirmado.");
 
+    // Se rechaza por Content-Length antes de cargar nada en memoria: 30 archivos de 15 MB serían 450 MB.
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_TANDA_BYTES) throw new ErrorPeticion(413, "La tanda pesa más de 100 MB: sube menos archivos a la vez.");
     const form = await req.formData();
     const estatus = String(form.get("estatus") ?? "");
     if (!ESTATUS.some((e) => e.value === estatus)) throw new ErrorPeticion(400, "Estatus inválido");
