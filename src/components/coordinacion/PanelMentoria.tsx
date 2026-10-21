@@ -14,6 +14,13 @@ const PRESETS_HORA = [
   { valor: "otro", etiqueta: "Otro…" },
 ];
 
+// Pausado (2026-10-21): no se pudo agregar el bot al canal (hace falta ser
+// owner o tener el permiso "Add New Admins"), así que se ocultan los
+// botones sin borrar el código — reactivar en cuanto se resuelva el acceso
+// al bot (o se decida usar la cuenta personal, que el usuario descartó por
+// el riesgo de guardar la sesión completa de su Telegram en el servidor).
+const MOSTRAR_BOTON_TELEGRAM = false;
+
 function formatearFecha(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
@@ -355,28 +362,32 @@ export function PanelMentoria({
               <CampoConCopiar label="Copy de previa (anuncio del día)" valor={copyPrevia}>
                 <textarea value={copyPrevia} onChange={(e) => setCopyPrevia(e.target.value)} rows={6} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
               </CampoConCopiar>
-              <button
-                onClick={() => enviarTelegram("previa")}
-                disabled={!mentoria.flyerUrl || !copyPrevia.trim() || enviandoTelegram !== null}
-                title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
-                className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
-              >
-                <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
-                {enviandoTelegram === "previa" ? "Enviando…" : "Enviar previa a Telegram"}
-              </button>
+              {MOSTRAR_BOTON_TELEGRAM && (
+                <button
+                  onClick={() => enviarTelegram("previa")}
+                  disabled={!mentoria.flyerUrl || !copyPrevia.trim() || enviandoTelegram !== null}
+                  title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
+                  className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                >
+                  <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {enviandoTelegram === "previa" ? "Enviando…" : "Enviar previa a Telegram"}
+                </button>
+              )}
               <CampoConCopiar label="Copy de plataforma (ya disponible en Classroom)" valor={copyPlataforma}>
                 <textarea value={copyPlataforma} onChange={(e) => setCopyPlataforma(e.target.value)} rows={5} className="w-full resize-none rounded-lg border border-silver bg-surface-2 px-4 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2" />
               </CampoConCopiar>
-              <button
-                onClick={() => enviarTelegram("plataforma")}
-                disabled={!mentoria.flyerUrl || !copyPlataforma.trim() || enviandoTelegram !== null}
-                title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
-                className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
-              >
-                <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
-                {enviandoTelegram === "plataforma" ? "Enviando…" : "Enviar \"ya disponible\" a Telegram"}
-              </button>
-              {mensajeTelegram && <p className="text-xs text-muted">{mensajeTelegram}</p>}
+              {MOSTRAR_BOTON_TELEGRAM && (
+                <button
+                  onClick={() => enviarTelegram("plataforma")}
+                  disabled={!mentoria.flyerUrl || !copyPlataforma.trim() || enviandoTelegram !== null}
+                  title={!mentoria.flyerUrl ? "Primero guarda un flyer para esta mentoría" : undefined}
+                  className="ease-spring -mt-2 flex items-center gap-1.5 self-start rounded-lg border border-silver px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-40"
+                >
+                  <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {enviandoTelegram === "plataforma" ? "Enviando…" : "Enviar \"ya disponible\" a Telegram"}
+                </button>
+              )}
+              {MOSTRAR_BOTON_TELEGRAM && mensajeTelegram && <p className="text-xs text-muted">{mensajeTelegram}</p>}
               <div>
                 <span className="mb-2 block text-sm font-medium text-muted">Checklist de difusión</span>
                 <div className="grid grid-cols-2 gap-2">
