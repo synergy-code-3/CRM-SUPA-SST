@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ClipboardList, Download, Plus } from "lucide-react";
 import { NuevoEventoModal } from "./NuevoEventoModal";
 import { api } from "@/lib/captura-datos/cliente";
+import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import type { ProgresoEvento } from "@/lib/captura-datos/db";
 import type { EventoCaptura } from "@/lib/captura-datos/modelo";
@@ -23,11 +24,7 @@ export function ListaEventos() {
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar los eventos."));
   }, []);
 
-  useEffect(() => {
-    cargar();
-    const t = setInterval(cargar, POLLING_MS);
-    return () => clearInterval(t);
-  }, [cargar]);
+  usePolling(cargar, POLLING_MS);
 
   return (
     <div className="space-y-6">

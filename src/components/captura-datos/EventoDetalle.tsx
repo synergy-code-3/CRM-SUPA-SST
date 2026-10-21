@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ArrowLeft, CloudUpload, Download, Loader2, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
 import { AsignacionesModal } from "./AsignacionesModal";
 import { EditorHoja } from "./EditorHoja";
 import { api, ErrorApi, imagenAJpeg } from "@/lib/captura-datos/cliente";
+import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 import { useSesion } from "@/lib/session-context";
@@ -39,11 +40,7 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }, [id]);
 
-  useEffect(() => {
-    cargar();
-    const t = setInterval(() => { if (!actual) cargar(); }, POLLING_MS);
-    return () => clearInterval(t);
-  }, [cargar, actual]);
+  usePolling(cargar, POLLING_MS, !actual);
 
   async function tomarSiguiente() {
     setOcupado("tomar");
