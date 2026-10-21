@@ -65,6 +65,9 @@ type ClienteCertificacionRow = {
   creado_por_rol: string;
   eliminado: boolean;
   fecha_eliminacion: string | null;
+  revocado: boolean;
+  fecha_revocacion: string | null;
+  motivo_revocacion: string | null;
   creado_en: string;
 };
 
@@ -95,6 +98,9 @@ function filaACliente(r: ClienteCertificacionRow): ClienteCertificacion {
     creadoPorRol: r.creado_por_rol,
     eliminado: r.eliminado,
     fechaEliminacion: r.fecha_eliminacion,
+    revocado: r.revocado,
+    fechaRevocacion: r.fecha_revocacion,
+    motivoRevocacion: r.motivo_revocacion,
     creadoEn: r.creado_en,
   };
 }
@@ -147,7 +153,18 @@ export async function listarClientesCertificacion(): Promise<ClienteCertificacio
     .from("certificaciones_clientes")
     .select("*")
     .eq("eliminado", false)
+    .eq("revocado", false)
     .order("fecha_llegada", { ascending: false });
+  if (error) throw error;
+  return (data as ClienteCertificacionRow[]).map(filaACliente);
+}
+
+export async function listarRevocadosCertificacion(): Promise<ClienteCertificacion[]> {
+  const { data, error } = await supabase
+    .from("certificaciones_clientes")
+    .select("*")
+    .eq("revocado", true)
+    .order("fecha_revocacion", { ascending: false });
   if (error) throw error;
   return (data as ClienteCertificacionRow[]).map(filaACliente);
 }
@@ -218,6 +235,7 @@ export async function buscarIdsCertificaciones(
           .from("certificaciones_clientes")
           .select("id")
           .eq("eliminado", false)
+          .eq("revocado", false)
           .or(columnas.map((c) => `${c}.ilike.%${palabra}%`).join(","))
           .order("id")
           .range(desde, hasta)
@@ -348,6 +366,7 @@ export async function existeClienteCertificacion(correo: string): Promise<boolea
     .select("id")
     .eq("id", normalizarEmail(correo))
     .eq("eliminado", false)
+    .eq("revocado", false)
     .maybeSingle();
   if (error) throw error;
   return !!data;
@@ -760,6 +779,29 @@ export async function deshacerCertificacion(id: string, que: "aceptacion" | "inv
   }
 }
 
+// "Revocar" (reembolsos u otros casos que deben sacar al cliente de la
+// lista ya) — a diferencia de la papelera, sin plazo de purga automática y
+// con el motivo guardado a mano. No toca Kajabi ni Skool: quitar el acceso
+// real en Skool se sigue haciendo manual, esto solo lo saca de la lista y
+// lo manda a "Revocados".
+export async function revocarClienteCertificacion(id: string, autor: string, motivo: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ revocado: true, fecha_revocacion: new Date().toISOString(), motivo_revocacion: motivo })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "REVOCACION_ACCESO", autor, motivo);
+}
+
+export async function reactivarClienteCertificacion(id: string, autor: string): Promise<void> {
+  const { error } = await supabase
+    .from("certificaciones_clientes")
+    .update({ revocado: false, fecha_revocacion: null, motivo_revocacion: null })
+    .eq("id", id);
+  if (error) throw error;
+  await registrarEventoCertificacion(id, "RESTAURACION_REVOCADO", autor, "Cliente restaurado desde Revocados");
+}
+
 export async function eliminarClienteCertificacion(id: string, autor: string): Promise<void> {
   const { error } = await supabase
     .from("certificaciones_clientes")
@@ -868,7 +910,7 @@ export async function sincronizarTagsClubCertificaciones(): Promise<{ revisados:
   const cert = await traer<{ id: string; email: string | null; tags: string[] | null }>(
     "certificaciones_clientes",
     "id,email,tags",
-    (q) => q.eq("eliminado", false)
+    (q) => q.eq("eliminado", false).eq("revocado", false)
   );
   // El Club tiene decenas de miles de clientes: solo se consultan los correos
   // de Certificaciones (por lotes) en vez de traerlos todos.

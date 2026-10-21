@@ -98,6 +98,13 @@ export type ClienteCertificacion = {
   creadoPorRol: string;
   eliminado: boolean;
   fechaEliminacion: string | null;
+  // "Revocar" (reembolsos u otros casos que deben sacar al cliente de la
+  // lista ya): a diferencia de eliminado/fechaEliminacion (papelera, 30 días
+  // y se puede restaurar), esto no tiene plazo de purga automática y guarda
+  // el motivo a mano. No toca Kajabi ni Skool (eso se sigue haciendo manual).
+  revocado: boolean;
+  fechaRevocacion: string | null;
+  motivoRevocacion: string | null;
   creadoEn: string;
 };
 

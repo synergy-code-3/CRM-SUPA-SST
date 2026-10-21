@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, ImagePlus, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Users, Library, Trash2, ShieldCheck, History, Menu, X, FileCheck2, Gift, UserRound, SlidersHorizontal, Link2, Check, Megaphone, AlertTriangle, ChevronDown, ChevronsUpDown, UserPlus, UploadCloud, Tag, BarChart3, Flag, Facebook, Instagram, Music2, GraduationCap, Clock, CalendarDays, MapPin, Globe, ImagePlus, ClipboardList, Ban } from "lucide-react";
 import type { Aviso } from "@/lib/types";
 import type { ItemReciente, Plataforma } from "@/lib/community-manager";
 import { useSesion } from "@/lib/session-context";
@@ -107,6 +107,7 @@ const NAV_CERTIFICACIONES: ItemNav[] = [
   { href: "/certificaciones/nuevo", label: "Nuevo cliente", icon: UserPlus, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/importar", label: "Importar CSV", icon: UploadCloud, permiso: "gestionarCertificaciones" },
   { href: "/certificaciones/papelera", label: "Papelera", icon: Trash2, permiso: "gestionarCertificaciones" },
+  { href: "/certificaciones/revocados", label: "Revocados", icon: Ban, permiso: "gestionarCertificaciones" },
   {
     href: "/certificaciones/solicitudes",
     label: "Solicitudes",

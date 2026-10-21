@@ -1071,6 +1071,19 @@ alter table cap_imagenes_no_validas enable row level security;
 -- tiempo simplemente salta a la siguiente fila disponible en vez de
 -- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
 -- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
+-- Certificaciones: "Revocar acceso" (reembolsos u otros casos donde hay que
+-- sacar al cliente de la lista normal de inmediato) — a diferencia de la
+-- papelera (eliminado/fecha_eliminacion, pensada para corregir un alta por
+-- error, se puede restaurar en 30 días o se borra para siempre), esto es un
+-- estado aparte sin plazo de purga automática, con el motivo guardado a
+-- mano. Certificaciones no tiene integración con Kajabi (a diferencia del
+-- Club) ni con Skool desde este botón — quitar el acceso real en Skool se
+-- sigue haciendo a mano, esto solo saca al cliente de la lista y lo manda a
+-- "Revocados".
+alter table certificaciones_clientes add column if not exists revocado boolean not null default false;
+alter table certificaciones_clientes add column if not exists fecha_revocacion timestamptz;
+alter table certificaciones_clientes add column if not exists motivo_revocacion text;
+
 create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
 returns cap_hojas
 language plpgsql

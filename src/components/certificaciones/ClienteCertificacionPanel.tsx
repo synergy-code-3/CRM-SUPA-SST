@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
+  Ban,
   CalendarClock,
   CalendarDays,
   CalendarPlus,
@@ -104,6 +105,7 @@ export function ClienteCertificacionPanel({
   const [borradorAccesos, setBorradorAccesos] = useState<Accesos | null>(null);
   const [confirmandoAccesos, setConfirmandoAccesos] = useState(false);
   const [copiado, setCopiado] = useState<"email" | "telefono" | null>(null);
+  const [motivoRevocar, setMotivoRevocar] = useState("");
 
   const url = `/api/certificaciones/${encodeURIComponent(clienteId)}`;
 
@@ -233,6 +235,26 @@ export function ClienteCertificacionPanel({
     if (!datos) return;
     if (!window.confirm(`¿Enviar a "${datos.cliente.nombre}" a la papelera? Se puede restaurar durante 30 días.`)) return;
     if (await accion("eliminar")) onClose();
+  }
+
+  async function revocar() {
+    if (!datos || !motivoRevocar.trim()) return;
+    if (
+      !window.confirm(
+        `¿Revocar el acceso de "${datos.cliente.nombre}"? Sale de la lista normal y se manda a Revocados. No quita el acceso en Skool — eso se hace a mano.`
+      )
+    )
+      return;
+    if (await accion("revocar", { motivo: motivoRevocar.trim() })) {
+      setMotivoRevocar("");
+      onClose();
+    }
+  }
+
+  async function reactivar() {
+    if (!datos) return;
+    if (!window.confirm(`¿Quitar a "${datos.cliente.nombre}" de Revocados y devolverlo a la lista normal?`)) return;
+    await accion("reactivar");
   }
 
   async function copiar(valor: string, cual: "email" | "telefono") {
@@ -892,6 +914,49 @@ export function ClienteCertificacionPanel({
                           className={BTN_PRIMARIO}
                         >
                           Guardar
+                        </button>
+                      </div>
+                    </Tarjeta>
+                  )}
+
+                  {puedeGestionar && datos.cliente.revocado && (
+                    <Tarjeta titulo="Acceso revocado" icono={Ban}>
+                      <p className="text-sm text-muted">
+                        Revocado el {new Date(datos.cliente.fechaRevocacion ?? "").toLocaleDateString("es-MX")}
+                        {datos.cliente.motivoRevocacion ? ` — ${datos.cliente.motivoRevocacion}` : ""}
+                      </p>
+                      <button
+                        onClick={reactivar}
+                        disabled={procesando}
+                        className="ease-spring mt-3 flex items-center gap-1.5 rounded-lg border border-success/40 px-3 py-1.5 text-xs font-medium text-success transition hover:bg-success/10 disabled:opacity-50"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Quitar de Revocados
+                      </button>
+                    </Tarjeta>
+                  )}
+
+                  {puedeGestionar && !datos.cliente.revocado && (
+                    <Tarjeta titulo="Revocar acceso" icono={Ban}>
+                      <p className="text-sm text-muted">
+                        Para reembolsos u otros casos donde hay que sacarlo de la lista ya. Sale a &quot;Revocados&quot;
+                        con el motivo guardado — no quita el acceso en Skool, eso se hace a mano.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          value={motivoRevocar}
+                          onChange={(e) => setMotivoRevocar(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && revocar()}
+                          placeholder="Motivo de la revocación…"
+                          className={`${INPUT} flex-1`}
+                        />
+                        <button
+                          onClick={revocar}
+                          disabled={procesando || !motivoRevocar.trim()}
+                          className="ease-spring flex flex-none items-center gap-1.5 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+                        >
+                          <Ban className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Revocar
                         </button>
                       </div>
                     </Tarjeta>
