@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, confirmarHoja, ErrorFolioDuplicado, ErrorVersion, obtenerHoja } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, obtenerHoja } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
 
@@ -46,10 +46,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    const hoja = await actualizarCamposHoja(id, { campos: b.campos, voucherBox: b.voucherBox }, b.version);
+    const hoja = await actualizarCamposHoja(id, { campos: b.campos, voucherBox: b.voucherBox }, b.version, permiso.usuario.id);
     return NextResponse.json({ hoja });
   } catch (err) {
-    if (err instanceof ErrorVersion) return NextResponse.json({ error: err.message }, { status: 409 });
+    if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada) return NextResponse.json({ error: err.message }, { status: 409 });
     return respuestaError(err, "captura-datos/hojas/[id] PATCH");
   }
 }

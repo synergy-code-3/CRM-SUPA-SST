@@ -236,6 +236,14 @@ export async function liberarHoja(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
+
+export class ErrorHojaOcupada extends Error {
+  constructor() {
+    super("Otra persona está editando esta hoja.");
+  }
+}
+
 export class ErrorVersion extends Error {
   constructor() {
     super("Esta hoja cambió mientras la editabas — recárgala antes de seguir.");
@@ -246,12 +254,28 @@ export class ErrorVersion extends Error {
 export async function actualizarCamposHoja(
   id: string,
   cambios: { campos?: SheetFields; voucherBox?: Box | null },
-  versionEsperada?: number
+  versionEsperada?: number,
+  usuarioId?: string
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version, estado").eq("id", id).maybeSingle();
+  const { data: actual, error: errLectura } = await supabase
+    .from("cap_hojas")
+    .select("version, estado, bloqueada_por, bloqueada_hasta")
+    .eq("id", id)
+    .maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) throw new Error("Hoja no encontrada");
   if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
+
+  // Con usuarioId (autoguardado desde el editor): si otra persona tiene la hoja bloqueada y su bloqueo sigue vigente,
+  // no se pisa; si es del mismo usuario (o ya expiró), cada guardado renueva el bloqueo.
+  let renovar = {};
+  if (usuarioId) {
+    const vigente = actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date();
+    if (vigente && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+    renovar = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(Date.now() + BLOQUEO_MS).toISOString() };
+  }
+
+  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorVersion();
 
   const nuevoEstado = actual.estado === "pendiente" ? "leida" : actual.estado;
   const { data, error } = await supabase
@@ -261,11 +285,15 @@ export async function actualizarCamposHoja(
       ...(cambios.voucherBox !== undefined ? { voucher_box: cambios.voucherBox } : {}),
       estado: nuevoEstado,
       version: actual.version + 1,
+      ...renovar,
     })
     .eq("id", id)
+    .eq("version", actual.version) // atómico: si otro guardado se coló entre la lectura y este update, no afecta filas
+    .in("estado", ["pendiente", "leida"])
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new ErrorVersion();
   return filaAHoja(data as FilaHoja);
 }
 
@@ -302,9 +330,14 @@ export async function confirmarHoja(
   voucherBox: Box | null,
   opts: { forzarDuplicado?: boolean } = {}
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("estatus, estado").eq("id", id).maybeSingle();
+  const { data: actual, error: errLectura } = await supabase
+    .from("cap_hojas")
+    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta")
+    .eq("id", id)
+    .maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) throw new Error("Hoja no encontrada");
+  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
 
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
@@ -334,11 +367,14 @@ export async function confirmarHoja(
       confirmada_en: new Date().toISOString(),
       bloqueada_por: null,
       bloqueada_hasta: null,
+      version: actual.version + 1,
     })
     .eq("id", id)
+    .eq("version", actual.version)
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new ErrorVersion();
   return filaAHoja(data as FilaHoja);
 }
 

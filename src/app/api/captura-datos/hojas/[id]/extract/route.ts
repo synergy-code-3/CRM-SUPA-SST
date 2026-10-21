@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, esNoValida, marcarHojaNoValida, obtenerHoja } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida, obtenerHoja } from "@/lib/captura-datos/db";
 import { extractFromImage } from "@/lib/captura-datos/extract";
 import { huellaImagen } from "@/lib/captura-datos/huella";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
@@ -44,9 +44,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { esHojaDeRegistro: _esHoja, motivoNoHoja: _motivo, tieneVoucher: _tieneVoucher, voucherBox, ...campos } = extraccion;
-    const actualizada = await actualizarCamposHoja(id, { campos, voucherBox });
+    const actualizada = await actualizarCamposHoja(id, { campos, voucherBox }, undefined, permiso.usuario.id);
     return NextResponse.json({ hoja: actualizada });
   } catch (err) {
+    if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada) return NextResponse.json({ error: err.message }, { status: 409 });
     return respuestaError(err, "captura-datos/hojas/[id]/extract POST");
   }
 }
