@@ -9,6 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
+import { ErrorPeticion } from "./errores";
 
 const MODEL = process.env.CAPTURA_DATOS_CLAUDE_MODEL || "claude-sonnet-5-5";
 
@@ -84,7 +85,7 @@ Si un campo está en blanco, devuélvelo vacío; nunca inventes datos.`;
 /** `mime`: image/jpeg|png|webp|gif o application/pdf (el PDF se manda completo, sin partirlo). */
 export async function extractFromImage(base64: string, mime = "image/jpeg"): Promise<Extraction> {
   if (!/^sk-ant-\w/.test(process.env.ANTHROPIC_API_KEY ?? "")) {
-    throw new Error("Falta configurar ANTHROPIC_API_KEY");
+    throw new ErrorPeticion(503, "Falta configurar ANTHROPIC_API_KEY");
   }
   const out = await extractWithApi(base64, mime);
   if (!out.esHojaDeRegistro) {
@@ -141,9 +142,9 @@ async function extractWithApi(base64: string, mime: string): Promise<z.infer<typ
   });
 
   if (response.stop_reason === "refusal") {
-    throw new Error("La IA rechazó procesar esta imagen.");
+    throw new ErrorPeticion(502, "La IA rechazó procesar esta imagen.");
   }
   const out = response.parsed_output;
-  if (!out) throw new Error("La IA no devolvió datos válidos.");
+  if (!out) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
   return out;
 }

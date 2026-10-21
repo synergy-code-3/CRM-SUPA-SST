@@ -2,12 +2,9 @@
 import { NextResponse } from "next/server";
 import type { z } from "zod";
 
-/** Error de la petición (datos inválidos, demasiado grande…): se muestra tal cual al usuario. */
-export class ErrorPeticion extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+import { ErrorPeticion } from "./errores";
+
+export { ErrorPeticion };
 
 /** Lee el cuerpo como JSON y lo valida. JSON mal formado o datos que no cumplen el esquema → 400. */
 export async function leerJson<T extends z.ZodType>(req: Request, esquema: T, maxBytes = 1_000_000): Promise<z.infer<T>> {
@@ -27,22 +24,9 @@ export async function leerJson<T extends z.ZodType>(req: Request, esquema: T, ma
   return r.data;
 }
 
-const ERROR_INTERNO = /^(TypeError|ReferenceError|SyntaxError|RangeError|EvalError|URIError)$/;
-const RUTA_INTERNA = /(\/home\/|\/tmp\/|\/Users\/|\/var\/|[A-Z]:\\|node_modules|\.next\/)/;
-
-/** Mensaje apto para el usuario: los errores de programación o con rutas internas se ocultan. */
-export function mensajeSeguro(err: unknown): string {
-  const e = err as Error | undefined;
-  if (!e?.message || ERROR_INTERNO.test(e.name) || RUTA_INTERNA.test(e.message)) {
-    return "Error interno del servidor. Intenta de nuevo; si sigue, avisa a soporte.";
-  }
-  return e.message;
-}
-
-/** Respuesta de error: el detalle completo va a la consola del servidor; al navegador, solo el mensaje seguro. */
+/** Respuesta de error: solo los `ErrorPeticion` muestran su mensaje; de cualquier otro error el detalle va a la consola del servidor y al navegador solo llega un mensaje genérico. */
 export function respuestaError(err: unknown, contexto: string) {
   if (err instanceof ErrorPeticion) return NextResponse.json({ error: err.message }, { status: err.status });
   console.error(`${contexto}:`, err);
-  const mensaje = mensajeSeguro(err);
-  return NextResponse.json({ error: mensaje }, { status: /inválid/i.test(mensaje) ? 400 : 500 });
+  return NextResponse.json({ error: "Error interno del servidor. Intenta de nuevo; si sigue, avisa a soporte." }, { status: 500 });
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { supabase } from "@/lib/supabase";
+import { ErrorPeticion } from "@/lib/captura-datos/errores";
 
 // Bucket privado (no público): los comprobantes de pago solo se ven vía URL
 // firmada de corta duración, nunca por link directo.
@@ -248,7 +249,7 @@ export const BUCKET_CAPTURA_FOTOS = "cap-fotos";
 const TAMANO_MAXIMO_FOTO_HOJA_BYTES = 15 * 1024 * 1024;
 
 export async function subirFotoHoja(hojaId: string, bytes: Buffer, tipo: "jpeg" | "pdf" = "jpeg"): Promise<string> {
-  if (bytes.byteLength > TAMANO_MAXIMO_FOTO_HOJA_BYTES) throw new Error("El archivo pesa más de 15 MB");
+  if (bytes.byteLength > TAMANO_MAXIMO_FOTO_HOJA_BYTES) throw new ErrorPeticion(413, "El archivo pesa más de 15 MB");
   const ruta = `${hojaId}.${tipo === "pdf" ? "pdf" : "jpg"}`;
   const { error } = await supabase.storage
     .from(BUCKET_CAPTURA_FOTOS)
@@ -275,7 +276,7 @@ export const BUCKET_CAPTURA_EXCEL = "cap-excel";
 const TAMANO_MAXIMO_EXCEL_EVENTO_BYTES = 20 * 1024 * 1024;
 
 export async function subirExcelEvento(eventoId: string, xlsx: Buffer): Promise<string> {
-  if (xlsx.byteLength > TAMANO_MAXIMO_EXCEL_EVENTO_BYTES) throw new Error("El Excel pesa más de 20 MB");
+  if (xlsx.byteLength > TAMANO_MAXIMO_EXCEL_EVENTO_BYTES) throw new ErrorPeticion(413, "El Excel pesa más de 20 MB");
   const ruta = `${eventoId}.xlsx`;
   const { error } = await supabase.storage.from(BUCKET_CAPTURA_EXCEL).upload(ruta, xlsx, {
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

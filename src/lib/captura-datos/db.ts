@@ -8,6 +8,7 @@ import type { Estatus, SheetFields } from "./fields";
 import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
+import { ErrorPeticion } from "./errores";
 
 type FilaEvento = {
   id: string;
@@ -308,7 +309,7 @@ export async function actualizarCamposHoja(
     .eq("id", id)
     .maybeSingle();
   if (errLectura) throw errLectura;
-  if (!actual) throw new Error("Hoja no encontrada");
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
   if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
 
   // Con usuarioId (autoguardado desde el editor): si otra persona tiene la hoja bloqueada y su bloqueo sigue vigente,
@@ -382,7 +383,7 @@ export async function confirmarHoja(
     .eq("id", id)
     .maybeSingle();
   if (errLectura) throw errLectura;
-  if (!actual) throw new Error("Hoja no encontrada");
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
   if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
   // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
   if (opts.versionEsperada !== undefined && actual.version !== opts.versionEsperada) throw new ErrorVersion();
@@ -390,7 +391,7 @@ export async function confirmarHoja(
 
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
-    throw new Error(`Faltan datos: ${Object.values(errores)[0]}`);
+    throw new ErrorPeticion(400, `Faltan datos: ${Object.values(errores)[0]}`);
   }
 
   if (!opts.forzarDuplicado) {

@@ -8,6 +8,7 @@ import { carpetaDeEstatus, imageFileName, normalizeFields, toRecord } from "./fi
 import { actualizarCarpetaFotosEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
 import type { HojaCaptura } from "./modelo";
+import { ErrorPeticion } from "./errores";
 
 export const DRIVE_READY = !!(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_SECRET);
 const FOTO_CONCURRENCY = 3;
@@ -22,7 +23,7 @@ async function fetchConReintento(url: string, init?: RequestInit, intentos = 3):
     } catch (err) {
       const code = (err as { cause?: { code?: string } }).cause?.code ?? "";
       if (!SIN_CONEXION.has(code) || i >= intentos) {
-        throw new Error(SIN_CONEXION.has(code) ? "No hay conexión con Google. Revisa tu internet e inténtalo de nuevo." : (err as Error).message);
+        throw SIN_CONEXION.has(code) ? new ErrorPeticion(502, "No hay conexión con Google. Revisa tu internet e inténtalo de nuevo.") : err;
       }
       await new Promise((r) => setTimeout(r, 2000 * i));
     }
@@ -39,7 +40,7 @@ export async function call<T>(payload: Record<string, unknown>): Promise<T> {
     const data = await llamarUnaVez<T>(payload);
     if (data !== null) return data;
     if (i >= intentos) {
-      throw new Error("Google no respondió como se esperaba. Revisa que la aplicación web esté publicada con acceso 'Cualquier usuario'.");
+      throw new ErrorPeticion(502, "Google no respondió como se esperaba. Revisa que la aplicación web esté publicada con acceso 'Cualquier usuario'.");
     }
     await new Promise((r) => setTimeout(r, 1500 * i));
   }
@@ -47,7 +48,7 @@ export async function call<T>(payload: Record<string, unknown>): Promise<T> {
 
 /** Una llamada al Web App. null = Google no devolvió JSON (página de error, límite de uso o Web App no público). */
 async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | null> {
-  if (!DRIVE_READY) throw new Error("Falta configurar Drive (APPS_SCRIPT_URL en .env).");
+  if (!DRIVE_READY) throw new ErrorPeticion(503, "Falta configurar Drive (APPS_SCRIPT_URL en .env).");
   // Apps Script responde al POST con una redirección a script.googleusercontent.com donde está el resultado.
   // Se sigue a mano con un GET limpio: al seguirla automáticamente, Google responde 404.
   let res = await fetchConReintento(process.env.APPS_SCRIPT_URL!, {
@@ -60,7 +61,7 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
   if (res.status >= 300 && res.status < 400 && location) {
     const destino = new URL(location, process.env.APPS_SCRIPT_URL);
     if (destino.protocol !== "https:" || !/(^|\.)(google|googleusercontent)\.com$/.test(destino.hostname)) {
-      throw new Error("Google respondió con una redirección inesperada.");
+      throw new ErrorPeticion(502, "Google respondió con una redirección inesperada.");
     }
     res = await fetchConReintento(destino.toString());
   }
@@ -72,7 +73,7 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
     console.warn(`google ${String(payload.action)}: respuesta no JSON (HTTP ${res.status}): ${text.slice(0, 200).replace(/\s+/g, " ")}`);
     return null;
   }
-  if (data.error) throw new Error(traducirError(data.error));
+  if (data.error) throw new ErrorPeticion(502, traducirError(data.error));
   return data;
 }
 
@@ -173,9 +174,9 @@ async function guardar(
   signal?: AbortSignal
 ): Promise<ResultadoDrive> {
   const evento = await obtenerEvento(eventoId);
-  if (!evento) throw new Error("No se encontró el evento");
+  if (!evento) throw new ErrorPeticion(404, "No se encontró el evento");
   let hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
-  if (hojas.length === 0) throw new Error("Este evento no tiene hojas confirmadas.");
+  if (hojas.length === 0) throw new ErrorPeticion(409, "Este evento no tiene hojas confirmadas.");
 
   // 1. Fotos cargadas desde la computadora que aún no están en Drive: la de cada hoja y las de sus adjuntas (otros pagos)
   type FotoPendiente = { hojaId: string; principalId: string; nombre: string; rutaStorage: string };
@@ -206,7 +207,7 @@ async function guardar(
     let next = 0;
     const worker = async () => {
       while (next < fotos.length) {
-        if (signal?.aborted) throw new Error("Subida cancelada");
+        if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");
         const f = fotos[next++];
         const foto = await leerFotoHoja(f.rutaStorage);
         if (!foto) {
@@ -229,7 +230,7 @@ async function guardar(
   }
 
   // 2. Hoja de cálculo (copia de la plantilla) en la raíz de la carpeta destino
-  if (signal?.aborted) throw new Error("Subida cancelada");
+  if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");
   hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
   const registros = hojas.map((h) => {
     const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
