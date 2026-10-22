@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { FileText } from "lucide-react";
+import { ESTATUS } from "@/lib/captura-datos/fields";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 
 /** Solo se puede saltar a una hoja confirmada o libre (no tomada por otra persona). */
@@ -12,7 +13,9 @@ const esPdf = (h: HojaCaptura) => h.origen.rutaStorage?.endsWith(".pdf") || /\.p
 /** Miniaturas de las hojas del evento; el círculo marca si ya se revisó (verde) o no (naranja). */
 export function TiraHojas({ hojas, actualId, onElegir }: { hojas: HojaCaptura[]; actualId: string; onElegir: (id: string) => void }) {
   const contenedor = useRef<HTMLUListElement>(null);
-  const visibles = hojas.filter((h) => h.estado !== "no_valida");
+  // Completo, Apartado e Interesado, en ese orden (el sort es estable: dentro de cada grupo se respeta el orden original).
+  const ordenEstatus = (h: HojaCaptura) => ESTATUS.findIndex((e) => e.value === h.estatus);
+  const visibles = hojas.filter((h) => h.estado !== "no_valida").sort((a, b) => ordenEstatus(a) - ordenEstatus(b));
 
   // Centra la hoja actual dentro de la tira sin mover la página.
   useEffect(() => {
