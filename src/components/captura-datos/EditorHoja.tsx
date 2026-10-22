@@ -250,7 +250,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
         </button>
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
             <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", e.target.value)} inputMode="numeric" className={CLASE_INPUT} /></Campo>
             <Campo etiqueta="Teléfono" error={campo("telefono") ?? campo("lada")}>
               <div className="flex gap-1">
@@ -262,7 +262,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
             </Campo>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="space-y-2.5">
             <Campo etiqueta="Nombre" error={campo("nombre")} aviso={conciliacion?.nombre === "distinto" ? "No coincide con Axis" : undefined} accion={botonAxis("nombre")}>
               <input value={campos.nombre} onChange={(e) => cambiar("nombre", e.target.value)} className={claseAxis(conciliacion?.nombre)} />
             </Campo>
@@ -277,7 +277,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
           {llevaPago(inicial.estatus) && (
             <>
-              <div className="grid gap-2.5 sm:grid-cols-3">
+              <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)]">
                 <Campo etiqueta="Método de pago" error={campo("metodoPago")}>
                   <select value={campos.metodoPago} onChange={(e) => cambiar("metodoPago", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
@@ -305,7 +305,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
               )}
             </>
           )}
-          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", e.target.value)} rows={1} className={CLASE_INPUT} /></Campo>
+          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", e.target.value)} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
         </fieldset>
 
         {duplicado && (

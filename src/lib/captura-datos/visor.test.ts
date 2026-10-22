@@ -18,12 +18,22 @@ describe("transformParaCaja", () => {
   it("nunca reduce por debajo del tamaño de la hoja completa", () => {
     expect(transformParaCaja({ x: 0, y: 0, w: 1, h: 1 }, imagen, vista, 8).scale).toBe(1);
   });
-  it("centra la caja en la vista al ampliarla", () => {
-    const t = transformParaCaja({ x: 0.5, y: 0, w: 0.5, h: 0.5 }, imagen, vista, 8);
-    const centroX = (0.75 * 400) * t.scale + t.x;
-    const centroY = (0.25 * 400) * t.scale + t.y;
-    expect(centroX).toBeCloseTo(200, 1);
-    expect(centroY).toBeCloseTo(200, 1);
+  it("centra la caja en la vista cuando no toca los bordes de la hoja", () => {
+    const t = transformParaCaja({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, imagen, vista, 8);
+    expect((0.5 * 400) * t.scale + t.x).toBeCloseTo(200, 1);
+    expect((0.5 * 400) * t.scale + t.y).toBeCloseTo(200, 1);
+  });
+  it("no deja ver más allá de los bordes de la hoja", () => {
+    const t = transformParaCaja({ x: 0, y: 0, w: 0.4, h: 0.4 }, imagen, vista, 8);
+    expect(t.x).toBe(0);
+    expect(t.y).toBe(0);
+    const u = transformParaCaja({ x: 0.6, y: 0.6, w: 0.4, h: 0.4 }, imagen, vista, 8);
+    expect(u.x).toBeCloseTo(400 - 400 * u.scale, 5);
+    expect(u.y).toBeCloseTo(400 - 400 * u.scale, 5);
+  });
+  it("centra la hoja en el eje donde cabe completa", () => {
+    const t = transformParaCaja({ x: 0, y: 0, w: 1, h: 1 }, { w: 400, h: 200 }, { w: 400, h: 400 }, 8);
+    expect(t.y).toBe(100);
   });
   it("respeta el zoom máximo", () => {
     expect(transformParaCaja({ x: 0.4, y: 0.4, w: 0.01, h: 0.01 }, imagen, vista, 4).scale).toBe(4);

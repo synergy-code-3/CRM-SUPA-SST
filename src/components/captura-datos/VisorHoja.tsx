@@ -126,7 +126,7 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
 
         {marcando && (
           <div
-            className="absolute inset-0 z-20 cursor-crosshair touch-none bg-primary/5"
+            className="absolute inset-0 z-20 cursor-crosshair touch-none"
             onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setTrazo({ desde: punto(e), hasta: punto(e) }); }}
             onPointerMove={(e) => trazo && setTrazo({ ...trazo, hasta: punto(e) })}
             onPointerUp={terminarTrazo}
@@ -134,7 +134,7 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
           >
             {trazo && (
               <div
-                className="absolute border-2 border-dashed border-primary bg-primary/10"
+                className="absolute border-2 border-dashed border-primary"
                 style={{
                   left: Math.min(trazo.desde.x, trazo.hasta.x), top: Math.min(trazo.desde.y, trazo.hasta.y),
                   width: Math.abs(trazo.desde.x - trazo.hasta.x), height: Math.abs(trazo.desde.y - trazo.hasta.y),
@@ -151,7 +151,7 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
 function Recuadro({ caja }: { caja: Box }) {
   return (
     <div
-      className="pointer-events-none absolute border-2 border-primary bg-primary/10"
+      className="pointer-events-none absolute border-2 border-dashed border-primary"
       style={{ left: `${caja.x * 100}%`, top: `${caja.y * 100}%`, width: `${caja.w * 100}%`, height: `${caja.h * 100}%` }}
     />
   );

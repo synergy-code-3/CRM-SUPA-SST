@@ -7,7 +7,7 @@ export interface Punto { x: number; y: number }
 export interface Transformacion { x: number; y: number; scale: number }
 
 /** Zona de la hoja donde van los datos del cliente (folio, nombre, correo, celular): la parte de arriba. */
-export const CAJA_DATOS: Box = { x: 0, y: 0, w: 1, h: 0.45 };
+export const CAJA_DATOS: Box = { x: 0, y: 0, w: 0.7, h: 0.35 };
 
 const MARGEN = 0.95; // deja un borde alrededor de la zona ampliada
 const LADO_MINIMO = 0.02; // fracción mínima de la imagen para considerar que se dibujó un recuadro
@@ -19,13 +19,19 @@ export function ajustarImagen(natural: Tamano, vista: Tamano): Tamano {
   return { w: Math.round(natural.w * escala), h: Math.round(natural.h * escala) };
 }
 
-/** Desplazamiento y zoom para que `caja` (0–1 sobre la imagen) llene la vista, centrada. */
+/** Mantiene la imagen dentro de la vista: sin huecos más allá de sus bordes y centrada si cabe completa en ese eje. */
+function acotar(pos: number, imagen: number, vista: number, scale: number): number {
+  const ancho = imagen * scale;
+  return ancho <= vista ? (vista - ancho) / 2 : Math.min(0, Math.max(vista - ancho, pos));
+}
+
+/** Desplazamiento y zoom para que `caja` (0–1 sobre la imagen) llene la vista, sin salirse de los bordes de la hoja. */
 export function transformParaCaja(caja: Box, imagen: Tamano, vista: Tamano, zoomMaximo: number): Transformacion {
   const scale = Math.max(1, Math.min(zoomMaximo, MARGEN * Math.min(vista.w / (caja.w * imagen.w), vista.h / (caja.h * imagen.h))));
   return {
     scale,
-    x: vista.w / 2 - (caja.x + caja.w / 2) * imagen.w * scale,
-    y: vista.h / 2 - (caja.y + caja.h / 2) * imagen.h * scale,
+    x: acotar(vista.w / 2 - (caja.x + caja.w / 2) * imagen.w * scale, imagen.w, vista.w, scale),
+    y: acotar(vista.h / 2 - (caja.y + caja.h / 2) * imagen.h * scale, imagen.h, vista.h, scale),
   };
 }
 
