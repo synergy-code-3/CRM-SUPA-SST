@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, Loader2, Sparkles, Undo2 } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
+import { TiraHojas } from "./TiraHojas";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
-import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
+import { CAMPOS_COMPARABLES, telefonoConsultable, conciliar, valorDeAxis, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
 import {
   EMPTY_FIELDS, LADAS, NOTAS_MAX, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
@@ -23,7 +24,7 @@ const claseAxis = (estado?: EstadoCampo) => CLASE_INPUT.replace("border-silver b
 
 type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
-export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: HojaCaptura; onTerminar: () => void; onSiguiente: () => void }) {
+export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { hoja: HojaCaptura; hojas: HojaCaptura[]; onTerminar: () => void; onSiguiente: () => void | Promise<void> }) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +152,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
   }
 
   function cambiarCantidad(valor: string) {
-    const plan = inicial.estatus === "Completo" && !membresiaManual.current ? membresiaPorCantidad(valor) : "";
+    const plan = !membresiaManual.current ? membresiaPorCantidad(valor) : "";
     // La nota "Pago a meses" aparece (o se va) en Notas mientras se revisa la hoja, no hasta subirla a Drive.
     const notas = conNotaAMeses({ cantidad: valor, notas: sinNotaAMeses(camposRef.current.notas) }).slice(0, NOTAS_MAX);
     aplicar(plan ? { cantidad: valor, membresia: plan, notas } : { cantidad: valor, notas });
@@ -164,7 +165,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
       if (!(await guardar())) return;
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
       const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
-      if (inicial.estatus === "Completo" && !leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
+      if (!leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
       camposRef.current = leidos;
       setCampos(leidos);
       voucherBoxRef.current = r.hoja.voucherBox ?? null;
@@ -174,7 +175,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
       setGuardado("guardado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo leer la hoja.");
-      if (err instanceof ErrorApi && err.status === 422) onSiguiente(); // no es una hoja de registro: ya quedó marcada
+      if (err instanceof ErrorApi && err.status === 422) await onSiguiente(); // no es una hoja de registro: ya quedó marcada
       else if (err instanceof ErrorApi && err.status === 409) { bloqueadaRef.current = true; setBloqueada(true); }
     } finally {
       setLeyendo(false);
@@ -191,7 +192,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
       await api(`/api/captura-datos/hojas/${inicial.id}${forzar ? "?force=1" : ""}`, {
         method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });
-      onSiguiente();
+      await onSiguiente(); // se queda en esta hoja (con el aviso de trabajando) hasta que llegue la siguiente
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.duplicado) {
         setDuplicado({ mensaje: err.message, datos: err.datos.duplicado as unknown as Duplicado });
@@ -217,21 +218,26 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
   const enlaceDuplicado = duplicado?.datos ? urlDuplicado(duplicado.datos) : null;
   const conciliacion = axis?.estado === "encontrado" ? conciliar(campos, axis.contacto) : null;
 
-  /** "Usar dato de Axis": solo cuando el campo no coincide y Axis sí trae un dato. */
-  function botonAxis(k: CampoComparable) {
-    if (axis?.estado !== "encontrado" || conciliacion?.[k] !== "distinto") return undefined;
-    const valor = valorDeAxis(axis.contacto, k);
-    return (
-      <button type="button" onClick={() => cambiar(k, valor)} className="inline-flex items-center gap-1 text-xs text-primary underline">
-        <ArrowLeftRight className="h-3 w-3" /> Usar dato de Axis: {valor}
-      </button>
-    );
+  const hayDiferencias = axis?.estado === "encontrado" && !!conciliacion && CAMPOS_COMPARABLES.some((k) => conciliacion[k] === "distinto" && valorDeAxis(axis.contacto, k));
+
+  /** Reemplaza nombre y correo por los de Axis (solo los que Axis trae). */
+  function usarDatosAxis() {
+    if (axis?.estado !== "encontrado") return;
+    const parcial: Partial<SheetFields> = {};
+    for (const k of CAMPOS_COMPARABLES) {
+      const valor = valorDeAxis(axis.contacto, k);
+      if (valor) parcial[k] = valor;
+    }
+    aplicar(parcial);
   }
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-      <div className="h-[60vh] lg:sticky lg:top-2 lg:h-[calc(100vh-6rem)]">
-        <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
+      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-6rem)]">
+        <div className="min-h-0 flex-1">
+          <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
+        </div>
+        <TiraHojas hojas={hojas} actualId={inicial.id} />
       </div>
 
       <div className="space-y-2.5">
@@ -255,8 +261,8 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
           <div className="grid gap-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
-            <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", sanitizeInput("folio", e.target.value))} maxLength={8} inputMode="numeric" className={CLASE_INPUT} /></Campo>
-            <Campo etiqueta="Teléfono" error={campo("telefono") ?? campo("lada")}>
+            <Campo etiqueta="Folio" requerido error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", sanitizeInput("folio", e.target.value))} maxLength={8} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+            <Campo etiqueta="Teléfono" requerido error={campo("telefono") ?? campo("lada")}>
               <div className="flex gap-1">
                 <select aria-label="Lada" value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
                   {LADAS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -267,47 +273,56 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
           </div>
 
           <div className="space-y-2.5">
-            <Campo etiqueta="Nombre" error={campo("nombre")} aviso={conciliacion?.nombre === "distinto" ? "No coincide con Axis" : undefined} accion={botonAxis("nombre")}>
+            <Campo etiqueta="Nombre" requerido error={campo("nombre")}>
               <input value={campos.nombre} onChange={(e) => cambiar("nombre", sanitizeInput("nombre", e.target.value))} maxLength={80} className={claseAxis(conciliacion?.nombre)} />
             </Campo>
-            <Campo etiqueta="Correo" error={campo("correo")} aviso={conciliacion?.correo === "distinto" ? "No coincide con Axis" : undefined} accion={botonAxis("correo")}>
+            <Campo etiqueta="Correo" requerido error={campo("correo")}>
               <input value={campos.correo} onChange={(e) => cambiar("correo", sanitizeInput("correo", e.target.value))} maxLength={80} type="email" className={claseAxis(conciliacion?.correo)} />
             </Campo>
           </div>
-          {axis?.estado === "encontrado" && (
-            <p className="text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
-          )}
-          {axis?.estado === "no_encontrado" && <Aviso>Este teléfono no se encontró en Axis.</Aviso>}
+          {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. */}
+          <div className="min-h-[3rem] space-y-1">
+            {axis?.estado === "encontrado" && (
+              <>
+                <p className="text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
+                {hayDiferencias && (
+                  <button type="button" onClick={usarDatosAxis} className="inline-flex items-center gap-1 text-xs text-primary underline">
+                    <ArrowLeftRight className="h-3 w-3" /> Usar los datos de Axis
+                  </button>
+                )}
+              </>
+            )}
+            {axis?.estado === "no_encontrado" && <Aviso>Este teléfono no se encontró en Axis.</Aviso>}
+          </div>
 
           {llevaPago(inicial.estatus) && (
             <>
               <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem]">
-                <Campo etiqueta="Método de pago" error={campo("metodoPago")}>
+                <Campo etiqueta="Método de pago" requerido error={campo("metodoPago")}>
                   <select value={campos.metodoPago} onChange={(e) => cambiar("metodoPago", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
                     {METODOS_PAGO.map((m) => <option key={m}>{m}</option>)}
                   </select>
                 </Campo>
-                <Campo etiqueta="Cantidad pagada" error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
-                <Campo etiqueta={inicial.estatus === "Completo" ? "Membresía" : "Membresía (opcional)"} error={campo("membresia")}>
+                <Campo etiqueta="Cantidad pagada" requerido error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
+                <Campo etiqueta="Membresía" requerido={inicial.estatus === "Completo"} error={campo("membresia")}>
                   <select value={campos.membresia} onChange={(e) => cambiar("membresia", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
                     {MEMBRESIAS.map((m) => <option key={m.value} value={m.value}>{m.value}</option>)}
                   </select>
                 </Campo>
               </div>
-              {/* Siempre ocupa su lugar: así elegir Tarjeta no mueve el resto del formulario. */}
-              <fieldset disabled={!requiereTarjeta(campos.metodoPago)} aria-hidden={!requiereTarjeta(campos.metodoPago)} className="min-w-0">
-                <div className={`grid gap-2.5 sm:grid-cols-2 ${requiereTarjeta(campos.metodoPago) ? "" : "invisible"}`}>
+              {requiereTarjeta(campos.metodoPago) && (
+                <div className="grid gap-2.5 sm:grid-cols-2">
                   <Campo etiqueta="Marca">
                     <select value={campos.marcaTarjeta} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
                       <option value="">—</option>
                       {MARCAS_TARJETA.map((m) => <option key={m}>{m}</option>)}
                     </select>
                   </Campo>
-                  <Campo etiqueta="Últimos 4 dígitos" error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" className={CLASE_INPUT} /></Campo>
                 </div>
-              </fieldset>
+              )}
             </>
           )}
           <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
@@ -332,17 +347,13 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
   );
 }
 
-function Campo({ etiqueta, error, aviso, accion, children }: { etiqueta: string; error?: string; aviso?: string; accion?: React.ReactNode; children: React.ReactNode }) {
+function Campo({ etiqueta, requerido, error, children }: { etiqueta: string; requerido?: boolean; error?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
-      <label className="block space-y-1 text-sm">
-        <span className="text-muted">{etiqueta}</span>
-        {children}
-        {error && <span className="block text-xs text-danger">{error}</span>}
-        {!error && aviso && <span className="block text-xs text-amber-600">{aviso}</span>}
-      </label>
-      {accion}
-    </div>
+    <label className="block space-y-1 text-sm">
+      <span className="text-muted">{etiqueta}{requerido && <span className="text-danger" aria-hidden="true"> *</span>}</span>
+      {children}
+      {error && <span className="block text-xs text-danger">{error}</span>}
+    </label>
   );
 }
 

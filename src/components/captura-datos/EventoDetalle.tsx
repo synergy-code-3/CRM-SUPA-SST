@@ -63,10 +63,14 @@ export function EventoDetalle({ id }: { id: string }) {
 
   /** Tras confirmar una hoja nueva se pasa directo a la siguiente; al terminar la última (o al corregir una ya guardada) se vuelve al evento. */
   async function siguiente(hojaTerminada: HojaCaptura) {
-    const eraEdicion = hojaTerminada.estado === "confirmada";
-    setActual(null);
-    if (eraEdicion) return void (await cargar());
-    if (!(await tomarSiguiente())) await cargar();
+    // El editor se queda en pantalla hasta tener la siguiente hoja: así no aparece un instante el listado.
+    if (hojaTerminada.estado === "confirmada") {
+      await cargar();
+      setActual(null);
+      return;
+    }
+    const [hayOtra] = await Promise.all([tomarSiguiente(), cargar()]);
+    if (!hayOtra) setActual(null);
   }
 
   async function abrirHoja(hojaId: string) {
@@ -149,7 +153,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} />
       </div>
     );
   }
