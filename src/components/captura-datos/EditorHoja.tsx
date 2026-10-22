@@ -8,8 +8,8 @@ import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
 import {
-  EMPTY_FIELDS, LADAS, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
-  requiereTarjeta, sanitizeInput, validateFields,
+  EMPTY_FIELDS, LADAS, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
+  requiereTarjeta, sanitizeInput, sinNotaAMeses, validateFields,
   type Box, type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
@@ -23,7 +23,7 @@ const claseAxis = (estado?: EstadoCampo) => CLASE_INPUT.replace("border-silver b
 
 type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
-export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; onTerminar: () => void }) {
+export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: HojaCaptura; onTerminar: () => void; onSiguiente: () => void }) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +46,8 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   const avisoBloqueoDescartado = useRef(false); // si lo cerró, no vuelve hasta el siguiente guardado
   // Una membresía elegida a mano no se pisa al cambiar la cantidad; solo se deduce sola mientras nadie la haya tocado.
   const membresiaManual = useRef(!!inicial.campos?.membresia && inicial.campos.membresia !== membresiaPorCantidad(inicial.campos.cantidad ?? ""));
+  // Una hoja ya confirmada (evento reabierto) no se autoguarda: los cambios solo se aplican al confirmar de nuevo.
+  const reedicion = inicial.estado === "confirmada";
   const trabajando = leyendo || confirmando || saliendo;
 
   const urlFoto = `/api/captura-datos/hojas/${inicial.id}/foto`;
@@ -54,7 +56,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
   const ejecutarGuardado = useCallback(async (): Promise<boolean> => {
     if (bloqueadaRef.current) return false;
-    if (!sucio.current) return true;
+    if (reedicion || !sucio.current) return true;
     sucio.current = false;
     setGuardado("guardando");
     try {
@@ -77,7 +79,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       }
       return false;
     }
-  }, [inicial.id]);
+  }, [inicial.id, reedicion]);
 
   /** Guarda lo pendiente encolando los PATCH (nunca dos a la vez); devuelve false si no se pudo guardar. */
   const guardar = useCallback((): Promise<boolean> => {
@@ -150,7 +152,9 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
   function cambiarCantidad(valor: string) {
     const plan = inicial.estatus === "Completo" && !membresiaManual.current ? membresiaPorCantidad(valor) : "";
-    aplicar(plan ? { cantidad: valor, membresia: plan } : { cantidad: valor });
+    // La nota "Pago a meses" aparece (o se va) en Notas mientras se revisa la hoja, no hasta subirla a Drive.
+    const notas = conNotaAMeses({ cantidad: valor, notas: sinNotaAMeses(camposRef.current.notas) });
+    aplicar(plan ? { cantidad: valor, membresia: plan, notas } : { cantidad: valor, notas });
   }
 
   async function leerConIa() {
@@ -170,7 +174,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       setGuardado("guardado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo leer la hoja.");
-      if (err instanceof ErrorApi && err.status === 422) onTerminar(); // no es una hoja de registro: ya quedó marcada
+      if (err instanceof ErrorApi && err.status === 422) onSiguiente(); // no es una hoja de registro: ya quedó marcada
       else if (err instanceof ErrorApi && err.status === 409) { bloqueadaRef.current = true; setBloqueada(true); }
     } finally {
       setLeyendo(false);
@@ -187,7 +191,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       await api(`/api/captura-datos/hojas/${inicial.id}${forzar ? "?force=1" : ""}`, {
         method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });
-      onTerminar();
+      onSiguiente();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.duplicado) {
         setDuplicado({ mensaje: err.message, datos: err.datos.duplicado as unknown as Duplicado });
@@ -233,7 +237,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2 text-xs text-muted">
           <span className="truncate">{inicial.estatus} · {inicial.origen.nombreOriginal}</span>
-          <span role="status" aria-live="polite" className="shrink-0">{{ guardado: "Guardado", pendiente: "Cambios sin guardar…", guardando: "Guardando…", error: "Error al guardar" }[guardado]}</span>
+          <span role="status" aria-live="polite" className="shrink-0">{reedicion ? "Editando hoja confirmada" : { guardado: "Guardado", pendiente: "Cambios sin guardar…", guardando: "Guardando…", error: "Error al guardar" }[guardado]}</span>
         </div>
 
         {lockPorVencer && <AvisoTemporal onCerrar={() => { avisoBloqueoDescartado.current = true; setLockPorVencer(false); }}>Llevas varios minutos sin guardar: la hoja podría liberarse para otra persona. Haz un cambio o confirma.</AvisoTemporal>}
@@ -245,7 +249,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
           </div>
         )}
 
-        <button onClick={leerConIa} disabled={trabajando} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary disabled:opacity-50">
+        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary disabled:opacity-50">
           {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Leer con IA
         </button>
 
@@ -277,7 +281,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
           {llevaPago(inicial.estatus) && (
             <>
-              <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)]">
+              <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem]">
                 <Campo etiqueta="Método de pago" error={campo("metodoPago")}>
                   <select value={campos.metodoPago} onChange={(e) => cambiar("metodoPago", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
@@ -292,8 +296,9 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
                   </select>
                 </Campo>
               </div>
-              {requiereTarjeta(campos.metodoPago) && (
-                <div className="grid gap-2.5 sm:grid-cols-2">
+              {/* Siempre ocupa su lugar: así elegir Tarjeta no mueve el resto del formulario. */}
+              <fieldset disabled={!requiereTarjeta(campos.metodoPago)} aria-hidden={!requiereTarjeta(campos.metodoPago)} className="min-w-0">
+                <div className={`grid gap-2.5 sm:grid-cols-2 ${requiereTarjeta(campos.metodoPago) ? "" : "invisible"}`}>
                   <Campo etiqueta="Marca">
                     <select value={campos.marcaTarjeta} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
                       <option value="">—</option>
@@ -302,7 +307,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
                   </Campo>
                   <Campo etiqueta="Últimos 4 dígitos" error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" className={CLASE_INPUT} /></Campo>
                 </div>
-              )}
+              </fieldset>
             </>
           )}
           <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", e.target.value)} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
@@ -317,7 +322,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
         )}
 
         <div className="flex justify-between gap-2 pt-1">
-          <button onClick={liberar} disabled={trabajando} className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-silver/40"><Undo2 className="h-4 w-4" /> Guardar y salir</button>
+          <button onClick={liberar} disabled={trabajando} className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-silver/40"><Undo2 className="h-4 w-4" /> {reedicion ? "Cancelar" : "Guardar y salir"}</button>
           <button onClick={() => confirmar()} disabled={trabajando} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
             {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar hoja
           </button>

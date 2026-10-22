@@ -198,6 +198,11 @@ body {
     }
   }
 
+  @keyframes subida {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+  }
+
   .animate-fade-in {
     animation: fade-in 0.28s cubic-bezier(0.32, 0.72, 0, 1);
   }

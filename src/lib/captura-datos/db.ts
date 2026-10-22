@@ -301,7 +301,7 @@ export async function tomarHojaPorId(id: string, usuarioId: string): Promise<Hoj
     .from("cap_hojas")
     .update({ bloqueada_por: usuarioId, bloqueada_hasta: new Date(ahora.getTime() + BLOQUEO_MS).toISOString() })
     .eq("id", id)
-    .in("estado", ["pendiente", "leida"])
+    .in("estado", ["pendiente", "leida", "confirmada"]) // una confirmada se reabre para corregirla (solo con el evento abierto)
     .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${ahora.toISOString()}`)
     .select("*")
     .maybeSingle();
@@ -310,7 +310,7 @@ export async function tomarHojaPorId(id: string, usuarioId: string): Promise<Hoj
   // No se pudo tomar: se distingue "ya no se edita" de "la tiene otra persona".
   const actual = await obtenerHoja(id);
   if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
-  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorEstadoHoja();
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
   throw new ErrorHojaOcupada();
 }
 

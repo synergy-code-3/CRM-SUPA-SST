@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { ClipboardList, Download, Plus } from "lucide-react";
 import { NuevoEventoModal } from "./NuevoEventoModal";
@@ -17,6 +18,7 @@ export function ListaEventos() {
   const [eventos, setEventos] = useState<EventoConAvance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
+  const router = useRouter();
 
   const cargar = useCallback(() => {
     api<{ eventos: EventoConAvance[] }>("/api/captura-datos/eventos")
@@ -51,7 +53,7 @@ export function ListaEventos() {
       {creando && (
         <NuevoEventoModal
           onCerrar={() => setCreando(false)}
-          onCreado={() => { setCreando(false); cargar(); }}
+          onCreado={(evento) => { setCreando(false); router.push(`/captura-datos/${evento.id}`); }}
         />
       )}
     </div>

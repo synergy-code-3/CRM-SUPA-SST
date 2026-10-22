@@ -189,6 +189,11 @@ export function formatCantidadInput(raw: string): string {
 
 export const NOTA_A_MESES = "Pago a meses";
 
+/** Quita la nota automática de pago a meses (al corregir la cantidad); una nota escrita a mano no se toca. */
+export function sinNotaAMeses(notas: string): string {
+  return notas === NOTA_A_MESES ? "" : notas.endsWith(`. ${NOTA_A_MESES}`) ? notas.slice(0, -(NOTA_A_MESES.length + 2)) : notas;
+}
+
 /** Si la cantidad es uno de los precios a meses, las notas dicen que el pago es a meses (sin repetirlo). */
 export function conNotaAMeses({ cantidad, notas }: { cantidad: string; notas: string }): string {
   const pagado = parseCantidad(cantidad);
@@ -346,4 +351,17 @@ export function imageFileName(fields: SheetFields, pago?: number): string {
     .trim()
     .replace(/\s+/g, "_");
   return `${fields.folio}_${safeName || "sin_nombre"}${pago ? `_pago${pago}` : ""}.jpg`;
+}
+
+/** Renglones en blanco entre las secciones (Completos / Apartados / Interesados) de la Hoja de Drive y del Excel. */
+export const FILAS_ENTRE_SECCIONES = 4;
+
+/**
+ * Ordena por sección (Completo, Apartado, Interesado) y deja FILAS_ENTRE_SECCIONES elementos `null` entre una
+ * sección y la siguiente; las secciones vacías no dejan hueco.
+ */
+export function conSeparadores<T extends { estatus: Estatus }>(items: readonly T[]): (T | null)[] {
+  return ESTATUS.map((e) => items.filter((i) => i.estatus === e.value))
+    .filter((grupo) => grupo.length > 0)
+    .flatMap((grupo, i) => [...(i > 0 ? Array<null>(FILAS_ENTRE_SECCIONES).fill(null) : []), ...grupo]);
 }

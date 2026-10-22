@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_FIELDS, camposRequeridos, compararPago, formatCantidadInput, membresiaPorCantidad, normalizeCantidad, normalizeFields, normalizeFolio, parseCantidad,
+  EMPTY_FIELDS, camposRequeridos, compararPago, formatCantidadInput, membresiaPorCantidad, normalizeCantidad, normalizeFields, conSeparadores, normalizeFolio, parseCantidad, sinNotaAMeses,
   requiereTarjeta, sanitizeInput, splitTelefono, validateFields, whatsappLink, type SheetFields,
 } from "./fields";
 
@@ -139,5 +139,20 @@ describe("formatCantidadInput", () => {
     expect(formatCantidadInput("14816.58")).toBe("$14,816.58");
     expect(formatCantidadInput("1234.")).toBe("$1,234.");
     expect(formatCantidadInput("1234.5")).toBe("$1,234.5");
+  });
+});
+
+describe("sinNotaAMeses", () => {
+  it("quita la nota automática y respeta lo escrito a mano", () => {
+    expect(sinNotaAMeses("Pago a meses")).toBe("");
+    expect(sinNotaAMeses("Llamar el lunes. Pago a meses")).toBe("Llamar el lunes");
+    expect(sinNotaAMeses("Pagará a meses el resto")).toBe("Pagará a meses el resto");
+  });
+});
+
+describe("conSeparadores", () => {
+  it("agrupa por sección con 4 huecos entre ellas", () => {
+    const r = conSeparadores([{ estatus: "Interesado" as const }, { estatus: "Completo" as const }, { estatus: "Interesado" as const }]);
+    expect(r.map((x) => x?.estatus ?? null)).toEqual(["Completo", null, null, null, null, "Interesado", "Interesado"]);
   });
 });

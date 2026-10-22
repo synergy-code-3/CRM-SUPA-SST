@@ -4,7 +4,7 @@
 // no dependía del almacenamiento local. Lo único que cambia es
 // `guardarEventoEnDrive`: en vez de mutar un único "Escaneo" en disco, lee/
 // actualiza las filas de cap_eventos/cap_hojas en Supabase.
-import { carpetaDeEstatus, imageFileName, normalizeFields, toRecord } from "./fields";
+import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, toRecord, type SheetRecord } from "./fields";
 import { actualizarCarpetaFotosEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
 import type { HojaCaptura } from "./modelo";
@@ -12,6 +12,9 @@ import { ErrorPeticion } from "./errores";
 
 export const DRIVE_READY = !!(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_SECRET);
 const FOTO_CONCURRENCY = 3;
+const REGISTRO_VACIO: SheetRecord = {
+  nombre: "", correo: "", lada: "", telefono: "", linkWa: "", tarjeta: "", metodoPago: "", cantidad: "", folio: "", membresia: "", notas: "", estatus: "",
+};
 
 // Errores en los que la petición nunca llegó a Google: es seguro reintentar sin duplicar nada.
 const SIN_CONEXION = new Set(["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "ETIMEDOUT"]);
@@ -232,7 +235,9 @@ async function guardar(
   // 2. Hoja de cálculo (copia de la plantilla) en la raíz de la carpeta destino
   if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");
   hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
-  const registros = hojas.map((h) => {
+  // Secciones separadas (Completos, Apartados, Interesados) con renglones en blanco entre ellas.
+  const registros = conSeparadores(hojas).map((h) => {
+    if (!h) return REGISTRO_VACIO;
     const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
     return { ...r, notas: neutralizarFormula(r.notas) };
   });
