@@ -3,12 +3,13 @@ import { z } from "zod";
 import { requerirPermiso } from "@/lib/auth";
 import { idDeEnlace, infoCarpeta, listarArchivos } from "@/lib/captura-datos/google";
 import { leerJson, respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
+import { idDrive } from "@/lib/captura-datos/validacion";
 
 export const maxDuration = 60;
 
 const body = z.object({
   enlace: z.string().max(500),
-  subcarpetaId: z.string().max(200).optional(), // si se manda, también lista los archivos de esa subcarpeta
+  subcarpetaId: idDrive.optional(), // si se manda, también lista los archivos de esa subcarpeta
 });
 
 export async function POST(req: NextRequest) {

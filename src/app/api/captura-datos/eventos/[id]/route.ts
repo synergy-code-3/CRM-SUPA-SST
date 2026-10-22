@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { eliminarEvento, listarHojasDeEvento, obtenerEvento, reabrirEvento } from "@/lib/captura-datos/db";
 import { guardarEventoEnDrive } from "@/lib/captura-datos/google";
@@ -15,6 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const evento = await obtenerEvento(id);
     if (!evento) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     return NextResponse.json({ evento });
@@ -29,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const b = await leerJson(req, patchEvento);
     if (b.accion === "reabrir") {
       if (permiso.usuario.rol !== "admin") throw new ErrorPeticion(403, "Solo un admin puede reabrir un evento confirmado.");

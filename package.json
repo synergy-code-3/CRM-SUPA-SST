@@ -18,7 +18,9 @@
     "crear-admin": "tsx scripts/crear-admin.ts",
     "backfill-kajabi-clientes": "tsx scripts/backfill-kajabi-clientes.ts",
     "setup-storage-comprobantes": "tsx scripts/setup-storage-comprobantes.ts",
-    "setup-storage-captura-datos": "tsx scripts/setup-storage-captura-datos.ts"
+    "setup-storage-captura-datos": "tsx scripts/setup-storage-captura-datos.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -41,11 +43,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.2.7",
     "csv-parse": "^5.6.0",
     "eslint": "^9",
     "eslint-config-next": "^15.5.23",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

@@ -10,7 +10,7 @@ export async function GET() {
   if (!permiso.ok) return permiso.respuesta;
 
   try {
-    const eventos = await listarEventos();
+    const eventos = await listarEventos(permiso.usuario.rol === "admin" ? undefined : permiso.usuario.id);
     return NextResponse.json({ eventos });
   } catch (err) {
     return respuestaError(err, "captura-datos/eventos GET");
