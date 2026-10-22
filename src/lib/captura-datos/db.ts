@@ -291,6 +291,29 @@ export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promi
   return fila?.id ? filaAHoja(fila) : null;
 }
 
+/**
+ * Toma una hoja concreta (para abrirla desde su tarjeta). Mismo bloqueo que tomarHojaLibre: solo si sigue pendiente/leída
+ * y nadie más la tiene vigente; si ya es tuya, se renueva. El UPDATE es atómico, así que dos personas no la toman a la vez.
+ */
+export async function tomarHojaPorId(id: string, usuarioId: string): Promise<HojaCaptura> {
+  const ahora = new Date();
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: usuarioId, bloqueada_hasta: new Date(ahora.getTime() + BLOQUEO_MS).toISOString() })
+    .eq("id", id)
+    .in("estado", ["pendiente", "leida"])
+    .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${ahora.toISOString()}`)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return filaAHoja(data as FilaHoja);
+  // No se pudo tomar: se distingue "ya no se edita" de "la tiene otra persona".
+  const actual = await obtenerHoja(id);
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
+  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorEstadoHoja();
+  throw new ErrorHojaOcupada();
+}
+
 /** Libera la hoja solo si el bloqueo es de `usuarioId` (nadie libera el bloqueo de otra persona). */
 export async function liberarHoja(id: string, usuarioId: string): Promise<void> {
   const { error } = await supabase

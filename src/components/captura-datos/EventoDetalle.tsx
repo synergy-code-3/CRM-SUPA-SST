@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, CloudUpload, Download, Loader2, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
+import { ArrowLeft, CloudUpload, Download, ExternalLink, Eye, Loader2, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
 import { AsignacionesModal } from "./AsignacionesModal";
+import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
 import { api, ErrorApi, imagenAJpeg } from "@/lib/captura-datos/cliente";
 import { usePolling } from "@/lib/captura-datos/usePolling";
@@ -51,6 +52,20 @@ export function EventoDetalle({ id }: { id: string }) {
       else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo tomar una hoja.");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function abrirHoja(hojaId: string) {
+    setOcupado(hojaId);
+    setMensaje(null);
+    try {
+      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${hojaId}/tomar`, { method: "POST" });
+      setActual(r.hoja);
+    } catch (err) {
+      setMensaje(err instanceof Error ? err.message : "No se pudo abrir la hoja.");
+      await cargar(); // por si cambió de estado mientras tanto
     } finally {
       setOcupado(null);
     }
@@ -135,7 +150,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </p>
       </div>
 
-      {mensaje && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{mensaje}</p>}
+      {mensaje && <AvisoTemporal key={mensaje} peligro onCerrar={() => setMensaje(null)}>{mensaje}</AvisoTemporal>}
 
       <div className="flex flex-wrap items-center gap-2">
         {evento.estado === "abierto" ? (
@@ -163,9 +178,20 @@ export function EventoDetalle({ id }: { id: string }) {
 
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {hojas.map((h) => (
-          <li key={h.id} className={`rounded-lg px-3 py-2 text-xs ${COLOR_ESTADO[h.estado]}`}>
-            <span className="font-medium text-foreground">{h.folio ? `Folio ${h.folio}` : h.origen.nombreOriginal}</span>
-            <span className="text-muted"> · {h.estatus} · {h.estado.replace("_", " ")}{h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() ? " · en edición" : ""}</span>
+          <li key={h.id} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs ${COLOR_ESTADO[h.estado]}`}>
+            <span className="min-w-0">
+              <span className="font-medium text-foreground">{h.folio ? `Folio ${h.folio}` : h.origen.nombreOriginal}</span>
+              <span className="text-muted"> · {h.estatus} · {h.estado.replace("_", " ")}{h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() ? " · en edición" : ""}</span>
+            </span>
+            {evento.estado === "abierto" && (h.estado === "pendiente" || h.estado === "leida") ? (
+              <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-silver bg-surface px-2 py-1 font-medium text-foreground disabled:opacity-50">
+                {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Abrir
+              </button>
+            ) : (
+              <a href={`/api/captura-datos/hojas/${h.id}/foto`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-silver bg-surface px-2 py-1 font-medium text-foreground">
+                <ExternalLink className="h-3.5 w-3.5" /> Ver foto
+              </a>
+            )}
           </li>
         ))}
       </ul>
