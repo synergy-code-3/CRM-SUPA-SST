@@ -266,7 +266,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
           </div>
         )}
 
-        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary disabled:opacity-50">
+        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:border-white hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:border-primary disabled:hover:bg-transparent disabled:hover:text-primary">
           {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Leer con IA
         </button>
 
@@ -292,7 +292,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
             </Campo>
           </div>
           {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. */}
-          <div className="h-[5.5rem] space-y-1.5">
+          <div className="h-[3.25rem] space-y-1.5">
             {axis?.estado === "encontrado" && (
               <>
                 <p className="truncate text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
@@ -326,16 +326,17 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
                   </select>
                 </Campo>
               </div>
-              {/* Siempre ocupa su lugar: elegir tarjeta no mueve el formulario ni el visor. */}
-              <div className={`grid gap-2.5 sm:grid-cols-2 ${requiereTarjeta(campos.metodoPago) ? "" : "invisible"}`} aria-hidden={!requiereTarjeta(campos.metodoPago)}>
+              {requiereTarjeta(campos.metodoPago) && (
+                <div className="grid gap-2.5 sm:grid-cols-2">
                   <Campo etiqueta="Marca">
-                    <select value={campos.marcaTarjeta} tabIndex={requiereTarjeta(campos.metodoPago) ? 0 : -1} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
+                    <select value={campos.marcaTarjeta} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
                       <option value="">—</option>
                       {MARCAS_TARJETA.map((m) => <option key={m}>{m}</option>)}
                     </select>
                   </Campo>
-                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" disabled={!requiereTarjeta(campos.metodoPago)} tabIndex={requiereTarjeta(campos.metodoPago) ? 0 : -1} className={CLASE_INPUT} /></Campo>
+                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" className={CLASE_INPUT} /></Campo>
                 </div>
+              )}
             </>
           )}
           <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
