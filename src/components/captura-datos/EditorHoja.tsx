@@ -6,7 +6,7 @@ import { AvisoTemporal } from "./AvisoTemporal";
 import { TiraHojas } from "./TiraHojas";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
-import { CAMPOS_COMPARABLES, telefonoConsultable, conciliar, valorDeAxis, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
+import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
 import {
   EMPTY_FIELDS, LADAS, NOTAS_MAX, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
@@ -22,9 +22,11 @@ const CLASE_INPUT = "w-full rounded-lg border border-silver bg-surface px-2.5 py
 const COLOR_AXIS: Record<EstadoCampo, string> = { ok: "border-success bg-success/10", distinto: "border-danger bg-danger/10", sin_dato: "border-silver bg-surface" };
 const claseAxis = (estado?: EstadoCampo) => CLASE_INPUT.replace("border-silver bg-surface", COLOR_AXIS[estado ?? "sin_dato"]);
 
+const CAMPOS_COMPARABLES_ETIQUETA: { k: CampoComparable; texto: string }[] = [{ k: "nombre", texto: "Usar nombre de Axis" }, { k: "correo", texto: "Usar correo de Axis" }];
+
 type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
-export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { hoja: HojaCaptura; hojas: HojaCaptura[]; onTerminar: () => void; onSiguiente: () => void | Promise<void> }) {
+export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr }: { hoja: HojaCaptura; hojas: HojaCaptura[]; onTerminar: () => void; onSiguiente: () => void | Promise<void>; onIr: (id: string) => void | Promise<void> }) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -214,21 +216,30 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { 
     onTerminar();
   }
 
+  /** Salta a otra hoja de la tira: guarda y suelta la actual antes. */
+  async function irA(id: string) {
+    if (trabajando) return;
+    setSaliendo(true);
+    if (!(await guardar())) {
+      setSaliendo(false);
+      return;
+    }
+    await api(`/api/captura-datos/hojas/${inicial.id}/liberar`, { method: "POST" }).catch(() => {});
+    await onIr(id);
+    setSaliendo(false); // si la otra hoja no se pudo abrir, el editor sigue usable
+  }
+
   const campo = (k: FieldKey) => (intentoConfirmar ? errores[k] : undefined);
   const enlaceDuplicado = duplicado?.datos ? urlDuplicado(duplicado.datos) : null;
   const conciliacion = axis?.estado === "encontrado" ? conciliar(campos, axis.contacto) : null;
 
-  const hayDiferencias = axis?.estado === "encontrado" && !!conciliacion && CAMPOS_COMPARABLES.some((k) => conciliacion[k] === "distinto" && valorDeAxis(axis.contacto, k));
+  const hayDiferencia = (k: CampoComparable) => axis?.estado === "encontrado" && conciliacion?.[k] === "distinto" && !!valorDeAxis(axis.contacto, k);
 
-  /** Reemplaza nombre y correo por los de Axis (solo los que Axis trae). */
-  function usarDatosAxis() {
+  /** Reemplaza un campo (nombre o correo) por el que trae Axis. */
+  function usarDatoAxis(k: CampoComparable) {
     if (axis?.estado !== "encontrado") return;
-    const parcial: Partial<SheetFields> = {};
-    for (const k of CAMPOS_COMPARABLES) {
-      const valor = valorDeAxis(axis.contacto, k);
-      if (valor) parcial[k] = valor;
-    }
-    aplicar(parcial);
+    const valor = valorDeAxis(axis.contacto, k);
+    if (valor) aplicar({ [k]: valor });
   }
 
   return (
@@ -237,7 +248,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { 
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
-        <TiraHojas hojas={hojas} actualId={inicial.id} />
+        <TiraHojas hojas={hojas} actualId={inicial.id} onElegir={irA} />
       </div>
 
       <div className="space-y-2.5">
@@ -267,7 +278,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { 
                 <select aria-label="Lada" value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
                   {LADAS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
-                <input aria-label="Teléfono (10 dígitos)" value={campos.telefono} onChange={(e) => cambiar("telefono", e.target.value.replace(/\D/g, ""))} inputMode="tel" className={CLASE_INPUT} />
+                <input aria-label="Teléfono (10 dígitos)" value={campos.telefono} onChange={(e) => cambiar("telefono", sanitizeInput("telefono", e.target.value))} maxLength={10} inputMode="tel" className={CLASE_INPUT} />
               </div>
             </Campo>
           </div>
@@ -281,15 +292,18 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { 
             </Campo>
           </div>
           {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. */}
-          <div className="min-h-[3rem] space-y-1">
+          <div className="h-[5.5rem] space-y-1.5">
             {axis?.estado === "encontrado" && (
               <>
-                <p className="text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
-                {hayDiferencias && (
-                  <button type="button" onClick={usarDatosAxis} className="inline-flex items-center gap-1 text-xs text-primary underline">
-                    <ArrowLeftRight className="h-3 w-3" /> Usar los datos de Axis
-                  </button>
-                )}
+                <p className="truncate text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {CAMPOS_COMPARABLES_ETIQUETA.map(({ k, texto }) => (
+                    <button key={k} type="button" onClick={() => usarDatoAxis(k)} disabled={!hayDiferencia(k)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition hover:bg-primary hover:text-white disabled:cursor-default disabled:border-silver disabled:bg-transparent disabled:text-muted disabled:opacity-50 disabled:shadow-none disabled:hover:bg-transparent disabled:hover:text-muted">
+                      <ArrowLeftRight className="h-3 w-3" /> {texto}
+                    </button>
+                  ))}
+                </div>
               </>
             )}
             {axis?.estado === "no_encontrado" && <Aviso>Este teléfono no se encontró en Axis.</Aviso>}
@@ -312,17 +326,16 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente }: { 
                   </select>
                 </Campo>
               </div>
-              {requiereTarjeta(campos.metodoPago) && (
-                <div className="grid gap-2.5 sm:grid-cols-2">
+              {/* Siempre ocupa su lugar: elegir tarjeta no mueve el formulario ni el visor. */}
+              <div className={`grid gap-2.5 sm:grid-cols-2 ${requiereTarjeta(campos.metodoPago) ? "" : "invisible"}`} aria-hidden={!requiereTarjeta(campos.metodoPago)}>
                   <Campo etiqueta="Marca">
-                    <select value={campos.marcaTarjeta} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
+                    <select value={campos.marcaTarjeta} tabIndex={requiereTarjeta(campos.metodoPago) ? 0 : -1} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
                       <option value="">—</option>
                       {MARCAS_TARJETA.map((m) => <option key={m}>{m}</option>)}
                     </select>
                   </Campo>
-                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" disabled={!requiereTarjeta(campos.metodoPago)} tabIndex={requiereTarjeta(campos.metodoPago) ? 0 : -1} className={CLASE_INPUT} /></Campo>
                 </div>
-              )}
             </>
           )}
           <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>

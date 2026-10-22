@@ -16,7 +16,8 @@ import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const POLLING_MS = 10_000;
 const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
-const COLOR_ESTADO = { pendiente: "bg-silver/50", leida: "bg-amber-500/20", confirmada: "bg-success/20", no_valida: "bg-danger/15" } as const;
+const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
+const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
 export function EventoDetalle({ id }: { id: string }) {
   const { usuario } = useSesion();
@@ -43,7 +44,7 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }, [id]);
 
-  usePolling(cargar, POLLING_MS, !actual);
+  usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
   async function tomarSiguiente(): Promise<boolean> {
     setOcupado("tomar");
@@ -153,7 +154,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId); }} />
       </div>
     );
   }
@@ -186,53 +187,60 @@ export function EventoDetalle({ id }: { id: string }) {
               </>
             )}
             <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
-            <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>
           </>
         ) : (
           usuario?.rol === "admin" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>
         )}
         {usuario?.rol === "admin" && <Boton onClick={() => setAsignando(true)} icono={<Users className="h-4 w-4" />}>Personas</Boton>}
         <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>
+        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />} className="ml-auto">Cerrar evento</Boton>}
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}
       {asignando && <AsignacionesModal eventoId={id} onCerrar={() => setAsignando(false)} />}
 
       {/* Completos, apartados e interesados van en secciones separadas. */}
-      {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
-        <section key={e.value} aria-label={e.carpeta} className="space-y-2 [&:not(:first-of-type)]:mt-6">
-          <h2 className="text-sm font-semibold text-foreground">{e.carpeta} <span className="font-normal text-muted">({lista.length})</span></h2>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {lista.map((h) => (
-              <li key={h.id} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs ${COLOR_ESTADO[h.estado]}`}>
-                <span className="min-w-0">
-                  <span className="font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
-                  <span className="text-muted"> · {h.estatus} · {h.estado.replace("_", " ")}{h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() ? " · en edición" : ""}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  {evento.estado === "abierto" && h.estado !== "no_valida" && (
-                    <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-md border border-silver bg-surface px-2 py-1 font-medium text-foreground disabled:opacity-50">
-                      {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
-                    </button>
-                  )}
-                  {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida") && (
-                    <a href={`/api/captura-datos/hojas/${h.id}/foto`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-silver bg-surface px-2 py-1 font-medium text-foreground">
-                      <ExternalLink className="h-3.5 w-3.5" /> Ver foto
-                    </a>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {hojas.length > 0 && (
+        <div className="space-y-6 rounded-2xl border border-silver bg-white p-5 shadow-sm">
+          {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
+            <section key={e.value} aria-label={e.carpeta} className="space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">{e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span></h2>
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {lista.map((h) => (
+                  <li key={h.id} className={`flex items-center justify-between gap-3 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
+                    <span className="min-w-0 space-y-1">
+                      <span className="block truncate text-sm font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.estado.replace("_", " ")}</span>
+                        {h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() && <span className="text-muted">en edición</span>}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {evento.estado === "abierto" && h.estado !== "no_valida" && (
+                        <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50">
+                          {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
+                        </button>
+                      )}
+                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida") && (
+                        <a href={`/api/captura-datos/hojas/${h.id}/foto`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
+                          <ExternalLink className="h-3.5 w-3.5" /> Ver foto
+                        </a>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function Boton({ onClick, cargando, icono, primario, children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; children: React.ReactNode }) {
+function Boton({ onClick, cargando, icono, primario, className = "", children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; className?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${primario ? "bg-primary text-white" : "border border-silver"}`}>
+    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${primario ? "bg-primary text-white" : "border border-silver"} ${className}`}>
       {cargando ? <Loader2 className="h-4 w-4 animate-spin" /> : icono} {children}
     </button>
   );
