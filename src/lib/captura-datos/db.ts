@@ -223,6 +223,12 @@ export async function confirmarEvento(
   return filaAEvento(data as FilaEvento);
 }
 
+/** Guarda los datos de Drive sin cerrar el evento: sigue abierto para seguir capturando. */
+export async function actualizarDriveEvento(id: string, drive: EventoCaptura["drive"]): Promise<void> {
+  const { error } = await supabase.from("cap_eventos").update({ drive }).eq("id", id);
+  if (error) throw error;
+}
+
 export async function reabrirEvento(id: string, adminId: string, motivo: string): Promise<EventoCaptura> {
   const { data, error } = await supabase
     .from("cap_eventos")

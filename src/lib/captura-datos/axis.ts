@@ -2,10 +2,11 @@
 //
 // Endpoint: GET <AXIS_TELEFONO_URL>?telefono=<10 dígitos> con Authorization: Bearer <AXIS_API_TOKEN>.
 // 200 → { nombre, correo, coincidencias } · 404 → { error } (sin contacto) · 400 → teléfono inválido.
-// Sin URL o token responde "no_configurado" y la interfaz no muestra nada de Axis.
+// Sin token responde "no_configurado" y la interfaz no muestra nada de Axis.
 import { z } from "zod";
 import type { ContactoAxis, ResultadoAxis } from "./conciliacion";
 
+const URL_POR_DEFECTO = "https://axis.sinergeticos.com/api/internal/historial-cliente"; // el token sigue siendo secreto: AXIS_API_TOKEN
 const PARAMETRO = "telefono";
 const TIMEOUT_MS = 8000;
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -41,7 +42,7 @@ const aContacto = (c: z.infer<typeof Respuesta>): ContactoAxis => ({
 
 export async function buscarPorTelefono(telefono: string, config: ConfigAxis = {}): Promise<ResultadoAxis> {
   const token = config.token ?? process.env.AXIS_API_TOKEN;
-  const url = urlConsulta(config.url ?? process.env.AXIS_TELEFONO_URL);
+  const url = urlConsulta(config.url ?? process.env.AXIS_TELEFONO_URL ?? URL_POR_DEFECTO);
   if (!url || !token) return { estado: "no_configurado" };
   url.searchParams.set(PARAMETRO, telefono);
 

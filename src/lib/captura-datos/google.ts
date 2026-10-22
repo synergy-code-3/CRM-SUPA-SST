@@ -4,8 +4,8 @@
 // no dependía del almacenamiento local. Lo único que cambia es
 // `guardarEventoEnDrive`: en vez de mutar un único "Escaneo" en disco, lee/
 // actualiza las filas de cap_eventos/cap_hojas en Supabase.
-import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, toRecord, type SheetRecord } from "./fields";
-import { actualizarCarpetaFotosEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
+import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, sinNotaAMeses, toRecord, type SheetRecord } from "./fields";
+import { actualizarCarpetaFotosEvento, actualizarDriveEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
 import type { HojaCaptura } from "./modelo";
 import { ErrorPeticion } from "./errores";
@@ -156,7 +156,7 @@ export type ResultadoDrive =
 export async function guardarEventoEnDrive(
   eventoId: string,
   usuarioId: string,
-  opts: { crearCarpeta?: boolean; sinFotos?: boolean },
+  opts: { crearCarpeta?: boolean; sinFotos?: boolean; cerrar?: boolean },
   signal?: AbortSignal
 ): Promise<ResultadoDrive> {
   const anterior = enCurso.get(eventoId);
@@ -173,7 +173,7 @@ export async function guardarEventoEnDrive(
 async function guardar(
   eventoId: string,
   usuarioId: string,
-  opts: { crearCarpeta?: boolean; sinFotos?: boolean },
+  opts: { crearCarpeta?: boolean; sinFotos?: boolean; cerrar?: boolean },
   signal?: AbortSignal
 ): Promise<ResultadoDrive> {
   const evento = await obtenerEvento(eventoId);
@@ -239,7 +239,8 @@ async function guardar(
   const registros = conSeparadores(hojas).map((h) => {
     if (!h) return REGISTRO_VACIO;
     const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
-    return { ...r, notas: neutralizarFormula(r.notas) };
+    // "Pago a meses" vive solo en las notas editables de la hoja, no en Drive.
+    return { ...r, notas: neutralizarFormula(sinNotaAMeses(r.notas)) };
   });
   const payload = {
     action: "guardarHoja",
@@ -256,7 +257,9 @@ async function guardar(
     if (!evento.drive?.hojaId || !/no se encontr|not found|does not exist|no existe/i.test((err as Error).message)) throw err;
     hoja = await call({ ...payload, filasPrevias: 0, meta: JSON.stringify({ version: 1, eventoId }) });
   }
-  await confirmarEvento(eventoId, usuarioId, { hojaId: hoja.id, hojaUrl: hoja.url, filas: registros.length, gid: hoja.gid });
+  const drive = { hojaId: hoja.id, hojaUrl: hoja.url, filas: registros.length, gid: hoja.gid };
+  if (opts.cerrar) await confirmarEvento(eventoId, usuarioId, drive);
+  else await actualizarDriveEvento(eventoId, drive);
   return { ok: true, hojaUrl: hoja.url, filas: registros.length, fotosSubidas: subidas, fotosFaltantes: faltantes };
 }
 

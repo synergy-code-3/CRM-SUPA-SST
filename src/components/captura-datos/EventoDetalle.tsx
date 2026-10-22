@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, CloudUpload, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
+import { ArrowLeft, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
 import { AsignacionesModal } from "./AsignacionesModal";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
@@ -26,6 +26,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [estatusSubida, setEstatusSubida] = useState<Estatus>("Completo");
+  const [exito, setExito] = useState<string | null>(null);
   const [asignando, setAsignando] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
@@ -109,15 +110,18 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
-  async function confirmarEvento(opciones: { crearCarpeta?: boolean; sinFotos?: boolean } = {}) {
+  /** "confirmar" guarda en Drive y deja el evento abierto; "cerrar" además lo cierra. */
+  async function guardarEvento(accion: "confirmar" | "cerrar", opciones: { crearCarpeta?: boolean; sinFotos?: boolean } = {}) {
     setOcupado("confirmar");
     setMensaje(null);
+    setExito(null);
     try {
-      await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion: "confirmar", ...opciones } });
+      await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion, ...opciones } });
+      setExito(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : "Se subió a Drive correctamente. El evento sigue abierto.");
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
-        if (window.confirm("Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?")) return await confirmarEvento({ ...opciones, crearCarpeta: true });
+        if (window.confirm("Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?")) return await guardarEvento(accion, { ...opciones, crearCarpeta: true });
       } else {
         setMensaje(err instanceof Error ? err.message : "No se pudo guardar en Drive.");
       }
@@ -161,6 +165,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </p>
       </div>
 
+      {exito && <AvisoTemporal key={exito} onCerrar={() => setExito(null)}>{exito}</AvisoTemporal>}
       {mensaje && <AvisoTemporal key={mensaje} peligro onCerrar={() => setMensaje(null)}>{mensaje}</AvisoTemporal>}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -176,7 +181,8 @@ export function EventoDetalle({ id }: { id: string }) {
                 <input ref={entrada} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => subirFotos(e.target.files)} />
               </>
             )}
-            <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && confirmarEvento()} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
+            <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
+            <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>
           </>
         ) : (
           usuario?.rol === "admin" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>
@@ -188,9 +194,9 @@ export function EventoDetalle({ id }: { id: string }) {
       {ocupado === "confirmar" && <SubiendoADrive />}
       {asignando && <AsignacionesModal eventoId={id} onCerrar={() => setAsignando(false)} />}
 
-      {/* Completos, apartados e interesados van separados: 4 renglones en blanco entre cada sección, igual que en la Hoja de Drive. */}
+      {/* Completos, apartados e interesados van en secciones separadas. */}
       {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
-        <section key={e.value} aria-label={e.carpeta} className="space-y-2 [&:not(:first-of-type)]:mt-24">
+        <section key={e.value} aria-label={e.carpeta} className="space-y-2 [&:not(:first-of-type)]:mt-6">
           <h2 className="text-sm font-semibold text-foreground">{e.carpeta} <span className="font-normal text-muted">({lista.length})</span></h2>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {lista.map((h) => (

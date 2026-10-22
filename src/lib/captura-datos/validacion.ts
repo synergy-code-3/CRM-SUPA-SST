@@ -79,10 +79,10 @@ export const patchHoja = z.object({
 export const consultaAxis = z.object({ telefono: z.string().regex(/^\d{10}$/) });
 
 export const patchEvento = z.object({
-  accion: z.enum(["confirmar", "reabrir"]),
+  accion: z.enum(["confirmar", "cerrar", "reabrir"]), // "confirmar" guarda en Drive sin cerrar; "cerrar" guarda y cierra
   motivo: texto(500).optional(), // obligatorio solo para "reabrir", se valida en la ruta
-  crearCarpeta: z.boolean().optional(), // solo para "confirmar": crear la subcarpeta de fotos si falta
-  sinFotos: z.boolean().optional(), // solo para "confirmar": guardar los datos aunque falten fotos por subir
+  crearCarpeta: z.boolean().optional(), // para "confirmar"/"cerrar": crear la subcarpeta de fotos si falta
+  sinFotos: z.boolean().optional(), // para "confirmar"/"cerrar": guardar los datos aunque falten fotos por subir
 });
 
 export const putAsignaciones = z.object({ usuariosAsignados: z.array(idUuid).max(50) });

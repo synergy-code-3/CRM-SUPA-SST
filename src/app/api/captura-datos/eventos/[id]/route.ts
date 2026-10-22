@@ -40,8 +40,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ evento });
     }
 
-    // "confirmar": sube a Drive las fotos pendientes + crea/actualiza la Hoja de cálculo.
-    const resultado = await guardarEventoEnDrive(id, permiso.usuario.id, { crearCarpeta: b.crearCarpeta, sinFotos: b.sinFotos });
+    // "confirmar": sube a Drive las fotos pendientes + crea/actualiza la Hoja de cálculo (evento sigue abierto).
+    // "cerrar": lo mismo y además cierra el evento.
+    const resultado = await guardarEventoEnDrive(id, permiso.usuario.id, { crearCarpeta: b.crearCarpeta, sinFotos: b.sinFotos, cerrar: b.accion === "cerrar" });
     if (!resultado.ok) return NextResponse.json({ faltaCarpeta: resultado.faltaCarpeta }, { status: 409 });
 
     // Copia descargable actualizada (best-effort: si falla, el evento ya

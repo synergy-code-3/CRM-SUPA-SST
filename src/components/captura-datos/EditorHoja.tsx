@@ -8,7 +8,7 @@ import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
 import {
-  EMPTY_FIELDS, LADAS, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
+  EMPTY_FIELDS, LADAS, NOTAS_MAX, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
   requiereTarjeta, sanitizeInput, sinNotaAMeses, validateFields,
   type Box, type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
@@ -153,7 +153,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
   function cambiarCantidad(valor: string) {
     const plan = inicial.estatus === "Completo" && !membresiaManual.current ? membresiaPorCantidad(valor) : "";
     // La nota "Pago a meses" aparece (o se va) en Notas mientras se revisa la hoja, no hasta subirla a Drive.
-    const notas = conNotaAMeses({ cantidad: valor, notas: sinNotaAMeses(camposRef.current.notas) });
+    const notas = conNotaAMeses({ cantidad: valor, notas: sinNotaAMeses(camposRef.current.notas) }).slice(0, NOTAS_MAX);
     aplicar(plan ? { cantidad: valor, membresia: plan, notas } : { cantidad: valor, notas });
   }
 
@@ -255,7 +255,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
           <div className="grid gap-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
-            <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", e.target.value)} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+            <Campo etiqueta="Folio" error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", sanitizeInput("folio", e.target.value))} maxLength={8} inputMode="numeric" className={CLASE_INPUT} /></Campo>
             <Campo etiqueta="Teléfono" error={campo("telefono") ?? campo("lada")}>
               <div className="flex gap-1">
                 <select aria-label="Lada" value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
@@ -268,10 +268,10 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
 
           <div className="space-y-2.5">
             <Campo etiqueta="Nombre" error={campo("nombre")} aviso={conciliacion?.nombre === "distinto" ? "No coincide con Axis" : undefined} accion={botonAxis("nombre")}>
-              <input value={campos.nombre} onChange={(e) => cambiar("nombre", e.target.value)} className={claseAxis(conciliacion?.nombre)} />
+              <input value={campos.nombre} onChange={(e) => cambiar("nombre", sanitizeInput("nombre", e.target.value))} maxLength={80} className={claseAxis(conciliacion?.nombre)} />
             </Campo>
             <Campo etiqueta="Correo" error={campo("correo")} aviso={conciliacion?.correo === "distinto" ? "No coincide con Axis" : undefined} accion={botonAxis("correo")}>
-              <input value={campos.correo} onChange={(e) => cambiar("correo", e.target.value)} type="email" className={claseAxis(conciliacion?.correo)} />
+              <input value={campos.correo} onChange={(e) => cambiar("correo", sanitizeInput("correo", e.target.value))} maxLength={80} type="email" className={claseAxis(conciliacion?.correo)} />
             </Campo>
           </div>
           {axis?.estado === "encontrado" && (
@@ -310,7 +310,7 @@ export function EditorHoja({ hoja: inicial, onTerminar, onSiguiente }: { hoja: H
               </fieldset>
             </>
           )}
-          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", e.target.value)} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
+          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
         </fieldset>
 
         {duplicado && (
