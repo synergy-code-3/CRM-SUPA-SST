@@ -172,6 +172,21 @@ export function marcaValida(v: string | undefined): string {
 export const celdaTarjeta = (f: Pick<SheetFields, "marcaTarjeta" | "tarjeta">): string =>
   [f.marcaTarjeta, f.tarjeta].filter(Boolean).join(" ");
 
+/** El plan cuyo precio (de contado o a meses) coincide con la cantidad pagada; "" si ninguno. */
+export function membresiaPorCantidad(cantidad: string): string {
+  const pagado = parseCantidad(cantidad);
+  if (pagado === null) return "";
+  return MEMBRESIAS.find((m) => Math.abs(pagado - m.precio) < 1 || Math.abs(pagado - m.precioAMeses) < 1)?.value ?? "";
+}
+
+/** Cantidad tal como se muestra al escribir: "$14,816.58". `raw` ya viene filtrado por sanitizeInput. */
+export function formatCantidadInput(raw: string): string {
+  if (!raw) return "";
+  const [entero, decimales] = raw.split(".");
+  const conComas = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `$${conComas}${decimales !== undefined ? `.${decimales}` : ""}`;
+}
+
 export const NOTA_A_MESES = "Pago a meses";
 
 /** Si la cantidad es uno de los precios a meses, las notas dicen que el pago es a meses (sin repetirlo). */

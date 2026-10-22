@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_FIELDS, camposRequeridos, compararPago, normalizeCantidad, normalizeFields, normalizeFolio, parseCantidad,
+  EMPTY_FIELDS, camposRequeridos, compararPago, formatCantidadInput, membresiaPorCantidad, normalizeCantidad, normalizeFields, normalizeFolio, parseCantidad,
   requiereTarjeta, sanitizeInput, splitTelefono, validateFields, whatsappLink, type SheetFields,
 } from "./fields";
 
@@ -117,5 +117,27 @@ describe("otros", () => {
 
   it("compararPago devuelve null si no hay datos suficientes", () => {
     expect(compararPago(EMPTY_FIELDS)).toBeNull();
+  });
+});
+
+describe("membresiaPorCantidad", () => {
+  it("devuelve el plan cuando la cantidad es su precio de contado o a meses", () => {
+    expect(membresiaPorCantidad("9997")).toBe("3 Meses");
+    expect(membresiaPorCantidad("14816.58")).toBe("6 Meses");
+    expect(membresiaPorCantidad("14997")).toBe("12 Meses");
+  });
+  it("devuelve vacío si la cantidad no corresponde a ningún plan", () => {
+    expect(membresiaPorCantidad("5000")).toBe("");
+    expect(membresiaPorCantidad("")).toBe("");
+  });
+});
+
+describe("formatCantidadInput", () => {
+  it("agrega símbolo de pesos y comas mientras se escribe", () => {
+    expect(formatCantidadInput("")).toBe("");
+    expect(formatCantidadInput("9997")).toBe("$9,997");
+    expect(formatCantidadInput("14816.58")).toBe("$14,816.58");
+    expect(formatCantidadInput("1234.")).toBe("$1,234.");
+    expect(formatCantidadInput("1234.5")).toBe("$1,234.5");
   });
 });

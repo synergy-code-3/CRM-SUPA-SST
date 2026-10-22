@@ -20,6 +20,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enlaceBuscado, setEnlaceBuscado] = useState(""); // el enlace que produjo `info` (no el que se esté editando)
+  const [confirmandoCierre, setConfirmandoCierre] = useState(false);
   const [eventoCreado, setEventoCreado] = useState<EventoCaptura | null>(null); // si falla la importación, se reintenta sin duplicar el evento
 
   async function buscarCarpeta() {
@@ -55,8 +56,13 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   }
 
   return (
-    <Modal titulo="Nuevo evento" onCerrar={onCerrar} bloqueado={cargando}>
+    <Modal titulo="Nuevo evento" onCerrar={() => setConfirmandoCierre(true)} bloqueado={cargando}>
       <div className="space-y-4">
+        <label className="block space-y-1 text-sm">
+          <span className="text-muted">Nombre del evento</span>
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Evento Guadalajara" maxLength={200} className={CLASE_INPUT} />
+        </label>
+
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Carpeta de Drive del evento</span>
           <div className="flex gap-2">
@@ -92,20 +98,27 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
                 {ESTATUS.map((e) => <option key={e.value} value={e.value}>{e.value} — {e.desc}</option>)}
               </select>
             )}
-
-            <input aria-label="Nombre del evento" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del evento (opcional)" maxLength={200} className={CLASE_INPUT} />
           </>
         )}
 
         {error && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onCerrar} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
+          <button onClick={() => setConfirmandoCierre(true)} disabled={cargando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
           <button onClick={crear} disabled={!info || cargando} className={CLASE_BOTON}>
             {cargando && info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear evento"}
           </button>
         </div>
       </div>
+      {confirmandoCierre && (
+        <div role="alertdialog" aria-label="Confirmar cancelación" className="mt-4 space-y-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm">
+          <p className="text-foreground">¿Seguro que quieres cancelar? Se perderá lo que capturaste del nuevo evento.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setConfirmandoCierre(false)} className="rounded-lg border border-silver px-3 py-1.5">Seguir editando</button>
+            <button onClick={onCerrar} className="rounded-lg bg-danger px-3 py-1.5 font-medium text-white">Sí, cancelar</button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

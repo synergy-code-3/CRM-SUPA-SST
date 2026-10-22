@@ -7,7 +7,8 @@ import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { telefonoConsultable, conciliar, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
 import {
-  EMPTY_FIELDS, LADAS, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, llevaPago, normalizeFields, requiereTarjeta, validateFields,
+  EMPTY_FIELDS, LADAS, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
+  requiereTarjeta, sanitizeInput, validateFields,
   type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
@@ -30,12 +31,15 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
   const [intentoConfirmar, setIntentoConfirmar] = useState(false);
   const [lockPorVencer, setLockPorVencer] = useState(false);
   const [bloqueada, setBloqueada] = useState(false); // 409: la hoja cambió o la tomó otra persona
+  const [fotoCargada, setFotoCargada] = useState(false);
   const cola = useRef<Promise<boolean>>(Promise.resolve(true)); // un guardado a la vez, en orden
   const bloqueadaRef = useRef(false);
   const versionRef = useRef(inicial.version);
   const camposRef = useRef(campos); // siempre lo último escrito (el estado va un render atrasado)
   const ultimoGuardado = useRef(Date.now());
   const sucio = useRef(false);
+  // Una membresía elegida a mano no se pisa al cambiar la cantidad; solo se deduce sola mientras nadie la haya tocado.
+  const membresiaManual = useRef(!!inicial.campos?.membresia && inicial.campos.membresia !== membresiaPorCantidad(inicial.campos.cantidad ?? ""));
   const trabajando = leyendo || confirmando || saliendo;
 
   const urlFoto = `/api/captura-datos/hojas/${inicial.id}/foto`;
@@ -116,11 +120,21 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
     return () => { vigente = false; };
   }, [telefono]);
 
-  function cambiar<K extends FieldKey>(k: K, valor: SheetFields[K]) {
+  function aplicar(parcial: Partial<SheetFields>) {
     sucio.current = true;
-    camposRef.current = { ...camposRef.current, [k]: valor };
+    camposRef.current = { ...camposRef.current, ...parcial };
     setGuardado("pendiente");
     setCampos(camposRef.current);
+  }
+
+  function cambiar<K extends FieldKey>(k: K, valor: SheetFields[K]) {
+    if (k === "membresia") membresiaManual.current = true;
+    aplicar({ [k]: valor });
+  }
+
+  function cambiarCantidad(valor: string) {
+    const plan = inicial.estatus === "Completo" && !membresiaManual.current ? membresiaPorCantidad(valor) : "";
+    aplicar(plan ? { cantidad: valor, membresia: plan } : { cantidad: valor });
   }
 
   async function leerConIa() {
@@ -130,6 +144,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
       if (!(await guardar())) return;
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
       const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
+      if (inicial.estatus === "Completo" && !leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
       camposRef.current = leidos;
       setCampos(leidos);
       versionRef.current = r.hoja.version;
@@ -182,17 +197,29 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <div className="h-[50vh] overflow-hidden rounded-2xl border border-silver bg-black/5 lg:sticky lg:top-4 lg:h-[80vh]">
+      <div className="relative h-[50vh] overflow-hidden rounded-2xl border border-silver bg-black/5 lg:sticky lg:top-4 lg:h-[80vh]">
+        {!fotoCargada && (
+          <div role="status" aria-label="Cargando hoja" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface/80 text-sm text-muted">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" /> Cargando hoja…
+          </div>
+        )}
         {esPdf ? (
           <div className="flex h-full flex-col">
-            <iframe src={urlFoto} title="Hoja de inscripción (PDF)" className="min-h-0 flex-1" />
+            <iframe src={urlFoto} title="Hoja de inscripción (PDF)" onLoad={() => setFotoCargada(true)} className="min-h-0 flex-1" />
             <a href={urlFoto} target="_blank" rel="noopener noreferrer" className="px-3 py-2 text-xs text-primary underline">Abrir el PDF en otra pestaña</a>
           </div>
         ) : (
           <TransformWrapper>
             <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={urlFoto} alt="Hoja de inscripción" className="max-h-full w-full object-contain" />
+              <img
+                ref={(el) => { if (el?.complete) setFotoCargada(true); }}
+                src={urlFoto}
+                alt="Hoja de inscripción"
+                onLoad={() => setFotoCargada(true)}
+                onError={() => setFotoCargada(true)}
+                className="max-h-full w-full object-contain"
+              />
             </TransformComponent>
           </TransformWrapper>
         )}
@@ -249,7 +276,7 @@ export function EditorHoja({ hoja: inicial, onTerminar }: { hoja: HojaCaptura; o
                   {METODOS_PAGO.map((m) => <option key={m}>{m}</option>)}
                 </select>
               </Campo>
-              <Campo etiqueta="Cantidad pagada" error={campo("cantidad")}><input value={campos.cantidad} onChange={(e) => cambiar("cantidad", e.target.value)} inputMode="decimal" className={CLASE_INPUT} /></Campo>
+              <Campo etiqueta="Cantidad pagada" error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
             </div>
             {requiereTarjeta(campos.metodoPago) && (
               <div className="grid grid-cols-2 gap-3">
