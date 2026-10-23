@@ -6,7 +6,7 @@ import { Modal } from "./Modal";
 import { api } from "@/lib/captura-datos/cliente";
 
 /** Pide el motivo y envía la solicitud de borrado; el evento solo se borra si la persona aprobadora lo permite. */
-export function SolicitudBorradoModal({ eventoId, nombre, onCerrar, onEnviada }: { eventoId: string; nombre: string; onCerrar: () => void; onEnviada: () => void }) {
+export function SolicitudBorradoModal({ eventoId, onCerrar, onEnviada }: { eventoId: string; onCerrar: () => void; onEnviada: () => void }) {
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function SolicitudBorradoModal({ eventoId, nombre, onCerrar, onEnviada }:
   return (
     <Modal titulo="Solicitar borrado del evento" onCerrar={onCerrar} bloqueado={enviando}>
       <div className="space-y-3">
-        <p className="text-sm text-muted">«{nombre}» no se borra al enviar: la solicitud la revisa Samuel Otniel Diaz Gonzalez y solo se borra si la aprueba.</p>
+        <p className="text-sm text-muted">La solicitud será enviada y revisada, en caso de que se apruebe el evento será borrado.</p>
         <label className="block text-sm font-medium text-foreground" htmlFor="motivo-borrado">Motivo</label>
         <textarea id="motivo-borrado" value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={500} rows={3} autoFocus className="w-full rounded-lg border border-silver bg-surface px-3 py-2 text-sm" />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}

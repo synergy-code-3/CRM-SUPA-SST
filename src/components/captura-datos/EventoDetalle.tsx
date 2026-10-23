@@ -204,9 +204,8 @@ export function EventoDetalle({ id }: { id: string }) {
       {borrando && (
         <SolicitudBorradoModal
           eventoId={id}
-          nombre={evento.nombre}
           onCerrar={() => setBorrando(false)}
-          onEnviada={() => { setBorrando(false); setExito("Solicitud enviada. El evento se borrará solo si la aprueba Samuel Otniel Diaz Gonzalez."); }}
+          onEnviada={() => { setBorrando(false); setExito("Solicitud enviada. El evento se borrará solo si se aprueba."); }}
         />
       )}
 

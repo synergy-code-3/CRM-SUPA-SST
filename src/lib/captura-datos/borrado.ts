@@ -1,14 +1,16 @@
-// Borrado de eventos con aprobación: un admin lo solicita con un motivo y solo la persona aprobadora decide si se borra.
+// Borrado de eventos con aprobación: un admin lo solicita con un motivo y solo las personas aprobadoras deciden si se borra.
 import { ErrorPeticion } from "./errores";
 import { crearSolicitudBorrado, eliminarEvento, obtenerEvento, resolverSolicitudBorrado } from "./db";
 import type { Usuario } from "./sesion";
 
-const NOMBRE_APROBADOR = "Samuel Otniel Diaz Gonzalez";
+// Personas que pueden aprobar o rechazar; se compara por nombre (el de Alexis puede llevar apellidos extra).
+const NOMBRES_APROBADORES = ["Samuel Otniel Diaz Gonzalez", "Alexis Villegas"];
 
 const normalizar = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 
 export function esAprobadorBorrado(usuario: Pick<Usuario, "nombre">): boolean {
-  return normalizar(usuario.nombre) === normalizar(NOMBRE_APROBADOR);
+  const nombre = normalizar(usuario.nombre);
+  return NOMBRES_APROBADORES.some((a) => nombre === normalizar(a) || nombre.startsWith(`${normalizar(a)} `));
 }
 
 export async function solicitarBorrado(usuario: Usuario, eventoId: string, motivo: string): Promise<void> {

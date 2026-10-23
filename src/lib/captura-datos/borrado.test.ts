@@ -25,6 +25,14 @@ describe("esAprobadorBorrado", () => {
   });
 });
 
+describe("esAprobadorBorrado (Alexis)", () => {
+  it("reconoce a Alexis Villegas, con o sin apellidos extra", () => {
+    expect(esAprobadorBorrado({ nombre: "Alexis Villegas" })).toBe(true);
+    expect(esAprobadorBorrado({ nombre: "alexis villegas Ortiz" })).toBe(true);
+    expect(esAprobadorBorrado({ nombre: "Alexis Villegasx" })).toBe(false);
+  });
+});
+
 describe("solicitarBorrado", () => {
   it("solo admin puede pedirlo", async () => {
     await expect(solicitarBorrado(coordinador, "e1", "x")).rejects.toMatchObject({ status: 403 });
