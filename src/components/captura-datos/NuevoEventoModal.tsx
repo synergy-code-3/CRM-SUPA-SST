@@ -65,7 +65,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Carpeta de Drive del evento</span>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input value={enlace} onChange={(e) => { setEnlace(e.target.value); setInfo(null); }} placeholder="https://drive.google.com/drive/folders/…" className={CLASE_INPUT} />
             <button onClick={buscarCarpeta} disabled={!enlace.trim() || cargando} className={CLASE_BOTON}>
               {cargando && !info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
@@ -77,10 +77,10 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
           <>
             <p className="flex items-center gap-2 rounded-lg bg-silver/30 px-3 py-2 text-sm text-foreground">
               <Folder className="h-4 w-4 text-primary" /> {info.nombre}
-              <span className="text-muted">· {info.subcarpetas.map((s) => `${s.nombre} (${s.archivos})`).join(", ") || "sin subcarpetas"}</span>
+              <span className="min-w-0 break-words text-muted">· {info.subcarpetas.map((s) => `${s.nombre} (${s.archivos})`).join(", ") || "sin subcarpetas"}</span>
             </p>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {(["local", "drive"] as const).map((o) => (
                 <button
                   key={o}
@@ -103,7 +103,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         {error && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button onClick={() => setConfirmandoCierre(true)} disabled={cargando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
           <button onClick={crear} disabled={!info || cargando} className={CLASE_BOTON}>
             {cargando && info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear evento"}

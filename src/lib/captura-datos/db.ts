@@ -516,3 +516,64 @@ export async function esNoValida(huella: string): Promise<boolean> {
   if (error) throw error;
   return !!data;
 }
+
+// --- Solicitudes de borrado de evento ------------------------------------
+
+export interface SolicitudBorrado {
+  id: string;
+  eventoId: string;
+  eventoNombre: string;
+  motivo: string;
+  solicitadaPorId: string;
+  solicitadaPorNombre: string;
+  creadaEn: string;
+}
+
+type FilaSolicitud = {
+  id: string;
+  evento_id: string;
+  evento_nombre: string;
+  motivo: string;
+  solicitada_por: string;
+  creada_en: string;
+  usuarios: { nombre: string } | null;
+};
+
+export async function crearSolicitudBorrado(input: { eventoId: string; eventoNombre: string; motivo: string; solicitadaPorId: string }): Promise<void> {
+  const { error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .insert({ evento_id: input.eventoId, evento_nombre: input.eventoNombre, motivo: input.motivo, solicitada_por: input.solicitadaPorId });
+  if (error?.code === "23505") throw new ErrorPeticion(409, "Ya hay una solicitud de borrado pendiente para este evento.");
+  if (error) throw error;
+}
+
+export async function listarSolicitudesBorradoPendientes(): Promise<SolicitudBorrado[]> {
+  const { data, error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .select("id, evento_id, evento_nombre, motivo, solicitada_por, creada_en, usuarios!cap_solicitudes_borrado_solicitada_por_fkey(nombre)")
+    .eq("estado", "pendiente")
+    .order("creada_en");
+  if (error) throw error;
+  return (data as unknown as FilaSolicitud[]).map((f) => ({
+    id: f.id,
+    eventoId: f.evento_id,
+    eventoNombre: f.evento_nombre,
+    motivo: f.motivo,
+    solicitadaPorId: f.solicitada_por,
+    solicitadaPorNombre: f.usuarios?.nombre ?? "—",
+    creadaEn: f.creada_en,
+  }));
+}
+
+/** Marca la solicitud como aprobada/rechazada solo si sigue pendiente (atómico). Devuelve null si ya no lo estaba. */
+export async function resolverSolicitudBorrado(id: string, resueltaPorId: string, aprobar: boolean): Promise<{ id: string; eventoId: string } | null> {
+  const { data, error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .update({ estado: aprobar ? "aprobada" : "rechazada", resuelta_por: resueltaPorId, resuelta_en: new Date().toISOString() })
+    .eq("id", id)
+    .eq("estado", "pendiente")
+    .select("id, evento_id")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { id: data.id, eventoId: data.evento_id } : null;
+}

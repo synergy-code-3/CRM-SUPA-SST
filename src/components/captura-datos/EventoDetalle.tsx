@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Upload, Users } from "lucide-react";
+import { ArrowLeft, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload, Users } from "lucide-react";
 import { AsignacionesModal } from "./AsignacionesModal";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
 import { Modal } from "./Modal";
+import { SolicitudBorradoModal } from "./SolicitudBorradoModal";
 import { api, ErrorApi, imagenAJpeg } from "@/lib/captura-datos/cliente";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
@@ -29,6 +30,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [estatusSubida, setEstatusSubida] = useState<Estatus>("Completo");
   const [exito, setExito] = useState<string | null>(null);
   const [asignando, setAsignando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
@@ -163,7 +165,7 @@ export function EventoDetalle({ id }: { id: string }) {
     <div className="space-y-5">
       <Link href="/captura-datos" className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Eventos</Link>
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">{evento.nombre}</h1>
+        <h1 className="break-words text-2xl font-semibold text-foreground">{evento.nombre}</h1>
         <p className="text-sm text-muted">
           {conteo("confirmada")} confirmadas · {porRevisar} por revisar{conteo("no_valida") ? ` · ${conteo("no_valida")} no válidas` : ""}
           {evento.drive && <> · <a href={evento.drive.hojaUrl} target="_blank" rel="noreferrer" className="text-primary underline">Hoja en Drive</a></>}
@@ -192,23 +194,32 @@ export function EventoDetalle({ id }: { id: string }) {
           usuario?.rol === "admin" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>
         )}
         {usuario?.rol === "admin" && <Boton onClick={() => setAsignando(true)} icono={<Users className="h-4 w-4" />}>Personas</Boton>}
+        {usuario?.rol === "admin" && <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />}>Solicitar borrado</Boton>}
         <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>
         {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />} className="ml-auto">Cerrar evento</Boton>}
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}
       {asignando && <AsignacionesModal eventoId={id} onCerrar={() => setAsignando(false)} />}
+      {borrando && (
+        <SolicitudBorradoModal
+          eventoId={id}
+          nombre={evento.nombre}
+          onCerrar={() => setBorrando(false)}
+          onEnviada={() => { setBorrando(false); setExito("Solicitud enviada. El evento se borrará solo si la aprueba Samuel Otniel Diaz Gonzalez."); }}
+        />
+      )}
 
       {/* Completos, apartados e interesados van en secciones separadas. */}
       {hojas.length > 0 && (
-        <div className="space-y-6 rounded-2xl border border-silver bg-white p-5 shadow-sm">
+        <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
             <section key={e.value} aria-label={e.carpeta} className="space-y-3">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">{e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span></h2>
               <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lista.map((h) => (
-                  <li key={h.id} className={`flex items-center justify-between gap-3 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
-                    <span className="min-w-0 space-y-1">
+                  <li key={h.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
+                    <span className="min-w-0 flex-1 basis-40 space-y-1">
                       <span className="block truncate text-sm font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.estado.replace("_", " ")}</span>

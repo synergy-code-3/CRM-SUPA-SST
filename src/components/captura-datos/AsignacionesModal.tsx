@@ -64,8 +64,8 @@ export function AsignacionesModal({ eventoId, onCerrar }: { eventoId: string; on
             <li key={u.id}>
               <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-silver/30">
                 <input type="checkbox" checked={elegidos.has(u.id)} onChange={() => alternar(u.id)} />
-                <span className="text-foreground">{u.nombre}</span>
-                <span className="text-xs text-muted">{u.rol}</span>
+                <span className="min-w-0 break-words text-foreground">{u.nombre}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted">{u.rol}</span>
               </label>
             </li>
           ))}

@@ -86,3 +86,6 @@ export const patchEvento = z.object({
 });
 
 export const putAsignaciones = z.object({ usuariosAsignados: z.array(idUuid).max(50) });
+
+export const solicitudBorrado = z.object({ motivo: texto(500) }); // se exige no vacío en solicitarBorrado
+export const resolucionBorrado = z.object({ accion: z.enum(["aprobar", "rechazar"]) });
