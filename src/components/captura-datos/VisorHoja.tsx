@@ -78,7 +78,7 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
   return (
     <div className="flex h-full flex-col gap-2">
       <div ref={vista} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-silver bg-black/5">
-        <div className="pointer-events-none absolute inset-x-2 top-2 z-30 flex flex-wrap items-center gap-1.5 [&_button]:pointer-events-auto">
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex flex-wrap items-center gap-1.5 [&_button]:pointer-events-auto">
           <BotonVisor onClick={() => ampliar(CAJA_DATOS)} disabled={!listo} icono={<TextSelect className="h-4 w-4" />}>Datos</BotonVisor>
           <BotonVisor onClick={() => voucherBox && ampliar(voucherBox)} disabled={!listo || !voucherBox} icono={<ReceiptText className="h-4 w-4" />}>Voucher</BotonVisor>
           <BotonVisor onClick={() => { setTrazo(null); setMarcando((m) => !m); }} disabled={!listo} activo={marcando} icono={<SquareDashedMousePointer className="h-4 w-4" />}>
