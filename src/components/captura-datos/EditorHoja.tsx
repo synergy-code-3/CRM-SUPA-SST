@@ -247,13 +247,13 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+    <div className="-mt-4 grid gap-3 md:-mt-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
       {cambiando && (
         <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex items-center justify-center gap-2 bg-white/70 text-sm text-muted">
           <Loader2 className="h-6 w-6 animate-spin text-primary" /> Cargando hoja…
         </div>
       )}
-      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
+      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-1rem)]">
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
@@ -275,7 +275,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
           </div>
         )}
 
-        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:bg-primary hover:text-white hover:shadow-[inset_0_0_0_2px_white] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary disabled:hover:shadow-none">
+        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary">
           {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Leer con IA
         </button>
 
@@ -335,8 +335,8 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
                   </select>
                 </Campo>
               </div>
-              {/* Siempre ocupa su lugar: elegir método de pago no cambia la altura del formulario ni mueve el visor. */}
-              <div className={`grid gap-2.5 sm:grid-cols-2 ${requiereTarjeta(campos.metodoPago) ? "" : "invisible"}`} aria-hidden={!requiereTarjeta(campos.metodoPago)}>
+              {requiereTarjeta(campos.metodoPago) && (
+              <div className="grid gap-2.5 sm:grid-cols-2">
                   <Campo etiqueta="Marca">
                     <select value={campos.marcaTarjeta} onChange={(e) => cambiar("marcaTarjeta", e.target.value)} className={CLASE_INPUT}>
                       <option value="">—</option>
@@ -345,6 +345,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
                   </Campo>
                   <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" className={CLASE_INPUT} /></Campo>
               </div>
+              )}
             </>
           )}
           <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
