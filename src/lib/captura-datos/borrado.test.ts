@@ -26,10 +26,9 @@ describe("esAprobadorBorrado", () => {
 });
 
 describe("esAprobadorBorrado (Alexis)", () => {
-  it("reconoce a Alexis Villegas, con o sin apellidos extra", () => {
-    expect(esAprobadorBorrado({ nombre: "Alexis Villegas" })).toBe(true);
-    expect(esAprobadorBorrado({ nombre: "alexis villegas Ortiz" })).toBe(true);
-    expect(esAprobadorBorrado({ nombre: "Alexis Villegasx" })).toBe(false);
+  it("reconoce a Alexis Osvaldo Villegas Ochoa y no a un homónimo parcial", () => {
+    expect(esAprobadorBorrado({ nombre: "Alexis Osvaldo Villegas Ochoa" })).toBe(true);
+    expect(esAprobadorBorrado({ nombre: "Alexis Villegas" })).toBe(false);
   });
 });
 

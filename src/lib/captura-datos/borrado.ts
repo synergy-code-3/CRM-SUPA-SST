@@ -3,14 +3,14 @@ import { ErrorPeticion } from "./errores";
 import { crearSolicitudBorrado, eliminarEvento, obtenerEvento, resolverSolicitudBorrado } from "./db";
 import type { Usuario } from "./sesion";
 
-// Personas que pueden aprobar o rechazar; se compara por nombre (el de Alexis puede llevar apellidos extra).
-const NOMBRES_APROBADORES = ["Samuel Otniel Diaz Gonzalez", "Alexis Villegas"];
+// Personas que pueden aprobar o rechazar; se compara por nombre completo.
+const NOMBRES_APROBADORES = ["Samuel Otniel Diaz Gonzalez", "Alexis Osvaldo Villegas Ochoa"];
 
 const normalizar = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 
 export function esAprobadorBorrado(usuario: Pick<Usuario, "nombre">): boolean {
   const nombre = normalizar(usuario.nombre);
-  return NOMBRES_APROBADORES.some((a) => nombre === normalizar(a) || nombre.startsWith(`${normalizar(a)} `));
+  return NOMBRES_APROBADORES.some((a) => nombre === normalizar(a));
 }
 
 export async function solicitarBorrado(usuario: Usuario, eventoId: string, motivo: string): Promise<void> {
