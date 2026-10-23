@@ -253,7 +253,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
           <Loader2 className="h-6 w-6 animate-spin text-primary" /> Cargando hoja…
         </div>
       )}
-      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-3.5rem)]">
+      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-3rem)]">
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
@@ -348,7 +348,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
               )}
             </>
           )}
-          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={4} className={`${CLASE_INPUT} resize-y`} /></Campo>
+          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={3} className={`${CLASE_INPUT} resize-y`} /></Campo>
         </fieldset>
 
         {duplicado && (
