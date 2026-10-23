@@ -22,6 +22,10 @@ const PREFIJOS_PUBLICOS_API = [
   // Consumido por synergy-axis (repo hermano), no por el navegador — se
   // autentica con su propio bearer token (SU26_QUOTA_API_TOKEN), no cookie.
   "/api/internal/su26-cuota",
+  // Consumido por el CRM de Renovaciones (sistema aparte), no por el
+  // navegador — se autentica con su propio bearer token
+  // (RENOVACIONES_API_TOKEN, ver src/lib/token-externo.ts), no cookie.
+  "/api/externo/renovaciones",
 ];
 
 export async function middleware(req: NextRequest) {

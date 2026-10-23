@@ -1124,3 +1124,30 @@ begin
   return fila;
 end;
 $$;
+
+-- Integración con el CRM de Renovaciones (sistema aparte, nos consulta los
+-- clientes inactivos vía GET /api/externo/renovaciones/inactivos y nos
+-- avisa cuando alguno renueva vía POST /api/externo/renovaciones/solicitud-
+-- acceso). Esa solicitud NO renueva sola — queda pendiente aquí hasta que
+-- un admin la aprueba desde Solicitudes, y al aprobarla se dispara
+-- EXACTAMENTE el mismo flujo que el botón "Renovar" del perfil
+-- (renovarMembresia + otorgarAccesoKajabiYSkool).
+create table if not exists solicitudes_renovacion_externa (
+  id uuid primary key default gen_random_uuid(),
+  -- Id que manda el CRM de Renovaciones — único, para que reintentos del
+  -- otro sistema (ej. por timeout de red) no creen solicitudes duplicadas.
+  solicitud_id_externo text not null unique,
+  cliente_id text not null references clientes (id),
+  etiqueta text not null default 'renovacion',
+  renovado_por text,
+  fecha_externa timestamptz,
+  -- Copia de las notas que mandó el otro sistema al momento de la solicitud
+  -- (snapshot) — informativo, no se escribe en el timeline del cliente.
+  notas_cliente jsonb not null default '[]'::jsonb,
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'aprobada', 'rechazada')),
+  resuelta_por text,
+  resuelta_en timestamptz,
+  creado_en timestamptz not null default now()
+);
+create index if not exists idx_solicitudes_renovacion_externa_estado on solicitudes_renovacion_externa (estado, creado_en desc);
+alter table solicitudes_renovacion_externa enable row level security;

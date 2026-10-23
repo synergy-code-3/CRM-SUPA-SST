@@ -11,6 +11,21 @@ import { ComboboxBuscador } from "@/components/ComboboxBuscador";
 
 type SolicitudConUrls = SolicitudCliente & { comprobantesUrl: string[] };
 
+// Renovaciones avisadas por el CRM de Renovaciones (sistema aparte, ver
+// src/lib/solicitudes-renovacion.ts) — llegan ya resueltas por el server,
+// nunca se renuevan solas: un admin las aprueba o rechaza desde acá.
+type SolicitudRenovacionExterna = {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  clienteEmail: string | null;
+  etiqueta: string;
+  renovadoPor: string | null;
+  fechaExterna: string | null;
+  estado: "pendiente" | "aprobada" | "rechazada";
+  creadoEn: string;
+};
+
 const OPCIONES_MEMBRESIA = ["3 Meses", "6 Meses", "12 Meses"].map((m) => ({ valor: m, etiqueta: m }));
 
 type FormEdicion = {
@@ -83,6 +98,9 @@ export default function SolicitudesPage() {
   const [verSolicitud, setVerSolicitud] = useState<SolicitudConUrls | null>(null);
   const [cargandoComprobantes, setCargandoComprobantes] = useState(false);
 
+  const [renovaciones, setRenovaciones] = useState<SolicitudRenovacionExterna[] | null>(null);
+  const [procesandoRenovacion, setProcesandoRenovacion] = useState<string | null>(null);
+
   const puedeRevisar = usuario ? tienePermiso(usuario.rol, "revisarSolicitudes") : false;
 
   const cargar = useCallback(async () => {
@@ -90,6 +108,13 @@ export default function SolicitudesPage() {
     if (!res.ok) return;
     const data = await res.json();
     setSolicitudes(data.solicitudes);
+  }, []);
+
+  const cargarRenovaciones = useCallback(async () => {
+    const res = await fetch("/api/solicitudes-renovacion");
+    if (!res.ok) return;
+    const data = await res.json();
+    setRenovaciones(data.solicitudes);
   }, []);
 
   // El GET de la lista solo trae comprobantesUrl ya firmadas para
@@ -115,6 +140,43 @@ export default function SolicitudesPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    if (puedeRevisar) cargarRenovaciones();
+  }, [puedeRevisar, cargarRenovaciones]);
+
+  async function aprobarRenovacion(id: string) {
+    if (!confirm("¿Aprobar esta renovación? Se disparará exactamente lo mismo que el botón \"Renovar\" del perfil del cliente."))
+      return;
+    setProcesandoRenovacion(id);
+    try {
+      const res = await fetch(`/api/solicitudes-renovacion/${id}/aprobar`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo aprobar");
+        return;
+      }
+      cargarRenovaciones();
+    } finally {
+      setProcesandoRenovacion(null);
+    }
+  }
+
+  async function rechazarRenovacion(id: string) {
+    if (!confirm("¿Rechazar esta renovación? No se le aplicará nada al cliente.")) return;
+    setProcesandoRenovacion(id);
+    try {
+      const res = await fetch(`/api/solicitudes-renovacion/${id}/rechazar`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "No se pudo rechazar");
+        return;
+      }
+      cargarRenovaciones();
+    } finally {
+      setProcesandoRenovacion(null);
+    }
+  }
 
   useEffect(() => {
     if (!modoSolicitud) {
@@ -306,6 +368,50 @@ export default function SolicitudesPage() {
       </div>
 
       {!puedeRevisar && <FormularioSolicitudCliente onEnviada={cargar} />}
+
+      {puedeRevisar && (() => {
+        const renovacionesPendientes = renovaciones?.filter((r) => r.estado === "pendiente") ?? [];
+        return (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">
+              Renovaciones externas pendientes {renovacionesPendientes.length > 0 && `(${renovacionesPendientes.length})`}
+            </h2>
+            <p className="text-xs text-muted">Avisos del CRM de Renovaciones — al aprobar se dispara exactamente lo mismo que el botón &quot;Renovar&quot;.</p>
+            {renovacionesPendientes.length === 0 && <p className="text-sm text-muted">No hay renovaciones externas pendientes.</p>}
+            <div className="space-y-3">
+              {renovacionesPendientes.map((r) => (
+                <div key={r.id} className="shell rounded-2xl p-2 diffused">
+                  <div className="core flex flex-wrap items-center justify-between gap-3 rounded-[calc(1rem-0.5rem)] p-4">
+                    <div>
+                      <p className="font-medium text-foreground">{r.clienteNombre}</p>
+                      <p className="text-xs text-muted">
+                        {r.clienteEmail} · etiqueta: {r.etiqueta}
+                        {r.renovadoPor && ` · marcada por ${r.renovadoPor}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => rechazarRenovacion(r.id)}
+                        disabled={procesandoRenovacion === r.id}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-hover disabled:opacity-50"
+                      >
+                        Rechazar
+                      </button>
+                      <button
+                        onClick={() => aprobarRenovacion(r.id)}
+                        disabled={procesandoRenovacion === r.id}
+                        className="rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        Aprobar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {puedeRevisar && (
         <div className="space-y-3">
