@@ -172,12 +172,38 @@ export function marcaValida(v: string | undefined): string {
 export const celdaTarjeta = (f: Pick<SheetFields, "marcaTarjeta" | "tarjeta">): string =>
   [f.marcaTarjeta, f.tarjeta].filter(Boolean).join(" ");
 
+const MARGEN_A_MESES = 10;
+
+/** Pago a meses aproximado: por encima del precio de contado y hasta el precio a meses (con un pequeño margen). */
+const esPagoAMeses = (m: (typeof MEMBRESIAS)[number], pagado: number): boolean =>
+  pagado >= m.precio + 1 && pagado <= m.precioAMeses + MARGEN_A_MESES;
+
+/** El plan cuyo precio (de contado o a meses) coincide con la cantidad pagada; "" si ninguno. */
+export function membresiaPorCantidad(cantidad: string): string {
+  const pagado = parseCantidad(cantidad);
+  if (pagado === null) return "";
+  return MEMBRESIAS.find((m) => Math.abs(pagado - m.precio) < 1 || esPagoAMeses(m, pagado))?.value ?? "";
+}
+
+/** Cantidad tal como se muestra al escribir: "$14,816.58". `raw` ya viene filtrado por sanitizeInput. */
+export function formatCantidadInput(raw: string): string {
+  if (!raw) return "";
+  const [entero, decimales] = raw.split(".");
+  const conComas = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `$${conComas}${decimales !== undefined ? `.${decimales}` : ""}`;
+}
+
 export const NOTA_A_MESES = "Pago a meses";
+
+/** Quita la nota automática de pago a meses (al corregir la cantidad); una nota escrita a mano no se toca. */
+export function sinNotaAMeses(notas: string): string {
+  return notas === NOTA_A_MESES ? "" : notas.endsWith(`. ${NOTA_A_MESES}`) ? notas.slice(0, -(NOTA_A_MESES.length + 2)) : notas;
+}
 
 /** Si la cantidad es uno de los precios a meses, las notas dicen que el pago es a meses (sin repetirlo). */
 export function conNotaAMeses({ cantidad, notas }: { cantidad: string; notas: string }): string {
   const pagado = parseCantidad(cantidad);
-  const esAMeses = pagado !== null && MEMBRESIAS.some((m) => Math.abs(pagado - m.precioAMeses) < 0.01);
+  const esAMeses = pagado !== null && MEMBRESIAS.some((m) => esPagoAMeses(m, pagado));
   if (!esAMeses || /a meses/i.test(notas)) return notas;
   return notas ? `${notas}. ${NOTA_A_MESES}` : NOTA_A_MESES;
 }
@@ -259,7 +285,7 @@ export function compararPago(f: SheetFields): ComparacionPago | null {
   const pagado = parseCantidad(f.cantidad);
   if (!plan || pagado === null) return null;
   const diferencia = Math.round((pagado - plan.precio) * 100) / 100;
-  const aMeses = Math.abs(pagado - plan.precioAMeses) < 1;
+  const aMeses = esPagoAMeses(plan, pagado);
   return { plan, pagado, diferencia: aMeses ? 0 : diferencia, concuerda: aMeses || Math.abs(diferencia) < 1 };
 }
 
@@ -331,4 +357,17 @@ export function imageFileName(fields: SheetFields, pago?: number): string {
     .trim()
     .replace(/\s+/g, "_");
   return `${fields.folio}_${safeName || "sin_nombre"}${pago ? `_pago${pago}` : ""}.jpg`;
+}
+
+/** Renglones en blanco entre las secciones (Completos / Apartados / Interesados) de la Hoja de Drive y del Excel. */
+export const FILAS_ENTRE_SECCIONES = 4;
+
+/**
+ * Ordena por sección (Completo, Apartado, Interesado) y deja FILAS_ENTRE_SECCIONES elementos `null` entre una
+ * sección y la siguiente; las secciones vacías no dejan hueco.
+ */
+export function conSeparadores<T extends { estatus: Estatus }>(items: readonly T[]): (T | null)[] {
+  return ESTATUS.map((e) => items.filter((i) => i.estatus === e.value))
+    .filter((grupo) => grupo.length > 0)
+    .flatMap((grupo, i) => [...(i > 0 ? Array<null>(FILAS_ENTRE_SECCIONES).fill(null) : []), ...grupo]);
 }

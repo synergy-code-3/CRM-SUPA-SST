@@ -8,6 +8,7 @@ import type { Estatus, SheetFields } from "./fields";
 import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
+import { ErrorPeticion } from "./errores";
 
 type FilaEvento = {
   id: string;
@@ -111,21 +112,62 @@ export async function crearEvento(input: {
 
 export type ProgresoEvento = Record<EstadoHoja, number>;
 
-export async function listarEventos(): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
-  const { data, error } = await supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
+/** (evento, estado) de todas las hojas de esos eventos, paginado (PostgREST corta en 1000 filas por consulta). */
+async function estadosDeHojas(eventoIds: string[]): Promise<{ evento_id: string; estado: EstadoHoja }[]> {
+  const filas: { evento_id: string; estado: EstadoHoja }[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from("cap_hojas")
+      .select("evento_id, estado")
+      .in("evento_id", eventoIds)
+      .order("id")
+      .range(desde, desde + 999);
+    if (error) throw error;
+    filas.push(...(data as { evento_id: string; estado: EstadoHoja }[]));
+    if (data.length < 1000) break;
+  }
+  return filas;
+}
+
+/** Ids de los eventos a los que está asignada una persona. */
+async function eventoIdsDeUsuario(usuarioId: string): Promise<string[]> {
+  const { data, error } = await supabase.from("cap_evento_asignaciones").select("evento_id").eq("usuario_id", usuarioId);
+  if (error) throw error;
+  return (data as { evento_id: string }[]).map((a) => a.evento_id);
+}
+
+export async function usuarioAsignado(eventoId: string, usuarioId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("cap_evento_asignaciones")
+    .select("evento_id")
+    .eq("evento_id", eventoId)
+    .eq("usuario_id", usuarioId)
+    .maybeSingle();
+  if (error) throw error;
+  return data !== null;
+}
+
+/** Sin `soloDeUsuarioId` devuelve todos los eventos (admin); con él, solo aquellos a los que esa persona está asignada. */
+export async function listarEventos(soloDeUsuarioId?: string): Promise<(EventoCaptura & { progreso: ProgresoEvento; usuariosAsignados: string[] })[]> {
+  let consulta = supabase.from("cap_eventos").select("*").order("creado_en", { ascending: false });
+  if (soloDeUsuarioId) {
+    const ids = await eventoIdsDeUsuario(soloDeUsuarioId);
+    if (ids.length === 0) return [];
+    consulta = consulta.in("id", ids);
+  }
+  const { data, error } = await consulta;
   if (error) throw error;
   const eventos = (data as FilaEvento[]).map(filaAEvento);
   if (eventos.length === 0) return [];
 
-  const [{ data: hojas, error: errHojas }, { data: asignaciones, error: errAsig }] = await Promise.all([
-    supabase.from("cap_hojas").select("evento_id, estado").in("evento_id", eventos.map((e) => e.id)),
+  const [hojas, { data: asignaciones, error: errAsig }] = await Promise.all([
+    estadosDeHojas(eventos.map((e) => e.id)),
     supabase.from("cap_evento_asignaciones").select("evento_id, usuario_id").in("evento_id", eventos.map((e) => e.id)),
   ]);
-  if (errHojas) throw errHojas;
   if (errAsig) throw errAsig;
 
   const progresoPorEvento = new Map<string, ProgresoEvento>();
-  for (const h of hojas as { evento_id: string; estado: EstadoHoja }[]) {
+  for (const h of hojas) {
     const p = progresoPorEvento.get(h.evento_id) ?? { pendiente: 0, leida: 0, confirmada: 0, no_valida: 0 };
     p[h.estado]++;
     progresoPorEvento.set(h.evento_id, p);
@@ -148,6 +190,12 @@ export async function obtenerEvento(id: string): Promise<EventoCaptura | null> {
   const { data, error } = await supabase.from("cap_eventos").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data ? filaAEvento(data as FilaEvento) : null;
+}
+
+export async function listarAsignaciones(eventoId: string): Promise<string[]> {
+  const { data, error } = await supabase.from("cap_evento_asignaciones").select("usuario_id").eq("evento_id", eventoId);
+  if (error) throw error;
+  return (data as { usuario_id: string }[]).map((a) => a.usuario_id);
 }
 
 export async function reemplazarAsignaciones(eventoId: string, usuariosAsignados: string[]): Promise<void> {
@@ -173,6 +221,12 @@ export async function confirmarEvento(
     .single();
   if (error) throw error;
   return filaAEvento(data as FilaEvento);
+}
+
+/** Guarda los datos de Drive sin cerrar el evento: sigue abierto para seguir capturando. */
+export async function actualizarDriveEvento(id: string, drive: EventoCaptura["drive"]): Promise<void> {
+  const { error } = await supabase.from("cap_eventos").update({ drive }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function reabrirEvento(id: string, adminId: string, motivo: string): Promise<EventoCaptura> {
@@ -211,10 +265,22 @@ export async function crearHojas(
   return (data as FilaHoja[]).map(filaAHoja);
 }
 
+const TAMANO_PAGINA = 1000; // PostgREST corta en 1000 filas por consulta sin avisar: se pagina para no truncar
+
 export async function listarHojasDeEvento(eventoId: string): Promise<HojaCaptura[]> {
-  const { data, error } = await supabase.from("cap_hojas").select("*").eq("evento_id", eventoId).order("id");
-  if (error) throw error;
-  return (data as FilaHoja[]).map(filaAHoja);
+  const filas: FilaHoja[] = [];
+  for (let desde = 0; ; desde += TAMANO_PAGINA) {
+    const { data, error } = await supabase
+      .from("cap_hojas")
+      .select("*")
+      .eq("evento_id", eventoId)
+      .order("id")
+      .range(desde, desde + TAMANO_PAGINA - 1);
+    if (error) throw error;
+    filas.push(...(data as FilaHoja[]));
+    if (data.length < TAMANO_PAGINA) break;
+  }
+  return filas.map(filaAHoja);
 }
 
 export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
@@ -231,9 +297,51 @@ export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promi
   return fila?.id ? filaAHoja(fila) : null;
 }
 
-export async function liberarHoja(id: string): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+/**
+ * Toma una hoja concreta (para abrirla desde su tarjeta). Mismo bloqueo que tomarHojaLibre: solo si sigue pendiente/leída
+ * y nadie más la tiene vigente; si ya es tuya, se renueva. El UPDATE es atómico, así que dos personas no la toman a la vez.
+ */
+export async function tomarHojaPorId(id: string, usuarioId: string): Promise<HojaCaptura> {
+  const ahora = new Date();
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: usuarioId, bloqueada_hasta: new Date(ahora.getTime() + BLOQUEO_MS).toISOString() })
+    .eq("id", id)
+    .in("estado", ["pendiente", "leida", "confirmada"]) // una confirmada se reabre para corregirla (solo con el evento abierto)
+    .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${ahora.toISOString()}`)
+    .select("*")
+    .maybeSingle();
   if (error) throw error;
+  if (data) return filaAHoja(data as FilaHoja);
+  // No se pudo tomar: se distingue "ya no se edita" de "la tiene otra persona".
+  const actual = await obtenerHoja(id);
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
+  throw new ErrorHojaOcupada();
+}
+
+/** Libera la hoja solo si el bloqueo es de `usuarioId` (nadie libera el bloqueo de otra persona). */
+export async function liberarHoja(id: string, usuarioId: string): Promise<void> {
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("id", id)
+    .eq("bloqueada_por", usuarioId);
+  if (error) throw error;
+}
+
+export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
+
+export class ErrorHojaOcupada extends Error {
+  constructor() {
+    super("Otra persona está editando esta hoja.");
+  }
+}
+
+export class ErrorEstadoHoja extends Error {
+  constructor() {
+    super("Esta hoja ya no se puede editar (está confirmada o marcada como no válida).");
+  }
 }
 
 export class ErrorVersion extends Error {
@@ -246,26 +354,47 @@ export class ErrorVersion extends Error {
 export async function actualizarCamposHoja(
   id: string,
   cambios: { campos?: SheetFields; voucherBox?: Box | null },
-  versionEsperada?: number
+  versionEsperada?: number,
+  usuarioId?: string
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version, estado").eq("id", id).maybeSingle();
+  const { data: actual, error: errLectura } = await supabase
+    .from("cap_hojas")
+    .select("version, estado, bloqueada_por, bloqueada_hasta")
+    .eq("id", id)
+    .maybeSingle();
   if (errLectura) throw errLectura;
-  if (!actual) throw new Error("Hoja no encontrada");
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
   if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
 
+  // Con usuarioId (autoguardado desde el editor): si otra persona tiene la hoja bloqueada y su bloqueo sigue vigente,
+  // no se pisa; si es del mismo usuario (o ya expiró), cada guardado renueva el bloqueo.
+  let renovar = {};
+  if (usuarioId) {
+    const vigente = actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date();
+    if (vigente && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+    renovar = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(Date.now() + BLOQUEO_MS).toISOString() };
+  }
+
+  if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorEstadoHoja();
+
   const nuevoEstado = actual.estado === "pendiente" ? "leida" : actual.estado;
-  const { data, error } = await supabase
+  let consulta = supabase
     .from("cap_hojas")
     .update({
       ...(cambios.campos !== undefined ? { campos: cambios.campos } : {}),
       ...(cambios.voucherBox !== undefined ? { voucher_box: cambios.voucherBox } : {}),
       estado: nuevoEstado,
       version: actual.version + 1,
+      ...renovar,
     })
     .eq("id", id)
-    .select("*")
-    .single();
+    .eq("version", actual.version) // atómico: si otro guardado se coló entre la lectura y este update, no afecta filas
+    .in("estado", ["pendiente", "leida"]);
+  // El bloqueo también va en el UPDATE (no solo en la lectura de arriba): si B tomó la hoja justo después de leerla, no se pisa.
+  if (usuarioId) consulta = consulta.or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${new Date().toISOString()}`);
+  const { data, error } = await consulta.select("*").maybeSingle();
   if (error) throw error;
+  if (!data) throw new ErrorVersion();
   return filaAHoja(data as FilaHoja);
 }
 
@@ -300,15 +429,23 @@ export async function confirmarHoja(
   usuarioId: string,
   campos: SheetFields,
   voucherBox: Box | null,
-  opts: { forzarDuplicado?: boolean } = {}
+  opts: { forzarDuplicado?: boolean; versionEsperada?: number } = {}
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("estatus, estado").eq("id", id).maybeSingle();
+  const { data: actual, error: errLectura } = await supabase
+    .from("cap_hojas")
+    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta, campos")
+    .eq("id", id)
+    .maybeSingle();
   if (errLectura) throw errLectura;
-  if (!actual) throw new Error("Hoja no encontrada");
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
+  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
+  if (opts.versionEsperada !== undefined && actual.version !== opts.versionEsperada) throw new ErrorVersion();
+  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
 
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
-    throw new Error(`Faltan datos: ${Object.values(errores)[0]}`);
+    throw new ErrorPeticion(400, `Faltan datos: ${Object.values(errores)[0]}`);
   }
 
   if (!opts.forzarDuplicado) {
@@ -316,12 +453,6 @@ export async function confirmarHoja(
     if (duplicado) {
       throw new ErrorFolioDuplicado(duplicado);
     }
-  }
-
-  const yaConfirmada = actual.estado === "confirmada";
-  if (yaConfirmada) {
-    const { data: antes } = await supabase.from("cap_hojas").select("campos").eq("id", id).single();
-    await supabase.from("cap_hojas_historial").insert({ hoja_id: id, usuario_id: usuarioId, antes: antes?.campos ?? null, despues: campos });
   }
 
   const { data, error } = await supabase
@@ -334,16 +465,32 @@ export async function confirmarHoja(
       confirmada_en: new Date().toISOString(),
       bloqueada_por: null,
       bloqueada_hasta: null,
+      version: actual.version + 1,
     })
     .eq("id", id)
+    .eq("version", actual.version)
+    .in("estado", ["pendiente", "leida", "confirmada"])
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new ErrorVersion();
+
+  // El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado.
+  if (actual.estado === "confirmada") {
+    const { error: errHistorial } = await supabase
+      .from("cap_hojas_historial")
+      .insert({ hoja_id: id, usuario_id: usuarioId, antes: actual.campos ?? null, despues: campos });
+    if (errHistorial) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, errHistorial);
+  }
   return filaAHoja(data as FilaHoja);
 }
 
 export async function marcarHojaNoValida(id: string, huella: string): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ estado: "no_valida", bloqueada_por: null, bloqueada_hasta: null }).eq("id", id);
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ estado: "no_valida", bloqueada_por: null, bloqueada_hasta: null })
+    .eq("id", id)
+    .in("estado", ["pendiente", "leida"]); // una hoja ya confirmada no se invalida desde aquí
   if (error) throw error;
   await marcarNoValida(huella);
 }
@@ -368,4 +515,65 @@ export async function esNoValida(huella: string): Promise<boolean> {
   const { data, error } = await supabase.from("cap_imagenes_no_validas").select("huella").eq("huella", huella).maybeSingle();
   if (error) throw error;
   return !!data;
+}
+
+// --- Solicitudes de borrado de evento ------------------------------------
+
+export interface SolicitudBorrado {
+  id: string;
+  eventoId: string;
+  eventoNombre: string;
+  motivo: string;
+  solicitadaPorId: string;
+  solicitadaPorNombre: string;
+  creadaEn: string;
+}
+
+type FilaSolicitud = {
+  id: string;
+  evento_id: string;
+  evento_nombre: string;
+  motivo: string;
+  solicitada_por: string;
+  creada_en: string;
+  usuarios: { nombre: string } | null;
+};
+
+export async function crearSolicitudBorrado(input: { eventoId: string; eventoNombre: string; motivo: string; solicitadaPorId: string }): Promise<void> {
+  const { error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .insert({ evento_id: input.eventoId, evento_nombre: input.eventoNombre, motivo: input.motivo, solicitada_por: input.solicitadaPorId });
+  if (error?.code === "23505") throw new ErrorPeticion(409, "Ya hay una solicitud de borrado pendiente para este evento.");
+  if (error) throw error;
+}
+
+export async function listarSolicitudesBorradoPendientes(): Promise<SolicitudBorrado[]> {
+  const { data, error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .select("id, evento_id, evento_nombre, motivo, solicitada_por, creada_en, usuarios!cap_solicitudes_borrado_solicitada_por_fkey(nombre)")
+    .eq("estado", "pendiente")
+    .order("creada_en");
+  if (error) throw error;
+  return (data as unknown as FilaSolicitud[]).map((f) => ({
+    id: f.id,
+    eventoId: f.evento_id,
+    eventoNombre: f.evento_nombre,
+    motivo: f.motivo,
+    solicitadaPorId: f.solicitada_por,
+    solicitadaPorNombre: f.usuarios?.nombre ?? "—",
+    creadaEn: f.creada_en,
+  }));
+}
+
+/** Marca la solicitud como aprobada/rechazada solo si sigue pendiente (atómico). Devuelve null si ya no lo estaba. */
+export async function resolverSolicitudBorrado(id: string, resueltaPorId: string, aprobar: boolean): Promise<{ id: string; eventoId: string } | null> {
+  const { data, error } = await supabase
+    .from("cap_solicitudes_borrado")
+    .update({ estado: aprobar ? "aprobada" : "rechazada", resuelta_por: resueltaPorId, resuelta_en: new Date().toISOString() })
+    .eq("id", id)
+    .eq("estado", "pendiente")
+    .select("id, evento_id")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { id: data.id, eventoId: data.evento_id } : null;
 }

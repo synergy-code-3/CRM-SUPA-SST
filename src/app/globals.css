@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Tailwind 4 deja el cursor de flecha en los botones: se restaura la manita en todo lo clickeable. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+select:not(:disabled),
+summary,
+label:has(input[type="checkbox"], input[type="radio"]) {
+  cursor: pointer;
+}
+
 :root {
   --background: #eef1f6;
   --surface: #ffffff;
@@ -105,6 +114,11 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* En el layout de la app el scroll es el de <main>; el hueco reservado del html lo dejaba despegado del borde. */
+html:has([data-scroll-en-main]) {
+  scrollbar-gutter: auto;
+}
+
 /* Scrollbar fina y temeada (en vez de la gris por defecto del SO) para
    listas internas con scroll propio, ej. el ranking de BarChart.tsx
    cuando hay más filas de las que caben en la tarjeta. */
@@ -187,6 +201,11 @@ body {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+
+  @keyframes subida {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
   }
 
   .animate-fade-in {

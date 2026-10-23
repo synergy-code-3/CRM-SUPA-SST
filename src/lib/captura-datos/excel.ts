@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import { FILAS_CON_FORMATO, FORMATO_COLUMNAS, columnMap, formatoCantidad, type Clave } from "./columnas";
-import { MEMBRESIAS, normalizeFields, toRecord, type SheetRecord } from "./fields";
+import { MEMBRESIAS, conSeparadores, normalizeFields, toRecord, type SheetRecord } from "./fields";
 import type { HojaCaptura } from "./modelo";
 
 const TEMPLATE = path.join(process.cwd(), "plantilla-captura-datos", "plantilla.xlsx");
@@ -91,7 +91,7 @@ function formatoUniforme(ws: ExcelJS.Worksheet, map: Partial<Record<Clave, numbe
 
 /** Excel completo de las hojas confirmadas de un evento, a partir de la plantilla. */
 export async function generarExcelEvento(hojas: HojaCaptura[]): Promise<Buffer> {
-  const confirmadas = hojas.filter((h) => h.estado === "confirmada" && h.campos);
+  const confirmadas = conSeparadores(hojas.filter((h) => h.estado === "confirmada" && h.campos));
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load((await readFile(TEMPLATE)) as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];
@@ -107,7 +107,8 @@ export async function generarExcelEvento(hojas: HojaCaptura[]): Promise<Buffer> 
   formatoUniforme(ws, map, Math.max(ws.rowCount, n + 1, previas + 1, FILAS_CON_FORMATO));
   for (let i = 0; i < Math.max(n, previas); i++) {
     const row = i + 2;
-    const r: Partial<SheetRecord> = i < n ? toRecord(normalizeFields(confirmadas[i].campos!, confirmadas[i].estatus), confirmadas[i].estatus) : {};
+    const hoja = i < n ? confirmadas[i] : null;
+    const r: Partial<SheetRecord> = hoja ? toRecord(normalizeFields(hoja.campos!, hoja.estatus), hoja.estatus) : {};
     for (const [clave, col] of Object.entries(map) as [Clave, number][]) {
       const cell = ws.getCell(row, col);
       const v = r[clave];

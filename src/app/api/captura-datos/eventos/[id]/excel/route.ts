@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { listarHojasDeEvento, obtenerEvento } from "@/lib/captura-datos/db";
 import { generarExcelEvento } from "@/lib/captura-datos/excel";
@@ -16,6 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const evento = await obtenerEvento(id);
     if (!evento) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 

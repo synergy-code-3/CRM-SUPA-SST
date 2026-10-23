@@ -4,13 +4,17 @@
 // no dependía del almacenamiento local. Lo único que cambia es
 // `guardarEventoEnDrive`: en vez de mutar un único "Escaneo" en disco, lee/
 // actualiza las filas de cap_eventos/cap_hojas en Supabase.
-import { carpetaDeEstatus, imageFileName, normalizeFields, toRecord } from "./fields";
-import { actualizarCarpetaFotosEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
+import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, sinNotaAMeses, toRecord, type SheetRecord } from "./fields";
+import { actualizarCarpetaFotosEvento, actualizarDriveEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
 import type { HojaCaptura } from "./modelo";
+import { ErrorPeticion } from "./errores";
 
 export const DRIVE_READY = !!(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_SECRET);
 const FOTO_CONCURRENCY = 3;
+const REGISTRO_VACIO: SheetRecord = {
+  nombre: "", correo: "", lada: "", telefono: "", linkWa: "", tarjeta: "", metodoPago: "", cantidad: "", folio: "", membresia: "", notas: "", estatus: "",
+};
 
 // Errores en los que la petición nunca llegó a Google: es seguro reintentar sin duplicar nada.
 const SIN_CONEXION = new Set(["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "ETIMEDOUT"]);
@@ -22,7 +26,7 @@ async function fetchConReintento(url: string, init?: RequestInit, intentos = 3):
     } catch (err) {
       const code = (err as { cause?: { code?: string } }).cause?.code ?? "";
       if (!SIN_CONEXION.has(code) || i >= intentos) {
-        throw new Error(SIN_CONEXION.has(code) ? "No hay conexión con Google. Revisa tu internet e inténtalo de nuevo." : (err as Error).message);
+        throw SIN_CONEXION.has(code) ? new ErrorPeticion(502, "No hay conexión con Google. Revisa tu internet e inténtalo de nuevo.") : err;
       }
       await new Promise((r) => setTimeout(r, 2000 * i));
     }
@@ -39,7 +43,7 @@ export async function call<T>(payload: Record<string, unknown>): Promise<T> {
     const data = await llamarUnaVez<T>(payload);
     if (data !== null) return data;
     if (i >= intentos) {
-      throw new Error("Google no respondió como se esperaba. Revisa que la aplicación web esté publicada con acceso 'Cualquier usuario'.");
+      throw new ErrorPeticion(502, "Google no respondió como se esperaba. Revisa que la aplicación web esté publicada con acceso 'Cualquier usuario'.");
     }
     await new Promise((r) => setTimeout(r, 1500 * i));
   }
@@ -47,7 +51,7 @@ export async function call<T>(payload: Record<string, unknown>): Promise<T> {
 
 /** Una llamada al Web App. null = Google no devolvió JSON (página de error, límite de uso o Web App no público). */
 async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | null> {
-  if (!DRIVE_READY) throw new Error("Falta configurar Drive (APPS_SCRIPT_URL en .env).");
+  if (!DRIVE_READY) throw new ErrorPeticion(503, "Falta configurar Drive (APPS_SCRIPT_URL en .env).");
   // Apps Script responde al POST con una redirección a script.googleusercontent.com donde está el resultado.
   // Se sigue a mano con un GET limpio: al seguirla automáticamente, Google responde 404.
   let res = await fetchConReintento(process.env.APPS_SCRIPT_URL!, {
@@ -58,7 +62,11 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
   });
   const location = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && location) {
-    res = await fetchConReintento(new URL(location, process.env.APPS_SCRIPT_URL).toString());
+    const destino = new URL(location, process.env.APPS_SCRIPT_URL);
+    if (destino.protocol !== "https:" || !/(^|\.)(google|googleusercontent)\.com$/.test(destino.hostname)) {
+      throw new ErrorPeticion(502, "Google respondió con una redirección inesperada.");
+    }
+    res = await fetchConReintento(destino.toString());
   }
   const text = await res.text();
   let data: T & { error?: string };
@@ -68,8 +76,13 @@ async function llamarUnaVez<T>(payload: Record<string, unknown>): Promise<T | nu
     console.warn(`google ${String(payload.action)}: respuesta no JSON (HTTP ${res.status}): ${text.slice(0, 200).replace(/\s+/g, " ")}`);
     return null;
   }
-  if (data.error) throw new Error(traducirError(data.error));
+  if (data.error) throw new ErrorPeticion(502, traducirError(data.error));
   return data;
+}
+
+/** Texto libre que empieza como fórmula (=, +, -, @) se guarda como texto en la Hoja: un apóstrofo inicial lo evita. */
+export function neutralizarFormula(texto: string): string {
+  return /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
 }
 
 function traducirError(msg: string): string {
@@ -143,7 +156,7 @@ export type ResultadoDrive =
 export async function guardarEventoEnDrive(
   eventoId: string,
   usuarioId: string,
-  opts: { crearCarpeta?: boolean; sinFotos?: boolean },
+  opts: { crearCarpeta?: boolean; sinFotos?: boolean; cerrar?: boolean },
   signal?: AbortSignal
 ): Promise<ResultadoDrive> {
   const anterior = enCurso.get(eventoId);
@@ -160,13 +173,13 @@ export async function guardarEventoEnDrive(
 async function guardar(
   eventoId: string,
   usuarioId: string,
-  opts: { crearCarpeta?: boolean; sinFotos?: boolean },
+  opts: { crearCarpeta?: boolean; sinFotos?: boolean; cerrar?: boolean },
   signal?: AbortSignal
 ): Promise<ResultadoDrive> {
   const evento = await obtenerEvento(eventoId);
-  if (!evento) throw new Error("No se encontró el evento");
+  if (!evento) throw new ErrorPeticion(404, "No se encontró el evento");
   let hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
-  if (hojas.length === 0) throw new Error("Este evento no tiene hojas confirmadas.");
+  if (hojas.length === 0) throw new ErrorPeticion(409, "Este evento no tiene hojas confirmadas.");
 
   // 1. Fotos cargadas desde la computadora que aún no están en Drive: la de cada hoja y las de sus adjuntas (otros pagos)
   type FotoPendiente = { hojaId: string; principalId: string; nombre: string; rutaStorage: string };
@@ -197,7 +210,7 @@ async function guardar(
     let next = 0;
     const worker = async () => {
       while (next < fotos.length) {
-        if (signal?.aborted) throw new Error("Subida cancelada");
+        if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");
         const f = fotos[next++];
         const foto = await leerFotoHoja(f.rutaStorage);
         if (!foto) {
@@ -220,9 +233,15 @@ async function guardar(
   }
 
   // 2. Hoja de cálculo (copia de la plantilla) en la raíz de la carpeta destino
-  if (signal?.aborted) throw new Error("Subida cancelada");
+  if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");
   hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada");
-  const registros = hojas.map((h) => toRecord(normalizeFields(h.campos!, h.estatus), h.estatus));
+  // Secciones separadas (Completos, Apartados, Interesados) con renglones en blanco entre ellas.
+  const registros = conSeparadores(hojas).map((h) => {
+    if (!h) return REGISTRO_VACIO;
+    const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
+    // "Pago a meses" vive solo en las notas editables de la hoja, no en Drive.
+    return { ...r, notas: neutralizarFormula(sinNotaAMeses(r.notas)) };
+  });
   const payload = {
     action: "guardarHoja",
     destinoId: evento.destino.id,
@@ -238,7 +257,9 @@ async function guardar(
     if (!evento.drive?.hojaId || !/no se encontr|not found|does not exist|no existe/i.test((err as Error).message)) throw err;
     hoja = await call({ ...payload, filasPrevias: 0, meta: JSON.stringify({ version: 1, eventoId }) });
   }
-  await confirmarEvento(eventoId, usuarioId, { hojaId: hoja.id, hojaUrl: hoja.url, filas: registros.length, gid: hoja.gid });
+  const drive = { hojaId: hoja.id, hojaUrl: hoja.url, filas: registros.length, gid: hoja.gid };
+  if (opts.cerrar) await confirmarEvento(eventoId, usuarioId, drive);
+  else await actualizarDriveEvento(eventoId, drive);
   return { ok: true, hojaUrl: hoja.url, filas: registros.length, fotosSubidas: subidas, fotosFaltantes: faltantes };
 }
 

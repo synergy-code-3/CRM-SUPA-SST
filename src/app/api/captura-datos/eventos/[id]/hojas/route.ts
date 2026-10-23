@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { crearHojas, listarHojasDeEvento, obtenerEvento } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
@@ -12,6 +13,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const hojas = await listarHojasDeEvento(id);
     return NextResponse.json({ hojas });
   } catch (err) {
@@ -34,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    await requerirEvento(permiso.usuario, id);
     const evento = await obtenerEvento(id);
     if (!evento) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     const b = await leerJson(req, importarDesdeD);
