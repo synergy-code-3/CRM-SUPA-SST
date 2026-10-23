@@ -156,7 +156,7 @@ export async function listarClientesQueVencenHoy(): Promise<ClienteVenceHoy[]> {
     .map((r) => ({ id: r.id, nombre: r.nombre, email: r.email }));
 }
 
-export type EstadoFiltro = "todos" | "activos" | "revocados";
+export type EstadoFiltro = "todos" | "activos" | "revocados" | "inactivos";
 export type RegionFiltro = "todos" | "MX" | "US" | "LATAM";
 export type VigenciaFiltro = "actuales" | "futuros" | "todos";
 export type TipoEventoFiltro = "todos" | "webinar" | "presencial";
@@ -354,8 +354,25 @@ function aplicarFiltrosClientes<
   ))
     query = query.or(clausula);
 
-  if (opciones?.estado === "activos") query = query.ilike("acceso_plataforma", "si");
+  // "Activos" incluye "Si"/"Sí" (con y sin acento, ambos existen en datos
+  // reales) y "Renovación" — mismo criterio de "activo" que ya usa
+  // verificarPreAlta() en alta-cliente.ts. Antes solo miraba "si" exacto,
+  // dejando fuera ~72 clientes reales con "Sí"/"Renovación" — se corrige
+  // aquí porque "Inactivos" (abajo) depende de que esto esté completo: es
+  // literalmente todo lo que no es activo ni revocado.
+  if (opciones?.estado === "activos") {
+    query = query.or("acceso_plataforma.ilike.si,acceso_plataforma.ilike.sí,acceso_plataforma.ilike.renovación");
+  }
   if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
+  // Ni activo ni revocado: nunca se le dio acceso (null, la mayoría — CSV
+  // histórico) o quedó en "No"/vacío. `is.null` aparte del resto porque en
+  // SQL "NULL NOT ILIKE 'x'" da NULL (ni verdadero ni falso), no se puede
+  // armar con un solo AND de negaciones.
+  if (opciones?.estado === "inactivos") {
+    query = query.or(
+      "acceso_plataforma.is.null,and(acceso_plataforma.not.ilike.si,acceso_plataforma.not.ilike.sí,acceso_plataforma.not.ilike.renovación,acceso_plataforma.not.ilike.revocado)"
+    );
+  }
 
   if (opciones?.region && opciones.region !== "todos") query = query.eq("region", opciones.region);
 

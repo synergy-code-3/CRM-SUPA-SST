@@ -34,7 +34,7 @@ const LIMITE = 100;
 // querystring que ya se le manda a /api/clientes) — ver cache-vista.ts.
 const cacheClientes = crearCacheDeVista<{ clientes: Cliente[]; total: number }>();
 
-type Estado = "todos" | "activos" | "revocados";
+type Estado = "todos" | "activos" | "revocados" | "inactivos";
 type Region = "todos" | "MX" | "US" | "LATAM";
 type TipoEvento = "todos" | "webinar" | "presencial";
 // "Sin Kajabi" queda fuera a propósito — el alta bloquea si Kajabi falla,
@@ -459,6 +459,7 @@ function ClientesPageInner() {
               opciones={[
                 { valor: "todos", label: "Todos" },
                 { valor: "activos", label: "Activos" },
+                { valor: "inactivos", label: "Inactivos" },
                 { valor: "revocados", label: "Revocados" },
               ]}
               valor={filtros.estado}
@@ -582,6 +583,7 @@ function ClientesPageInner() {
               opciones={[
                     { valor: "todos", label: "Todos" },
                     { valor: "activos", label: "Activos" },
+                    { valor: "inactivos", label: "Inactivos" },
                     { valor: "revocados", label: "Revocados" },
                   ]}
               valor={filtros.estado}
