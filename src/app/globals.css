@@ -114,6 +114,11 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* En el layout de la app el scroll es el de <main>; el hueco reservado del html lo dejaba despegado del borde. */
+html:has([data-scroll-en-main]) {
+  scrollbar-gutter: auto;
+}
+
 /* Scrollbar fina y temeada (en vez de la gris por defecto del SO) para
    listas internas con scroll propio, ej. el ranking de BarChart.tsx
    cuando hay más filas de las que caben en la tarjeta. */
