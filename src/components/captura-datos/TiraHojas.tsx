@@ -26,7 +26,7 @@ export function TiraHojas({ hojas, actualId, onElegir }: { hojas: HojaCaptura[];
 
   if (visibles.length === 0) return null;
   return (
-    <ul ref={contenedor} aria-label="Hojas del evento" className="relative flex h-20 shrink-0 gap-2 overflow-x-auto">
+    <ul ref={contenedor} aria-label="Hojas del evento" className="relative flex h-16 shrink-0 gap-2 overflow-x-auto">
       {visibles.map((h) => {
         const revisada = h.estado === "confirmada";
         return (

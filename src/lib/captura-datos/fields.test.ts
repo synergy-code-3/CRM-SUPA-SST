@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_FIELDS, camposRequeridos, compararPago, formatCantidadInput, membresiaPorCantidad, normalizeCantidad, normalizeFields, conSeparadores, normalizeFolio, parseCantidad, sinNotaAMeses,
+  EMPTY_FIELDS, camposRequeridos, compararPago, conNotaAMeses, formatCantidadInput, membresiaPorCantidad, normalizeCantidad, normalizeFields, conSeparadores, normalizeFolio, parseCantidad, sinNotaAMeses,
   requiereTarjeta, sanitizeInput, splitTelefono, validateFields, whatsappLink, type SheetFields,
 } from "./fields";
 
@@ -125,6 +125,11 @@ describe("membresiaPorCantidad", () => {
     expect(membresiaPorCantidad("9997")).toBe("3 Meses");
     expect(membresiaPorCantidad("14816.58")).toBe("6 Meses");
     expect(membresiaPorCantidad("14997")).toBe("12 Meses");
+  });
+  it("acepta un pago a meses aproximado (ej. $11,400 es 3 Meses)", () => {
+    expect(membresiaPorCantidad("11400")).toBe("3 Meses");
+    expect(conNotaAMeses({ cantidad: "11400", notas: "" })).toBe("Pago a meses");
+    expect(conNotaAMeses({ cantidad: "9997", notas: "" })).toBe("");
   });
   it("devuelve vacío si la cantidad no corresponde a ningún plan", () => {
     expect(membresiaPorCantidad("5000")).toBe("");

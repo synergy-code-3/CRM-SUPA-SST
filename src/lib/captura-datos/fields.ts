@@ -172,11 +172,17 @@ export function marcaValida(v: string | undefined): string {
 export const celdaTarjeta = (f: Pick<SheetFields, "marcaTarjeta" | "tarjeta">): string =>
   [f.marcaTarjeta, f.tarjeta].filter(Boolean).join(" ");
 
+const MARGEN_A_MESES = 10;
+
+/** Pago a meses aproximado: por encima del precio de contado y hasta el precio a meses (con un pequeño margen). */
+const esPagoAMeses = (m: (typeof MEMBRESIAS)[number], pagado: number): boolean =>
+  pagado >= m.precio + 1 && pagado <= m.precioAMeses + MARGEN_A_MESES;
+
 /** El plan cuyo precio (de contado o a meses) coincide con la cantidad pagada; "" si ninguno. */
 export function membresiaPorCantidad(cantidad: string): string {
   const pagado = parseCantidad(cantidad);
   if (pagado === null) return "";
-  return MEMBRESIAS.find((m) => Math.abs(pagado - m.precio) < 1 || Math.abs(pagado - m.precioAMeses) < 1)?.value ?? "";
+  return MEMBRESIAS.find((m) => Math.abs(pagado - m.precio) < 1 || esPagoAMeses(m, pagado))?.value ?? "";
 }
 
 /** Cantidad tal como se muestra al escribir: "$14,816.58". `raw` ya viene filtrado por sanitizeInput. */
@@ -197,7 +203,7 @@ export function sinNotaAMeses(notas: string): string {
 /** Si la cantidad es uno de los precios a meses, las notas dicen que el pago es a meses (sin repetirlo). */
 export function conNotaAMeses({ cantidad, notas }: { cantidad: string; notas: string }): string {
   const pagado = parseCantidad(cantidad);
-  const esAMeses = pagado !== null && MEMBRESIAS.some((m) => Math.abs(pagado - m.precioAMeses) < 0.01);
+  const esAMeses = pagado !== null && MEMBRESIAS.some((m) => esPagoAMeses(m, pagado));
   if (!esAMeses || /a meses/i.test(notas)) return notas;
   return notas ? `${notas}. ${NOTA_A_MESES}` : NOTA_A_MESES;
 }
@@ -279,7 +285,7 @@ export function compararPago(f: SheetFields): ComparacionPago | null {
   const pagado = parseCantidad(f.cantidad);
   if (!plan || pagado === null) return null;
   const diferencia = Math.round((pagado - plan.precio) * 100) / 100;
-  const aMeses = Math.abs(pagado - plan.precioAMeses) < 1;
+  const aMeses = esPagoAMeses(plan, pagado);
   return { plan, pagado, diferencia: aMeses ? 0 : diferencia, concuerda: aMeses || Math.abs(diferencia) < 1 };
 }
 
