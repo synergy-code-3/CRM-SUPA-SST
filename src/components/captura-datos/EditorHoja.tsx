@@ -247,13 +247,13 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
   }
 
   return (
-    <div className="-mt-4 grid gap-3 md:-mt-6 lg:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+    <div className="-mt-4 grid gap-3 md:-mt-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
       {cambiando && (
         <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex items-center justify-center gap-2 bg-white/70 text-sm text-muted">
           <Loader2 className="h-6 w-6 animate-spin text-primary" /> Cargando hoja…
         </div>
       )}
-      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-2rem)]">
+      <div className="flex h-[60vh] flex-col gap-2 lg:sticky lg:top-2 lg:h-[calc(100vh-1rem)]">
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
