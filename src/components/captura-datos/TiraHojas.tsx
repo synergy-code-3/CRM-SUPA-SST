@@ -33,7 +33,7 @@ export function TiraHojas({ hojas, actualId, onElegir }: { hojas: HojaCaptura[];
           <li
             key={h.id}
             {...(h.id === actualId ? { "data-actual": true } : {})}
-            className={`relative h-full w-16 shrink-0 overflow-hidden rounded-lg border bg-black/5 ${h.id === actualId ? "border-primary ring-2 ring-primary/40" : "border-silver"} ${h.id === actualId || disponible(h) ? "" : "opacity-40"}`}
+            className={`relative h-full w-14 shrink-0 overflow-hidden rounded-lg border bg-black/5 ${h.id === actualId ? "border-primary ring-2 ring-primary/40" : "border-silver"} ${h.id === actualId || disponible(h) ? "" : "opacity-40"}`}
           >
             {h.id !== actualId && disponible(h) && (
               <button type="button" onClick={() => onElegir(h.id)} aria-label={`Abrir ${h.origen.nombreOriginal}`} className="absolute inset-0 z-10 cursor-pointer transition hover:bg-primary/10 hover:ring-2 hover:ring-primary/50" />
@@ -41,7 +41,7 @@ export function TiraHojas({ hojas, actualId, onElegir }: { hojas: HojaCaptura[];
             {esPdf(h)
               ? <span className="flex h-full items-center justify-center text-muted"><FileText className="h-6 w-6" /></span>
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src={`/api/captura-datos/hojas/${h.id}/foto`} alt={h.origen.nombreOriginal} loading="lazy" draggable={false} className="h-full w-full object-cover" />}
+              : <img src={`/api/captura-datos/hojas/${h.id}/foto`} alt={h.origen.nombreOriginal} loading="lazy" draggable={false} className="h-full w-full object-contain" />}
             <span
               role="img"
               aria-label={revisada ? "Revisada" : "Sin revisar"}
