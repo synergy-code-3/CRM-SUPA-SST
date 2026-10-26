@@ -195,8 +195,8 @@ export function EventoDetalle({ id }: { id: string }) {
         <Boton onClick={() => window.confirm(evento.estado === "abierto" && porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
         {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
         {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
-        <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />}>Borrar evento</Boton>
-        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />} className="ml-auto">Cerrar evento</Boton>}
+        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>}
+        <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} className="ml-auto hover:border-danger hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}

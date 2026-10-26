@@ -209,6 +209,8 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   `middleware.ts`). La solicitud queda pendiente en `solicitudes_renovacion_externa` hasta que un admin la aprueba en
   Solicitudes (`/api/solicitudes-renovacion/...`); al aprobar corre el mismo flujo que el botón "Renovar".
 
+- **Captura de datos** (26 oct): en el detalle del evento, "Cerrar evento" ocupa el lugar de "Borrar evento" y este va a la derecha (hover rojo con texto blanco); el aviso de borrado ya no menciona el historial.
+
 ## Pendiente en Supabase (SQL a correr a mano)
 
 Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
