@@ -20,6 +20,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const permiso = await requerirPermiso("verCapturaDatos");
   if (!permiso.ok) return permiso.respuesta;
+  if (permiso.usuario.rol !== "admin") return NextResponse.json({ error: "No tienes permiso para esto" }, { status: 403 });
 
   try {
     const b = await leerJson(req, esquemaCrearEvento);
