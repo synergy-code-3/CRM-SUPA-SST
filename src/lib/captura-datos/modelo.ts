@@ -29,7 +29,6 @@ export interface FotoRef {
   paginas?: number;
   w?: number;
   h?: number;
-  leidaIa?: boolean; // ya se usó "Leer con IA" en esta hoja: solo se permite una vez
 }
 
 /**

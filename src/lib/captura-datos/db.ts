@@ -506,28 +506,6 @@ export async function actualizarCarpetaFotosEvento(eventoId: string, carpetaFoto
   if (error) throw error;
 }
 
-/**
- * Reclama la única lectura con IA de la hoja (atómico: dos clics a la vez no gastan tokens dos veces).
- * Devuelve false si la hoja ya se leyó antes. La marca vive en `origen` (jsonb), así que no hace falta migración.
- */
-export async function reclamarLecturaIa(id: string, origen: FotoRef): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("cap_hojas")
-    .update({ origen: { ...origen, leidaIa: true } })
-    .eq("id", id)
-    .is("origen->>leidaIa", null)
-    .select("id")
-    .maybeSingle();
-  if (error) throw error;
-  return !!data;
-}
-
-/** Devuelve la lectura cuando la IA no llegó a contestar (error de red o de la API): no se gastó nada. */
-export async function devolverLecturaIa(id: string, origen: FotoRef): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ origen: { ...origen, leidaIa: undefined } }).eq("id", id);
-  if (error) throw error;
-}
-
 export async function marcarNoValida(huella: string): Promise<void> {
   const { error } = await supabase.from("cap_imagenes_no_validas").upsert({ huella });
   if (error) throw error;
@@ -566,20 +544,6 @@ export async function crearSolicitudBorrado(input: { eventoId: string; eventoNom
     .from("cap_solicitudes_borrado")
     .insert({ evento_id: input.eventoId, evento_nombre: input.eventoNombre, motivo: input.motivo, solicitada_por: input.solicitadaPorId });
   if (error?.code === "23505") throw new ErrorPeticion(409, "Ya hay una solicitud de borrado pendiente para este evento.");
-  if (error) throw error;
-}
-
-/** Historial de un borrado directo de admin: queda como solicitud ya aprobada por quien lo borró. */
-export async function registrarBorradoDirecto(input: { eventoId: string; eventoNombre: string; motivo: string; adminId: string }): Promise<void> {
-  const { error } = await supabase.from("cap_solicitudes_borrado").insert({
-    evento_id: input.eventoId,
-    evento_nombre: input.eventoNombre,
-    motivo: input.motivo,
-    solicitada_por: input.adminId,
-    estado: "aprobada",
-    resuelta_por: input.adminId,
-    resuelta_en: new Date().toISOString(),
-  });
   if (error) throw error;
 }
 

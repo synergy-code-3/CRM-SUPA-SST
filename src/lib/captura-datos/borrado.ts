@@ -1,32 +1,25 @@
-// Borrado de eventos: quien trabaja el evento lo solicita con un motivo y cualquier admin decide si se borra;
-// un admin también puede borrarlo directamente (queda registrado igual en el historial de solicitudes).
+// Borrado de eventos con aprobación: un admin lo solicita con un motivo y solo las personas aprobadoras deciden si se borra.
 import { ErrorPeticion } from "./errores";
-import { crearSolicitudBorrado, eliminarEvento, obtenerEvento, registrarBorradoDirecto, resolverSolicitudBorrado } from "./db";
+import { crearSolicitudBorrado, eliminarEvento, obtenerEvento, resolverSolicitudBorrado } from "./db";
 import type { Usuario } from "./sesion";
 
-export function esAprobadorBorrado(usuario: Pick<Usuario, "rol">): boolean {
-  return usuario.rol === "admin";
+// Personas que pueden aprobar o rechazar; se compara por nombre completo.
+const NOMBRES_APROBADORES = ["Samuel Otniel Diaz Gonzalez", "Alexis Osvaldo Villegas Ochoa"];
+
+const normalizar = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
+
+export function esAprobadorBorrado(usuario: Pick<Usuario, "nombre">): boolean {
+  const nombre = normalizar(usuario.nombre);
+  return NOMBRES_APROBADORES.some((a) => nombre === normalizar(a));
 }
 
-async function eventoConMotivo(eventoId: string, motivo: string) {
+export async function solicitarBorrado(usuario: Usuario, eventoId: string, motivo: string): Promise<void> {
+  if (usuario.rol !== "admin") throw new ErrorPeticion(403, "Solo un admin puede solicitar el borrado de un evento.");
   const motivoLimpio = motivo.trim();
   if (!motivoLimpio) throw new ErrorPeticion(400, "Indica el motivo del borrado.");
   const evento = await obtenerEvento(eventoId);
   if (!evento) throw new ErrorPeticion(404, "No encontrado");
-  return { evento, motivoLimpio };
-}
-
-export async function solicitarBorrado(usuario: Usuario, eventoId: string, motivo: string): Promise<void> {
-  const { evento, motivoLimpio } = await eventoConMotivo(eventoId, motivo);
   await crearSolicitudBorrado({ eventoId, eventoNombre: evento.nombre, motivo: motivoLimpio, solicitadaPorId: usuario.id });
-}
-
-/** Borrado directo de un admin: se registra en el historial (como aprobada por el mismo admin) y luego se borra. */
-export async function borrarEventoDirecto(usuario: Usuario, eventoId: string, motivo: string): Promise<void> {
-  if (!esAprobadorBorrado(usuario)) throw new ErrorPeticion(403, "Solo un admin puede borrar un evento directamente.");
-  const { evento, motivoLimpio } = await eventoConMotivo(eventoId, motivo);
-  await registrarBorradoDirecto({ eventoId, eventoNombre: evento.nombre, motivo: motivoLimpio, adminId: usuario.id });
-  await eliminarEvento(eventoId);
 }
 
 export async function resolverBorrado(usuario: Usuario, solicitudId: string, aprobar: boolean): Promise<void> {

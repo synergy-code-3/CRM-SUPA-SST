@@ -6,7 +6,6 @@ import { useCallback, useState } from "react";
 import { Check, ClipboardList, Download, Plus, Trash2, X } from "lucide-react";
 import { NuevoEventoModal } from "./NuevoEventoModal";
 import { api } from "@/lib/captura-datos/cliente";
-import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { useSesion } from "@/lib/session-context";
@@ -17,26 +16,26 @@ type EventoConAvance = EventoCaptura & { progreso: ProgresoEvento };
 const POLLING_MS = 15_000;
 
 export function ListaEventos() {
-  const { usuario } = useSesion();
-  const [eventos, setEventos] = useState<EventoConAvance[] | null>(() => leerCache<EventoConAvance[]>(usuario?.id, "eventos"));
+  const [eventos, setEventos] = useState<EventoConAvance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
   const [solicitudes, setSolicitudes] = useState<SolicitudBorrado[]>([]);
   const [puedeResolver, setPuedeResolver] = useState(false);
   const [resolviendo, setResolviendo] = useState<string | null>(null);
   const router = useRouter();
+  const { usuario } = useSesion();
   const esAdmin = usuario?.rol === "admin";
 
   const cargar = useCallback(() => {
     api<{ eventos: EventoConAvance[] }>("/api/captura-datos/eventos")
-      .then((r) => { setEventos(r.eventos); guardarCache(usuario?.id, "eventos", r.eventos); setError(null); })
+      .then((r) => { setEventos(r.eventos); setError(null); })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar los eventos."));
     if (esAdmin) {
       api<{ solicitudes: SolicitudBorrado[]; puedeResolver: boolean }>("/api/captura-datos/solicitudes-borrado")
         .then((r) => { setSolicitudes(r.solicitudes); setPuedeResolver(r.puedeResolver); })
         .catch(() => {}); // sin la tabla de solicitudes la lista de eventos sigue funcionando
     }
-  }, [esAdmin, usuario?.id]);
+  }, [esAdmin]);
 
   async function resolver(id: string, accion: "aprobar" | "rechazar") {
     setResolviendo(id);
@@ -61,11 +60,9 @@ export function ListaEventos() {
           </h1>
           <p className="text-sm text-muted">Hojas de inscripción por evento: lee, revisa y confirma.</p>
         </div>
-        {esAdmin && (
-          <button onClick={() => setCreando(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
-            <Plus className="h-4 w-4" /> Nuevo evento
-          </button>
-        )}
+        <button onClick={() => setCreando(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
+          <Plus className="h-4 w-4" /> Nuevo evento
+        </button>
       </div>
 
       {puedeResolver && solicitudes.length > 0 && (
@@ -90,10 +87,10 @@ export function ListaEventos() {
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
       {!eventos && !error && <p className="py-12 text-center text-sm text-muted">Cargando…</p>}
-      {eventos?.length === 0 && <p className="py-12 text-center text-sm text-muted">{esAdmin ? "Todavía no hay eventos. Crea el primero." : "No tienes eventos asignados."}</p>}
+      {eventos?.length === 0 && <p className="py-12 text-center text-sm text-muted">Todavía no hay eventos. Crea el primero.</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {eventos?.map((e) => <TarjetaEvento key={e.id} evento={e} esAdmin={esAdmin} borradoPendiente={solicitudes.some((s) => s.eventoId === e.id)} />)}
+        {eventos?.map((e) => <TarjetaEvento key={e.id} evento={e} borradoPendiente={solicitudes.some((s) => s.eventoId === e.id)} />)}
       </div>
 
       {creando && (
@@ -106,7 +103,7 @@ export function ListaEventos() {
   );
 }
 
-function TarjetaEvento({ evento: e, esAdmin, borradoPendiente }: { evento: EventoConAvance; esAdmin: boolean; borradoPendiente: boolean }) {
+function TarjetaEvento({ evento: e, borradoPendiente }: { evento: EventoConAvance; borradoPendiente: boolean }) {
   const total = e.progreso.pendiente + e.progreso.leida + e.progreso.confirmada;
   const pct = total ? Math.round((e.progreso.confirmada / total) * 100) : 0;
   return (
@@ -127,11 +124,9 @@ function TarjetaEvento({ evento: e, esAdmin, borradoPendiente }: { evento: Event
         <p className="text-xs text-muted">{e.progreso.confirmada} de {total} hojas confirmadas · {e.progreso.pendiente + e.progreso.leida} por revisar</p>
         {borradoPendiente && <p className="text-xs font-medium text-danger">Borrado pendiente de aprobación</p>}
       </div>
-      {esAdmin && (
-        <a href={urlExcelEvento(e.id)} className="relative mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
-          <Download className="h-3 w-3" /> Excel
-        </a>
-      )}
+      <a href={urlExcelEvento(e.id)} className="relative mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+        <Download className="h-3 w-3" /> Excel
+      </a>
     </div>
   );
 }

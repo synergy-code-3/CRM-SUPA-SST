@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, devolverLecturaIa, reclamarLecturaIa, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida } from "@/lib/captura-datos/db";
 import { extractFromImage } from "@/lib/captura-datos/extract";
 import { huellaImagen } from "@/lib/captura-datos/huella";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
@@ -31,21 +31,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const hoja = await requerirHoja(permiso.usuario, id);
 
-    if (hoja.origen.leidaIa) throw new ErrorPeticion(409, "Esta hoja ya se leyó con IA.");
     const { base64, mime } = await fotoBase64(hoja);
     const huella = huellaImagen(base64);
     if (await esNoValida(huella)) {
       return NextResponse.json({ error: "Esta imagen ya se marcó antes como no válida (no es una hoja de registro)." }, { status: 422 });
     }
 
-    if (!(await reclamarLecturaIa(id, hoja.origen))) throw new ErrorPeticion(409, "Esta hoja ya se leyó con IA.");
-    let extraccion;
-    try {
-      extraccion = await extractFromImage(base64, mime);
-    } catch (err) {
-      await devolverLecturaIa(id, hoja.origen).catch(() => {}); // la IA no contestó: no se gastó la lectura
-      throw err;
-    }
+    const extraccion = await extractFromImage(base64, mime);
     if (!extraccion.esHojaDeRegistro) {
       await marcarHojaNoValida(id, huella);
       return NextResponse.json({ error: extraccion.motivoNoHoja || "La imagen no parece una hoja de registro." }, { status: 422 });
