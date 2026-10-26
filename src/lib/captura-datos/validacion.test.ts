@@ -7,14 +7,14 @@ const destino = { id: "1w1nhREInIc7NGezEPg3l_-q1f9mkvqSG", url: "https://drive.g
 
 describe("esquemas de la API", () => {
   it("crearEvento acepta datos válidos y rechaza URLs que no son de Google", () => {
-    expect(crearEvento.safeParse({ nombre: "", estatus: "Completo", destino, origen: "local" }).success).toBe(true);
-    expect(crearEvento.safeParse({ nombre: "", estatus: "Completo", destino: { ...destino, url: "https://evil.com/x" }, origen: "local" }).success).toBe(false);
-    expect(crearEvento.safeParse({ nombre: "", estatus: "Raro", destino, origen: "local" }).success).toBe(false);
+    expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino, origen: "local" }).success).toBe(true);
+    expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino: { ...destino, url: "https://evil.com/x" }, origen: "local" }).success).toBe(false);
+    expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Raro", destino, origen: "local" }).success).toBe(false);
   });
 
   it("crearEvento rechaza ids de usuario que no son uuid", () => {
-    expect(crearEvento.safeParse({ nombre: "", estatus: "Completo", destino, origen: "drive", usuariosAsignados: ["x"] }).success).toBe(false);
-    expect(crearEvento.safeParse({ nombre: "", estatus: "Completo", destino, origen: "drive", usuariosAsignados: [UUID] }).success).toBe(true);
+    expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino, origen: "drive", usuariosAsignados: ["x"] }).success).toBe(false);
+    expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino, origen: "drive", usuariosAsignados: [UUID] }).success).toBe(true);
   });
 
   it("campos rellena valores por defecto y limita la lada", () => {

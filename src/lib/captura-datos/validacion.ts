@@ -59,6 +59,7 @@ export const fotoRef = z.object({
 
 export const crearEvento = z.object({
   nombre: texto(200),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
   estatus,
   destino,
   origen,
@@ -85,7 +86,4 @@ export const patchEvento = z.object({
   sinFotos: z.boolean().optional(), // para "confirmar"/"cerrar": guardar los datos aunque falten fotos por subir
 });
 
-export const putAsignaciones = z.object({ usuariosAsignados: z.array(idUuid).max(50) });
-
-export const solicitudBorrado = z.object({ motivo: texto(500) }); // se exige no vacío en solicitarBorrado
-export const resolucionBorrado = z.object({ accion: z.enum(["aprobar", "rechazar"]) });
+export const borradoEvento = z.object({ motivo: texto(500) }); // se exige no vacío en borrarEventoDirecto

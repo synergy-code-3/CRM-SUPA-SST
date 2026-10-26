@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     const b = await leerJson(req, esquemaCrearEvento);
     const evento = await crearEvento({
       nombre: b.nombre || `${carpetaDeEstatus(b.estatus as Estatus)}_${new Date().toISOString().slice(0, 16).replace("T", "_")}`,
+      fecha: b.fecha,
       destino: b.destino,
       origen: b.origen,
       creadoPorId: permiso.usuario.id,

@@ -686,6 +686,49 @@ function NavGruposCommunityManager({ pathname, grande = false }: { pathname: str
   );
 }
 
+// "Recientes" de Captura de Datos: el título y, debajo, los 3 últimos eventos creados (la API los devuelve del más nuevo al más viejo).
+function RecientesCapturaDatos({ pathname, grande = false }: { pathname: string; grande?: boolean }) {
+  const [eventos, setEventos] = useState<{ id: string; nombre: string }[] | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    fetch("/api/captura-datos/eventos")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelado) setEventos((data.eventos ?? []).slice(0, 3));
+      })
+      .catch(() => {
+        if (!cancelado) setEventos([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [pathname]);
+
+  if (!eventos || eventos.length === 0) return null;
+
+  return (
+    <div className={grande ? "mt-4" : "mt-3"}>
+      <p className={`flex items-center gap-1.5 px-3 font-semibold text-muted ${grande ? "mb-1.5 text-sm" : "mb-1 text-xs"}`}>
+        <Clock className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} strokeWidth={1.9} />
+        Recientes
+      </p>
+      <div className="flex flex-col gap-0.5">
+        {eventos.map((e) => (
+          <Link
+            key={e.id}
+            href={`/captura-datos/${e.id}`}
+            title={e.nombre}
+            className={`ease-spring flex items-center rounded-lg px-3 text-muted transition hover:bg-surface-2 hover:text-foreground ${grande ? "py-2 text-sm" : "py-1.5 text-xs"}`}
+          >
+            <span className="truncate">{e.nombre}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // "Recientes": las últimas 3 adiciones de TODO Community Manager
 // (publicaciones de redes + atenciones de Skool, mezcladas por fecha),
 // debajo del grupo Moderación — ver obtenerRecientesCommunityManager en
@@ -817,6 +860,7 @@ export function Sidebar() {
               );
             })
           )}
+          {workspaceActual === "captura-datos" && <RecientesCapturaDatos pathname={pathname} />}
         </nav>
         {workspaceActual === "club" && <EnlacesRenovacion />}
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
@@ -882,6 +926,7 @@ export function Sidebar() {
                   );
                 })
               )}
+              {workspaceActual === "captura-datos" && <RecientesCapturaDatos pathname={pathname} grande />}
             </nav>
 
             {filtrosPagina && (

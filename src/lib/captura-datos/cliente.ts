@@ -33,3 +33,9 @@ export async function imagenAJpeg(archivo: File): Promise<Blob> {
     canvas.toBlob((b) => (b ? ok(b) : fallo(new Error("No se pudo procesar la imagen."))), "image/jpeg", 0.85)
   );
 }
+
+/** "2026-11-15" → "15/11/2026" sin pasar por Date (evita el desfase de zona horaria). */
+export function formatearFecha(fecha: string): string {
+  const [a, m, d] = fecha.split("-");
+  return `${d}/${m}/${a}`;
+}

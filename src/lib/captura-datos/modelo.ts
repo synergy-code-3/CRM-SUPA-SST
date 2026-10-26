@@ -52,6 +52,7 @@ export type OrigenEvento = "drive" | "local";
 export interface EventoCaptura {
   id: string;
   nombre: string;
+  fecha: string | null; // fecha del evento (YYYY-MM-DD)
   destino: Destino;
   origen: OrigenEvento;
   carpetaFotosId: string | null; // subcarpeta de Drive (Completos/…) donde van las fotos subidas desde la computadora
