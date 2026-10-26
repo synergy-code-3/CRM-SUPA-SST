@@ -179,6 +179,24 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 - Secciones de hojas **colapsables**.
 - Tests actualizados (borrado, validación, rutas de acceso). 79 tests pasan.
 
+**26 oct** — sin commit aún:
+- Botón **Excel** solo con el evento cerrado; "Guardar en Drive" sigue disponible con el evento abierto.
+- **Cierre automático**: al confirmar una hoja, si no queda ninguna pendiente/leída (las no válidas no cuentan) el evento
+  pasa a confirmado y se genera el Excel (`cierre.ts`, `cerrarEventoSiCompleto`). No sube a Drive; eso sigue siendo manual.
+- **Voucher**: si la IA detecta voucher sin recuadro válido se usa la esquina superior derecha por defecto
+  (`VOUCHER_ESQUINA_DERECHA` en `extract.ts`); si la IA dice que no hay voucher, queda sin marca.
+- **Subir fotos o PDF** abre un cuadro (`SubirFotosModal.tsx`) con Completo/Apartado/Interesado, selector de archivos
+  locales y Cancelar/Subir.
+- **Fotos locales directo a Drive**: `hojas/subir` ya no usa el bucket `cap-fotos`; sube cada archivo a la subcarpeta
+  del estatus en Drive (se crea si falta, `carpetaDeFotos` / `subirArchivoADrive` en `google.ts`) y en `cap_hojas.origen`
+  solo guarda el `driveId`. Las hojas viejas con `rutaStorage` siguen funcionando (y "Guardar en Drive" las sigue pasando).
+  Se suben con el nombre original y `origen.nombreDrive`; luego `renombrarFotosDeEvento` (google.ts) las renombra a
+  `folio_nombre.jpg|pdf` al "Guardar en Drive" y al cierre automático (best-effort; solo las que subió la app, no las
+  importadas de una carpeta). **Requiere pegar y publicar de nuevo** `/home/trabajo/project/google-apps-script/Codigo-para-pegar.gs`
+  (acción nueva `renombrar` y `subirFoto` con `mime` para PDF). Sin eso el renombrado falla en silencio (solo log) y los
+  PDF quedarían guardados como JPEG. `Codigo.gs` de esa carpeta no se tocó.
+- Sin SQL pendiente nuevo.
+
 ## Otras áreas (no son Captura de Datos)
 
 - **Coordinación** (21 oct): botón de descargar CSV por carpeta/tipo de mentoría; botones para enviar flyer + copy a

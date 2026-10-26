@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { crearHojas, actualizarOrigenHoja, obtenerEvento } from "@/lib/captura-datos/db";
+import { crearHojas, obtenerEvento } from "@/lib/captura-datos/db";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
-import { subirFotoHoja } from "@/lib/storage";
+import { carpetaDeFotos, subirArchivoADrive } from "@/lib/captura-datos/google";
 import { z } from "zod";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
+
+const CONCURRENCIA_DRIVE = 3;
+/** Nombre del archivo en Drive: el original, con la extensión que corresponde al contenido ya validado. */
+const nombreEnDrive = (original: string, tipo: "jpeg" | "pdf") => `${original.replace(/\.\w+$/, "")}.${tipo === "pdf" ? "pdf" : "jpg"}`;
 
 const MAX_BYTES = 15 * 1024 * 1024; // mismo tope que Storage
 const MAX_TANDA_BYTES = 100 * 1024 * 1024;
@@ -60,17 +64,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       else throw new ErrorPeticion(400, `"${a.name}" no es una imagen JPEG ni un PDF válido.`);
     }
 
+    // Las fotos van directo a Drive (subcarpeta del estatus): en la BD solo queda el driveId.
+    const carpetaId = await carpetaDeFotos(evento.destino.id, estatus as Estatus);
+    const driveIds: string[] = new Array(buffers.length);
+    const nombres = metas.data.map((m, i) => nombreEnDrive(m.nombreOriginal, buffers[i].tipo));
+    let siguiente = 0;
+    const trabajador = async () => {
+      while (siguiente < buffers.length) {
+        const i = siguiente++;
+        driveIds[i] = await subirArchivoADrive(carpetaId, nombres[i], buffers[i].buffer, buffers[i].tipo);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_DRIVE, buffers.length) }, trabajador));
+
     const hojas = await crearHojas(
       id,
       estatus as Estatus,
-      metas.data.map((m) => ({ origen: { nombreOriginal: m.nombreOriginal, pagina: m.pagina, paginas: m.paginas } }))
+      metas.data.map((m, i) => ({ origen: { nombreOriginal: m.nombreOriginal, pagina: m.pagina, paginas: m.paginas, driveId: driveIds[i], nombreDrive: nombres[i] } }))
     );
-
-    for (let i = 0; i < hojas.length; i++) {
-      const ruta = await subirFotoHoja(hojas[i].id, buffers[i].buffer, buffers[i].tipo);
-      hojas[i].origen = { ...hojas[i].origen, rutaStorage: ruta };
-      await actualizarOrigenHoja(hojas[i].id, hojas[i].origen);
-    }
 
     return NextResponse.json({ hojas });
   } catch (err) {

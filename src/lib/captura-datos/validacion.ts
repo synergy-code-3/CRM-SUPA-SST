@@ -51,6 +51,7 @@ export const fotoRef = z.object({
   nombreOriginal: texto(500).default(""),
   driveId: idDrive.optional(),
   rutaStorage: texto(300).optional(),
+  nombreDrive: texto(300).optional(),
   pagina: entero(1, 100_000).optional(),
   paginas: entero(1, 100_000).optional(),
   w: entero(0, 100_000).optional(),

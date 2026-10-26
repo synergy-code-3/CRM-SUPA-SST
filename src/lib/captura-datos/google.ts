@@ -4,7 +4,7 @@
 // no dependía del almacenamiento local. Lo único que cambia es
 // `guardarEventoEnDrive`: en vez de mutar un único "Escaneo" en disco, lee/
 // actualiza las filas de cap_eventos/cap_hojas en Supabase.
-import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, sinNotaAMeses, toRecord, type SheetRecord } from "./fields";
+import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, sinNotaAMeses, toRecord, type Estatus, type SheetRecord } from "./fields";
 import { actualizarCarpetaFotosEvento, actualizarDriveEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
 import type { HojaCaptura } from "./modelo";
@@ -120,6 +120,43 @@ export const listarArchivos = (carpetaId: string) =>
 export const descargarArchivo = (archivoId: string) =>
   call<{ nombre: string; mime: string; base64: string }>({ action: "descargar", archivoId });
 
+/** Subcarpeta del estatus (Completos/Apartados/Interesados) dentro de la carpeta destino del evento; la crea si falta. */
+export async function carpetaDeFotos(destinoId: string, estatus: Estatus): Promise<string> {
+  const nombre = carpetaDeEstatus(estatus);
+  const info = await infoCarpeta(destinoId);
+  const existente = info.subcarpetas.find((s) => s.nombre === nombre);
+  if (existente) return existente.id;
+  return (await call<{ id: string }>({ action: "crearCarpeta", padreId: destinoId, nombre })).id;
+}
+
+/** Sube un archivo (JPEG o PDF) directo a Drive: las fotos no se guardan en Supabase. Devuelve el id en Drive. */
+export async function subirArchivoADrive(carpetaId: string, nombre: string, bytes: Buffer, tipo: "jpeg" | "pdf"): Promise<string> {
+  const mime = tipo === "pdf" ? "application/pdf" : "image/jpeg";
+  const { id } = await call<{ id: string }>({ action: "subirFoto", carpetaId, nombre, image: bytes.toString("base64"), mime });
+  return id;
+}
+
+/**
+ * Renombra en Drive las fotos que subió la app (las que tienen `nombreDrive`) a "folio_nombre.ext" de las hojas
+ * confirmadas. Las fotos importadas de una carpeta del usuario no se tocan. Es best-effort: un fallo no frena el guardado.
+ */
+export async function renombrarFotosDeEvento(eventoId: string): Promise<number> {
+  const hojas = (await listarHojasDeEvento(eventoId)).filter((h) => h.estado === "confirmada" && h.campos && h.origen.driveId && h.origen.nombreDrive);
+  let renombradas = 0;
+  for (const h of hojas) {
+    const nombre = imageFileName(h.campos!, undefined, h.origen.nombreDrive!.endsWith(".pdf") ? "pdf" : "jpg");
+    if (nombre === h.origen.nombreDrive) continue;
+    try {
+      await call({ action: "renombrar", archivoId: h.origen.driveId, nombre });
+      await actualizarOrigenHoja(h.id, { ...h.origen, nombreDrive: nombre });
+      renombradas++;
+    } catch (err) {
+      console.error("captura-datos: no se pudo renombrar la foto en Drive", h.id, err);
+    }
+  }
+  return renombradas;
+}
+
 export const leerHoja = (hojaId: string) =>
   call<{ id: string; nombre: string; url: string; gid?: number; filas: Record<string, string>[]; meta: string }>({ action: "leerHoja", hojaId });
 
@@ -231,6 +268,9 @@ async function guardar(
     const fallo = resultados.find((r) => r.status === "rejected");
     if (fallo) throw (fallo as PromiseRejectedResult).reason;
   }
+
+  // 1b. Las fotos que la app subió directo a Drive se renombran con folio y nombre
+  if (!opts.sinFotos) await renombrarFotosDeEvento(eventoId);
 
   // 2. Hoja de cálculo (copia de la plantilla) en la raíz de la carpeta destino
   if (signal?.aborted) throw new ErrorPeticion(409, "Subida cancelada");

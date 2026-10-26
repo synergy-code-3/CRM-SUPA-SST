@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
+import { SubirFotosModal } from "./SubirFotosModal";
 import { api, ErrorApi, formatearFecha, imagenAJpeg } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
@@ -30,12 +31,10 @@ export function EventoDetalle({ id }: { id: string }) {
   const [actual, setActual] = useState<HojaCaptura | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
-  const estatusSubida = useRef<Estatus>("Completo");
-  const [eligiendoEstatus, setEligiendoEstatus] = useState(false);
+  const [subiendoFotos, setSubiendoFotos] = useState(false);
   const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
-  const entrada = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -95,16 +94,14 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
-  async function subirFotos(archivos: FileList | null) {
-    if (!archivos?.length) return;
-    setOcupado("subir");
+  async function subirFotos(archivos: File[], estatus: Estatus) {
     setMensaje(null);
     try {
-      const lista = [...archivos].filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
+      const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
       for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
         const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
         const form = new FormData();
-        form.set("estatus", estatusSubida.current);
+        form.set("estatus", estatus);
         form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
         // Los PDF se suben tal cual (sin partir); las imágenes se reducen a JPEG.
         for (const a of tanda) {
@@ -116,9 +113,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await cargar();
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");
-    } finally {
-      setOcupado(null);
-      if (entrada.current) entrada.current.value = "";
+      throw err;
     }
   }
 
@@ -194,21 +189,18 @@ export function EventoDetalle({ id }: { id: string }) {
         {evento.estado === "abierto" && (
           <>
             <Boton onClick={() => void tomarSiguiente()} cargando={ocupado === "tomar"} icono={<PlayCircle className="h-4 w-4" />} primario>{hayCaptura ? "Seguir capturando" : "Empezar a Capturar"}</Boton>
-            <Boton onClick={() => setEligiendoEstatus((v) => !v)} cargando={ocupado === "subir"} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
-            {eligiendoEstatus && ESTATUS.map((e) => (
-              <button key={e.value} onClick={() => { estatusSubida.current = e.value; setEligiendoEstatus(false); entrada.current?.click(); }} className="rounded-lg border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10">{e.carpeta}</button>
-            ))}
-            <input ref={entrada} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => subirFotos(e.target.files)} />
+            <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
         )}
         <Boton onClick={() => window.confirm(evento.estado === "abierto" && porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
         {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
-        <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>
+        {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />}>Borrar evento</Boton>
         {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />} className="ml-auto">Cerrar evento</Boton>}
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}
+      {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}
       {borrando && (
         <BorrarEventoModal
           eventoId={id}
