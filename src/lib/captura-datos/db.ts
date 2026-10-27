@@ -259,11 +259,17 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
 
 export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
-  // 23503 = llave foránea: un evento que se reabrió no se podía borrar hasta que la FK de reaperturas lleve ON DELETE CASCADE.
-  if (error?.code === "23503") {
-    throw new ErrorPeticion(409, "El evento tiene registros ligados que impiden borrarlo: corre supabase/captura-datos-borrado.sql en Supabase (relación de reaperturas).");
+  if (!error) return;
+  // 23503 = llave foránea: si la FK de reaperturas no tiene ON DELETE CASCADE (supabase/captura-datos-borrado.sql), un evento
+  // que se reabrió no se borra. Se limpian sus reaperturas y se reintenta, para no depender de ese SQL.
+  if (error.code !== "23503") throw error;
+  const { error: errReaperturas } = await supabase.from("cap_eventos_reaperturas").delete().eq("evento_id", id);
+  if (errReaperturas) throw errReaperturas;
+  const { error: errReintento } = await supabase.from("cap_eventos").delete().eq("id", id);
+  if (errReintento?.code === "23503") {
+    throw new ErrorPeticion(409, "El evento tiene registros ligados en otra tabla que impiden borrarlo. Avisa a soporte.");
   }
-  if (error) throw error;
+  if (errReintento) throw errReintento;
 }
 
 // --- Hojas -------------------------------------------------------------
