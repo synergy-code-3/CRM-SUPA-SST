@@ -215,7 +215,8 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 - **Captura de datos** (27 oct, fix de "Leer con IA"): la llamada a Gemini no tenía límite de tiempo y, si pasaba de los 60 s
   de la ruta, Vercel cortaba la función (el navegador solo veía "Algo salió mal") sin devolver la lectura, y la hoja quedaba
   bloqueada como "ya leída". Ahora `extract.ts` corta a los 45 s, usa `thinkingLevel: LOW` (más rápido para leer letra a mano),
-  responde con mensajes claros (cuota agotada, tardó demasiado, respuesta inválida), registra el error real en la consola del
+  responde con mensajes claros (cuota agotada, tardó demasiado, respuesta inválida; en otros fallos el mensaje incluye el
+  código y motivo de Gemini, p. ej. "Gemini 404: NOT_FOUND …"), registra el error real en la consola del
   servidor y la ruta devuelve la lectura. **Hojas que ya quedaron bloqueadas** (SQL a correr a mano, ver la respuesta de la sesión):
   `update cap_hojas set origen = origen - 'leidaIa' where origen->>'leidaIa' = 'true' and coalesce(campos->>'folio','') = ''
   and coalesce(campos->>'nombre','') = '' and coalesce(campos->>'correo','') = '';`

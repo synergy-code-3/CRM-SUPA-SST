@@ -170,5 +170,20 @@ function errorDeGemini(err: unknown): ErrorPeticion {
   if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
     return new ErrorPeticion(504, "La IA tardó demasiado en leer la hoja. Intenta de nuevo.");
   }
-  return new ErrorPeticion(502, "No se pudo leer la hoja con la IA. Intenta de nuevo; si sigue, avisa a soporte.");
+  return new ErrorPeticion(502, `No se pudo leer la hoja con la IA (${detalleDeGemini(err)}). Intenta de nuevo; si sigue, avisa a soporte.`);
+}
+
+/** Código y motivo que devolvió Gemini (p. ej. "404 NOT_FOUND: model not found"); no incluye la clave ni datos de la hoja. */
+function detalleDeGemini(err: unknown): string {
+  if (err instanceof ApiError) {
+    let motivo = err.message;
+    try {
+      const e = JSON.parse(err.message).error;
+      motivo = `${e.status ?? ""} ${e.message ?? ""}`.trim() || motivo;
+    } catch {
+      // el cuerpo del error no era JSON: se usa el texto tal cual
+    }
+    return `Gemini ${err.status}: ${motivo}`.slice(0, 220);
+  }
+  return err instanceof Error ? err.message.slice(0, 160) : "error desconocido";
 }
