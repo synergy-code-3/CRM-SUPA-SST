@@ -332,6 +332,7 @@ function aplicarFiltrosClientes<
     lte: (columna: string, valor: string) => Q;
     lt: (columna: string, valor: string) => Q;
     gt: (columna: string, valor: string) => Q;
+    is: (columna: string, valor: null) => Q;
   },
 >(query: Q, opciones?: FiltrosClientes): Q {
   const ahora = new Date().toISOString();
@@ -363,14 +364,21 @@ function aplicarFiltrosClientes<
   if (opciones?.estado === "activos") {
     query = query.or("acceso_plataforma.ilike.si,acceso_plataforma.ilike.sí,acceso_plataforma.ilike.renovación");
   }
-  if (opciones?.estado === "revocados") query = query.ilike("acceso_plataforma", "revocado");
+  // Solo los "Revocado" de siempre (CSV histórico/otro origen) — los que se
+  // revocaron con el botón "Revocar acceso" de este CRM tienen
+  // acceso_revocado_manual_en lleno y cuentan como "Inactivos" (ver abajo).
+  if (opciones?.estado === "revocados") {
+    query = query.ilike("acceso_plataforma", "revocado").is("acceso_revocado_manual_en", null);
+  }
   // Ni activo ni revocado: nunca se le dio acceso (null, la mayoría — CSV
-  // histórico) o quedó en "No"/vacío. `is.null` aparte del resto porque en
-  // SQL "NULL NOT ILIKE 'x'" da NULL (ni verdadero ni falso), no se puede
-  // armar con un solo AND de negaciones.
+  // histórico), quedó en "No"/vacío, o se revocó con el botón de este CRM
+  // (acceso_revocado_manual_en lleno, aunque acceso_plataforma diga
+  // "Revocado" — ver revocarAccesoCliente). `is.null` aparte del resto
+  // porque en SQL "NULL NOT ILIKE 'x'" da NULL (ni verdadero ni falso), no
+  // se puede armar con un solo AND de negaciones.
   if (opciones?.estado === "inactivos") {
     query = query.or(
-      "acceso_plataforma.is.null,and(acceso_plataforma.not.ilike.si,acceso_plataforma.not.ilike.sí,acceso_plataforma.not.ilike.renovación,acceso_plataforma.not.ilike.revocado)"
+      "acceso_plataforma.is.null,and(acceso_plataforma.not.ilike.si,acceso_plataforma.not.ilike.sí,acceso_plataforma.not.ilike.renovación,acceso_plataforma.not.ilike.revocado),and(acceso_plataforma.ilike.revocado,acceso_revocado_manual_en.not.is.null)"
     );
   }
 
@@ -1332,17 +1340,21 @@ export async function pausarMembresia(id: string, autor: string): Promise<Client
 // Revoca el acceso de forma permanente (ej. reembolso) — a diferencia de
 // "Pausar", no guarda días pendientes para reanudar después: marca "Acceso
 // a plataforma" en "Revocado" (no "No" — calcularAccesos() solo reconoce
-// "revocado" para anular los boletos, y es el mismo texto que ya usa el
-// filtro "Revocados" de la lista) y recalcula de inmediato para que no se
-// quede con los boletos de antes de la revocación. Si el cliente estaba
+// "revocado" para anular los boletos) y recalcula de inmediato para que no
+// se quede con los boletos de antes de la revocación. Si el cliente estaba
 // pausado, se limpia esa pausa para no dejar el botón "Reanudar" sobre un
 // acceso que ya se revocó por completo.
+// acceso_revocado_manual_en marca que esta revocación vino de este botón
+// (no del CSV histórico) — el filtro "Revocados" de /clientes solo muestra
+// a los que YA estaban así antes de este CRM; estos de aquí en adelante
+// cuentan como "Inactivos" (ver aplicarFiltrosClientes más abajo).
 export async function revocarAccesoCliente(id: string, autor: string): Promise<Cliente> {
   const ahora = new Date().toISOString();
   const { error } = await supabase
     .from("clientes")
     .update({
       acceso_plataforma: "Revocado",
+      acceso_revocado_manual_en: ahora,
       pausado_en: null,
       fin_acceso_al_pausar: null,
       // Si tenía un Apartado 50% corriendo, revocar el acceso lo resuelve
