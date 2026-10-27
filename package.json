@@ -24,6 +24,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@anthropic-ai/vertex-sdk": "^1.1.0",
+    "@google/genai": "^2.31.0",
     "@supabase/supabase-js": "^2.112.2",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.4.0",

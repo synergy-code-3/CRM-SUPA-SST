@@ -7,11 +7,13 @@
 // no puede funcionar aquí — mismo criterio que kajabi.ts/asistente-abeja-ia.ts.
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
 import { ErrorPeticion } from "./errores";
 
 const MODEL = process.env.CAPTURA_DATOS_CLAUDE_MODEL || "claude-sonnet-5-5";
+const GEMINI_MODEL = process.env.CAPTURA_DATOS_GEMINI_MODEL || "gemini-3.6-flash";
 
 const ExtractionSchema = z.object({
   esHojaDeRegistro: z
@@ -86,10 +88,7 @@ Si un campo está en blanco, devuélvelo vacío; nunca inventes datos.`;
 
 /** `mime`: image/jpeg|png|webp|gif o application/pdf (el PDF se manda completo, sin partirlo). */
 export async function extractFromImage(base64: string, mime = "image/jpeg"): Promise<Extraction> {
-  if (!/^sk-ant-\w/.test(process.env.ANTHROPIC_API_KEY ?? "")) {
-    throw new ErrorPeticion(503, "Falta configurar ANTHROPIC_API_KEY");
-  }
-  const out = await extractWithApi(base64, mime);
+  const out = process.env.CAPTURA_DATOS_IA === "gemini" ? await extractWithGemini(base64, mime) : await extractWithClaude(base64, mime);
   if (!out.esHojaDeRegistro) {
     return {
       ...normalizeFields({ ...out, folio: "", nombre: "", correo: "", telefono: "", tarjeta: "", marcaTarjeta: "", metodoPago: "", cantidad: "", membresia: "", notas: "" }),
@@ -124,7 +123,10 @@ function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
-async function extractWithApi(base64: string, mime: string): Promise<z.infer<typeof ExtractionSchema>> {
+async function extractWithClaude(base64: string, mime: string): Promise<z.infer<typeof ExtractionSchema>> {
+  if (!/^sk-ant-\w/.test(process.env.ANTHROPIC_API_KEY ?? "")) {
+    throw new ErrorPeticion(503, "Falta configurar ANTHROPIC_API_KEY");
+  }
   const client = new Anthropic();
   const response = await client.beta.messages.parse({
     model: MODEL,
@@ -151,4 +153,22 @@ async function extractWithApi(base64: string, mime: string): Promise<z.infer<typ
   const out = response.parsed_output;
   if (!out) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
   return out;
+}
+
+const GEMINI_SCHEMA = Object.fromEntries(Object.entries(z.toJSONSchema(ExtractionSchema)).filter(([clave]) => clave !== "$schema"));
+
+async function extractWithGemini(base64: string, mime: string): Promise<z.infer<typeof ExtractionSchema>> {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new ErrorPeticion(503, "Falta configurar GEMINI_API_KEY");
+  }
+  const ai = new GoogleGenAI({});
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType: mime, data: base64 } }, { text: PROMPT }] }],
+    config: { responseMimeType: "application/json", responseJsonSchema: GEMINI_SCHEMA },
+  });
+  if (!response.text) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
+  const resultado = ExtractionSchema.safeParse(JSON.parse(response.text));
+  if (!resultado.success) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
+  return resultado.data;
 }
