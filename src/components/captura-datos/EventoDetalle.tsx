@@ -196,7 +196,7 @@ export function EventoDetalle({ id }: { id: string }) {
         {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
         {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
         {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>}
-        <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} className="ml-auto hover:border-danger hover:bg-danger hover:text-white">Borrar evento</Boton>
+        <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}
@@ -258,9 +258,10 @@ export function EventoDetalle({ id }: { id: string }) {
   );
 }
 
-function Boton({ onClick, cargando, icono, primario, className = "", children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; className?: string; children: React.ReactNode }) {
+function Boton({ onClick, cargando, icono, primario, peligro, className = "", children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; peligro?: boolean; className?: string; children: React.ReactNode }) {
+  const variante = primario ? "bg-primary text-white" : peligro ? "border border-danger text-danger" : "border border-silver";
   return (
-    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${primario ? "bg-primary text-white" : "border border-silver"} ${className}`}>
+    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${variante} ${className}`}>
       {cargando ? <Loader2 className="h-4 w-4 animate-spin" /> : icono} {children}
     </button>
   );
