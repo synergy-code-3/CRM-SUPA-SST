@@ -1160,3 +1160,17 @@ alter table solicitudes_renovacion_externa enable row level security;
 -- escribe ese botón en acceso_plataforma porque calcularAccesos() (boletos.ts)
 -- depende de ese literal para anular los boletos del cliente.
 alter table clientes add column if not exists acceso_revocado_manual_en timestamptz;
+
+-- Auditoría de performance (2026-10-27): el índice btree de
+-- idx_clientes_acceso_plataforma no sirve para los .ilike() que usan los
+-- filtros de Estado (activos/revocados/inactivos) en aplicarFiltrosClientes
+-- — con 25k+ filas eso forzaba un seq scan en cada filtro (la causa más
+-- probable del "statement timeout" que vimos al agregar la columna de
+-- arriba). trigram sí acelera ILIKE, mismo patrón que nombre/email.
+create index if not exists idx_clientes_acceso_plataforma_trgm on clientes using gin (acceso_plataforma gin_trgm_ops);
+-- Parcial porque casi todas las filas tienen esta columna en null — solo
+-- indexa las pocas que sí importan para el filtro.
+create index if not exists idx_clientes_acceso_revocado_manual_en on clientes (acceso_revocado_manual_en) where acceso_revocado_manual_en is not null;
+-- El filtro de Etiquetas (resolverEtiquetasExtra en db.ts) usa .overlaps()
+-- sobre esta columna de arreglo sin índice.
+create index if not exists idx_clientes_etiquetas_extra on clientes using gin (etiquetas_extra);
