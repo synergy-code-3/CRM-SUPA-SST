@@ -1151,3 +1151,12 @@ create table if not exists solicitudes_renovacion_externa (
 );
 create index if not exists idx_solicitudes_renovacion_externa_estado on solicitudes_renovacion_externa (estado, creado_en desc);
 alter table solicitudes_renovacion_externa enable row level security;
+
+-- Distingue un cliente marcado "Revocado" desde siempre (CSV histórico, el
+-- filtro "Revocados" de /clientes sigue siendo para estos) de uno al que se
+-- le quitó el acceso con el botón "Revocar acceso" de este CRM a partir de
+-- ahora — esos deben contar como "Inactivos", no como "Revocados" (ver
+-- revocarAccesoCliente en db.ts). No se toca el texto "Revocado" que ya
+-- escribe ese botón en acceso_plataforma porque calcularAccesos() (boletos.ts)
+-- depende de ese literal para anular los boletos del cliente.
+alter table clientes add column if not exists acceso_revocado_manual_en timestamptz;
