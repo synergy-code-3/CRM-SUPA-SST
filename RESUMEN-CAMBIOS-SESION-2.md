@@ -221,6 +221,21 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   servidor y la ruta devuelve la lectura. **Hojas que ya quedaron bloqueadas** (SQL a correr a mano, ver la respuesta de la sesión):
   `update cap_hojas set origen = origen - 'leidaIa' where origen->>'leidaIa' = 'true' and coalesce(campos->>'folio','') = ''
   and coalesce(campos->>'nombre','') = '' and coalesce(campos->>'correo','') = '';`
+- **Captura de datos** (27 oct, lectura adelantada): al pulsar "Leer con IA" el servidor lee esa hoja y, ya con la respuesta
+  enviada (`after()` de Next), lee las **2 siguientes hojas libres**; al **confirmar** una hoja leída con IA completa hasta
+  **3** hojas libres por delante (la que sigue y las 2 posteriores). Orden = el de `tomar_hoja_libre` (Completo, Apartado,
+  Interesado, por id). Solo toca hojas `pendiente` sin datos, no las bloquea y no pisa lo que alguien ya esté escribiendo
+  (`guardarLecturaAdelantada`). Si la IA falla se detiene. Código nuevo en `src/lib/captura-datos/lectura-ia.ts`. Marca de
+  "lectura en curso" (`origen.leidaIaDesde`): si pasa de 3 min sin terminar (la función murió a medias) se considera
+  abandonada y la hoja se puede volver a leer. Las rutas `extract` y `hojas/[id]` tienen `maxDuration = 120`. Sin probar
+  contra Supabase/Gemini reales todavía. Sin SQL nuevo (todo vive en el jsonb `origen`).
+- **Captura de datos** (27 oct, "alta demanda"): ese mensaje es un 503 UNAVAILABLE de Gemini (modelo saturado en Google, no
+  cuota ni error de la app). `extract.ts` ahora reintenta: modelo principal, otra vez el principal y, al tercer intento, el
+  modelo de respaldo (`CAPTURA_DATOS_GEMINI_MODEL_RESPALDO`, por defecto `gemini-3.5-flash`), con plazo de 35 s por intento.
+  Si los 3 fallan, el mensaje dice "Gemini tiene alta demanda… intenta en un minuto".
+- **Captura de datos** (27 oct, borrar eventos): si el borrado falla porque falta la tabla `cap_solicitudes_borrado` o por la
+  relación de reaperturas, el error ahora lo dice (antes salía "Error interno"). Casi seguro falta correr
+  `supabase/captura-datos-borrado.sql` en Supabase (ver "Pendiente en Supabase" abajo).
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.

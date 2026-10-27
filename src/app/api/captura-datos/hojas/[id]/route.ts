@@ -1,10 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
 import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion } from "@/lib/captura-datos/db";
+import { adelantarLecturas } from "@/lib/captura-datos/lectura-ia";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
+
+export const maxDuration = 120; // el adelanto de lecturas (after) corre dentro de este plazo
+
+/** Quien confirma queda trabajando la siguiente hoja: esa y las dos que le siguen deben estar ya leídas. */
+const HOJAS_POR_ADELANTADO_AL_CONFIRMAR = 3;
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("verCapturaDatos");
@@ -40,6 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       try {
         const hoja = await confirmarHoja(id, permiso.usuario.id, b.campos, b.voucherBox ?? null, { forzarDuplicado: forzar, versionEsperada: b.version });
         const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario.id);
+        // Solo si se está trabajando con IA (la hoja se leyó con IA): se mantiene el adelanto sin gastar lecturas a quien no la usa.
+        if (!eventoCerrado && hoja.origen.leidaIa) after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_CONFIRMAR));
         return NextResponse.json({ hoja, eventoCerrado });
       } catch (err) {
         if (err instanceof ErrorFolioDuplicado) {

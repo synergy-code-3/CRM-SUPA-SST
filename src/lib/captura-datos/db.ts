@@ -59,12 +59,21 @@ type FilaHoja = {
   version: number;
 };
 
+/** Una lectura con IA reclamada que nunca terminó (la función murió a medias) deja de contar como leída pasado este tiempo. */
+export const LEASE_LECTURA_IA_MS = 3 * 60 * 1000;
+
+export function sinReclamoVencido(origen: FotoRef): FotoRef {
+  if (!origen.leidaIa || !origen.leidaIaDesde) return origen;
+  if (Date.now() - new Date(origen.leidaIaDesde).getTime() < LEASE_LECTURA_IA_MS) return origen;
+  return { ...origen, leidaIa: undefined, leidaIaDesde: undefined };
+}
+
 function filaAHoja(f: FilaHoja): HojaCaptura {
   return {
     id: f.id,
     eventoId: f.evento_id,
     estatus: f.estatus,
-    origen: f.origen,
+    origen: sinReclamoVencido(f.origen),
     estado: f.estado,
     bloqueadaPorId: f.bloqueada_por,
     bloqueadaHasta: f.bloqueada_hasta,
@@ -248,9 +257,20 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
   return filaAEvento(data as FilaEvento);
 }
 
+/** Si el borrado falla por falta del SQL de borrado en Supabase, se explica en vez de salir como "error interno". */
+function errorDeBorrado(error: { code?: string }): unknown {
+  if (error.code === "42P01" || error.code === "PGRST205") {
+    return new ErrorPeticion(503, "Falta crear la tabla del historial de borrados en Supabase: corre supabase/captura-datos-borrado.sql en el SQL Editor.");
+  }
+  if (error.code === "23503") {
+    return new ErrorPeticion(409, "El evento tiene registros ligados que impiden borrarlo: corre supabase/captura-datos-borrado.sql en Supabase (relación de reaperturas).");
+  }
+  return error;
+}
+
 export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
-  if (error) throw error;
+  if (error) throw errorDeBorrado(error);
 }
 
 // --- Hojas -------------------------------------------------------------
@@ -515,11 +535,14 @@ export async function actualizarCarpetaFotosEvento(eventoId: string, carpetaFoto
  * Devuelve false si la hoja ya se leyó antes. La marca vive en `origen` (jsonb), así que no hace falta migración.
  */
 export async function reclamarLecturaIa(id: string, origen: FotoRef): Promise<boolean> {
+  const ahora = Date.now();
+  const vencidas = new Date(ahora - LEASE_LECTURA_IA_MS).toISOString();
   const { data, error } = await supabase
     .from("cap_hojas")
-    .update({ origen: { ...origen, leidaIa: true } })
+    .update({ origen: { ...origen, leidaIa: true, leidaIaDesde: new Date(ahora).toISOString() } })
     .eq("id", id)
-    .is("origen->>leidaIa", null)
+    // Sin lectura previa, o una reclamada hace más del LEASE que nunca terminó (la función murió a medias).
+    .or(`origen->>leidaIa.is.null,origen->>leidaIaDesde.lt.${vencidas}`)
     .select("id")
     .maybeSingle();
   if (error) throw error;
@@ -528,8 +551,58 @@ export async function reclamarLecturaIa(id: string, origen: FotoRef): Promise<bo
 
 /** Devuelve la lectura cuando la IA no llegó a contestar (error de red o de la API): no se gastó nada. */
 export async function devolverLecturaIa(id: string, origen: FotoRef): Promise<void> {
-  const { error } = await supabase.from("cap_hojas").update({ origen: { ...origen, leidaIa: undefined } }).eq("id", id);
+  const { error } = await supabase.from("cap_hojas").update({ origen: { ...origen, leidaIa: undefined, leidaIaDesde: undefined } }).eq("id", id);
   if (error) throw error;
+}
+
+/** La IA ya contestó y se guardó: la lectura queda gastada (se quita la marca de "en curso"). */
+export async function finalizarLecturaIa(id: string, origen: FotoRef): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").update({ origen: { ...origen, leidaIa: true, leidaIaDesde: undefined } }).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Guarda una lectura adelantada solo si nadie tocó la hoja mientras la IA leía (sigue pendiente y sin datos);
+ * así nunca pisa lo que alguien ya estaba escribiendo. Devuelve false si no se guardó.
+ */
+export async function guardarLecturaAdelantada(id: string, campos: SheetFields, voucherBox: Box | null, origen: FotoRef): Promise<boolean> {
+  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version").eq("id", id).eq("estado", "pendiente").is("campos", null).maybeSingle();
+  if (errLectura) throw errLectura;
+  if (!actual) return false;
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({ campos, voucher_box: voucherBox, estado: "leida", version: actual.version + 1, origen: { ...origen, leidaIa: true, leidaIaDesde: undefined } })
+    .eq("id", id)
+    .eq("version", actual.version)
+    .eq("estado", "pendiente")
+    .is("campos", null)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+const ORDEN_ESTATUS: Estatus[] = ["Completo", "Apartado", "Interesado"];
+
+/** Las próximas `cantidad` hojas libres del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
+export async function siguientesHojasLibres(eventoId: string, cantidad: number): Promise<HojaCaptura[]> {
+  const ahora = new Date().toISOString();
+  const hojas: HojaCaptura[] = [];
+  for (const estatus of ORDEN_ESTATUS) {
+    if (hojas.length >= cantidad) break;
+    const { data, error } = await supabase
+      .from("cap_hojas")
+      .select("*")
+      .eq("evento_id", eventoId)
+      .eq("estatus", estatus)
+      .in("estado", ["pendiente", "leida"])
+      .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${ahora}`)
+      .order("id")
+      .limit(cantidad - hojas.length);
+    if (error) throw error;
+    hojas.push(...(data as FilaHoja[]).map(filaAHoja));
+  }
+  return hojas;
 }
 
 export async function marcarNoValida(huella: string): Promise<void> {
@@ -556,5 +629,5 @@ export async function registrarBorradoDirecto(input: { eventoId: string; eventoN
     resuelta_por: input.adminId,
     resuelta_en: new Date().toISOString(),
   });
-  if (error) throw error;
+  if (error) throw errorDeBorrado(error);
 }

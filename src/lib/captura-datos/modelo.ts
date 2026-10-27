@@ -31,6 +31,7 @@ export interface FotoRef {
   w?: number;
   h?: number;
   leidaIa?: boolean; // ya se usó "Leer con IA" en esta hoja: solo se permite una vez
+  leidaIaDesde?: string; // ISO: la lectura se reclamó pero aún no termina; pasado LEASE_LECTURA_IA_MS se considera abandonada
 }
 
 /**

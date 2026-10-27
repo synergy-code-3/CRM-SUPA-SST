@@ -7,10 +7,14 @@ import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
 import { ErrorPeticion } from "./errores";
 
 const GEMINI_MODEL = process.env.CAPTURA_DATOS_GEMINI_MODEL || "gemini-3.6-flash";
-// La ruta /extract tiene maxDuration = 120: hay que fallar antes para poder devolver la lectura (si Vercel corta la
-// función, la hoja queda marcada como leída sin haberse leído). Este valor también se envía a Gemini como su propio
-// plazo (cabecera X-Server-Timeout): si tarda más, responde 504 DEADLINE_EXCEEDED.
-const TIEMPO_MAXIMO_IA_MS = 100_000;
+// Si el modelo principal está saturado (503 "alta demanda") o falla de forma transitoria, se reintenta y al final se
+// prueba con otro modelo; las cuotas de Gemini son por modelo.
+const GEMINI_MODEL_RESPALDO = process.env.CAPTURA_DATOS_GEMINI_MODEL_RESPALDO || "gemini-3.5-flash";
+// Plazo POR INTENTO. Son 3 intentos y la ruta /extract tiene maxDuration = 120: hay que fallar antes para poder
+// devolver la lectura. Este valor también se envía a Gemini como su propio plazo (cabecera X-Server-Timeout): si
+// tarda más, responde 504 DEADLINE_EXCEEDED.
+const TIEMPO_MAXIMO_IA_MS = 35_000;
+const ESPERA_ENTRE_INTENTOS_MS = 2_000;
 
 const ExtractionSchema = z.object({
   esHojaDeRegistro: z
@@ -129,24 +133,21 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
     throw new ErrorPeticion(503, "Falta configurar GEMINI_API_KEY");
   }
   const ai = new GoogleGenAI({});
-  let texto: string | undefined;
+  const modelos = [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL_RESPALDO];
   const inicio = Date.now();
-  try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: "user", parts: [{ inlineData: { mimeType: mimeParaGemini(mime), data: base64 } }, { text: PROMPT }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: GEMINI_SCHEMA,
-        // Leer letra a mano no necesita razonamiento largo; el nivel por defecto de Gemini 3 puede tardar más del límite.
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        httpOptions: { timeout: TIEMPO_MAXIMO_IA_MS },
-      },
-    });
-    texto = response.text;
-  } catch (err) {
-    console.error(`captura-datos/extract (Gemini): falló tras ${Date.now() - inicio} ms (${GEMINI_MODEL}, ${mime}, ${Math.round((base64.length * 0.75) / 1024)} KB):`, err);
-    throw errorDeGemini(err);
+  let texto: string | undefined;
+  for (let intento = 0; intento < modelos.length; intento++) {
+    try {
+      texto = await pedirLecturaAGemini(ai, modelos[intento], base64, mime);
+      break;
+    } catch (err) {
+      console.error(
+        `captura-datos/extract (Gemini): intento ${intento + 1}/${modelos.length} con ${modelos[intento]} falló tras ${Date.now() - inicio} ms (${mime}, ${Math.round((base64.length * 0.75) / 1024)} KB):`,
+        err
+      );
+      if (intento === modelos.length - 1 || !esFalloTransitorio(err)) throw errorDeGemini(err);
+      await new Promise((ok) => setTimeout(ok, ESPERA_ENTRE_INTENTOS_MS));
+    }
   }
 
   let datos: unknown;
@@ -164,8 +165,32 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
   return resultado.data;
 }
 
+async function pedirLecturaAGemini(ai: GoogleGenAI, modelo: string, base64: string, mime: string): Promise<string | undefined> {
+  const response = await ai.models.generateContent({
+    model: modelo,
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType: mimeParaGemini(mime), data: base64 } }, { text: PROMPT }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseJsonSchema: GEMINI_SCHEMA,
+      // Leer letra a mano no necesita razonamiento largo; el nivel por defecto de Gemini 3 puede tardar mucho más.
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      httpOptions: { timeout: TIEMPO_MAXIMO_IA_MS },
+    },
+  });
+  return response.text;
+}
+
+/** Saturación (503), cuota por modelo (429), error del servidor o plazo vencido: vale la pena reintentar o cambiar de modelo. */
+function esFalloTransitorio(err: unknown): boolean {
+  if (err instanceof ApiError) return [429, 500, 503, 504].includes(err.status);
+  return err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+}
+
 /** Mensaje claro para quien usa la app; el detalle real ya quedó en la consola del servidor. */
 function errorDeGemini(err: unknown): ErrorPeticion {
+  if (err instanceof ApiError && err.status === 503) {
+    return new ErrorPeticion(503, "Gemini tiene alta demanda en este momento. Intenta de nuevo en un minuto.");
+  }
   if (err instanceof ApiError && err.status === 429) {
     return new ErrorPeticion(503, "Gemini no tiene cuota disponible ahora. Espera un minuto e intenta de nuevo.");
   }
