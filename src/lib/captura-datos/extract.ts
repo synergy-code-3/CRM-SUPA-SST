@@ -1,17 +1,11 @@
-// Lectura con IA de una hoja de inscripción escaneada. A diferencia del
-// proyecto original, aquí SOLO existen modos de API (no el modo "claude-code",
-// que ejecutaba la CLI de la máquina del operador y no sirve en Vercel).
-// Por defecto usa Gemini (GEMINI_API_KEY); CAPTURA_DATOS_IA=claude usa Claude
-// (ANTHROPIC_API_KEY). Sin la clave del proveedor elegido se tira un error
-// claro — mismo criterio que kajabi.ts/asistente-abeja-ia.ts.
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+// Lectura con IA (Gemini) de una hoja de inscripción escaneada. Sin
+// GEMINI_API_KEY se tira un error claro — mismo criterio que
+// kajabi.ts/asistente-abeja-ia.ts.
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
 import { ErrorPeticion } from "./errores";
 
-const MODEL = process.env.CAPTURA_DATOS_CLAUDE_MODEL || "claude-sonnet-5-5";
 const GEMINI_MODEL = process.env.CAPTURA_DATOS_GEMINI_MODEL || "gemini-3.6-flash";
 
 const ExtractionSchema = z.object({
@@ -87,7 +81,7 @@ Si un campo está en blanco, devuélvelo vacío; nunca inventes datos.`;
 
 /** `mime`: image/jpeg|png|webp|gif o application/pdf (el PDF se manda completo, sin partirlo). */
 export async function extractFromImage(base64: string, mime = "image/jpeg"): Promise<Extraction> {
-  const out = process.env.CAPTURA_DATOS_IA === "claude" ? await extractWithClaude(base64, mime) : await extractWithGemini(base64, mime);
+  const out = await extractWithGemini(base64, mime);
   if (!out.esHojaDeRegistro) {
     return {
       ...normalizeFields({ ...out, folio: "", nombre: "", correo: "", telefono: "", tarjeta: "", marcaTarjeta: "", metodoPago: "", cantidad: "", membresia: "", notas: "" }),
@@ -114,44 +108,14 @@ export async function extractFromImage(base64: string, mime = "image/jpeg"): Pro
   };
 }
 
-function imagenMime(mime: string) {
-  return (["image/png", "image/webp", "image/gif"].includes(mime) ? mime : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+const MIMES_GEMINI = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];
+
+function mimeParaGemini(mime: string): string {
+  return MIMES_GEMINI.includes(mime) ? mime : "image/jpeg";
 }
 
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
-}
-
-async function extractWithClaude(base64: string, mime: string): Promise<z.infer<typeof ExtractionSchema>> {
-  if (!/^sk-ant-\w/.test(process.env.ANTHROPIC_API_KEY ?? "")) {
-    throw new ErrorPeticion(503, "Falta configurar ANTHROPIC_API_KEY");
-  }
-  const client = new Anthropic();
-  const response = await client.beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium", format: zodOutputFormat(ExtractionSchema) },
-    messages: [
-      {
-        role: "user",
-        content: [
-          mime === "application/pdf"
-            ? { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 } }
-            : { type: "image" as const, source: { type: "base64" as const, media_type: imagenMime(mime), data: base64 } },
-          { type: "text", text: PROMPT },
-        ],
-      },
-    ],
-  });
-
-  if (response.stop_reason === "refusal") {
-    throw new ErrorPeticion(502, "La IA rechazó procesar esta imagen.");
-  }
-  const out = response.parsed_output;
-  if (!out) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
-  return out;
 }
 
 const GEMINI_SCHEMA = Object.fromEntries(Object.entries(z.toJSONSchema(ExtractionSchema)).filter(([clave]) => clave !== "$schema"));
@@ -163,7 +127,7 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
   const ai = new GoogleGenAI({});
   const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType: mime, data: base64 } }, { text: PROMPT }] }],
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType: mimeParaGemini(mime), data: base64 } }, { text: PROMPT }] }],
     config: { responseMimeType: "application/json", responseJsonSchema: GEMINI_SCHEMA },
   });
   if (!response.text) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");

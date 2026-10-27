@@ -19,15 +19,15 @@ npm install
 Agrega esto a tu `.env.local` (los valores reales, ya configurados en Vercel/Supabase — pégalos tal cual):
 
 ```
-ANTHROPIC_API_KEY=
-CAPTURA_DATOS_CLAUDE_MODEL=claude-sonnet-5-5
+GEMINI_API_KEY=
+CAPTURA_DATOS_GEMINI_MODEL=gemini-3.6-flash
 APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbzpH00pglfmbucCq43GMaV0cNPjJCrdb3D1Z_koGNaF3wxRvG2Cp1YA7vYMAodZlb40/exec
 APPS_SCRIPT_SECRET=<pídeselo a Samuel; no vive en el repo>
 AXIS_TELEFONO_URL=
 ```
 
-`ANTHROPIC_API_KEY` sigue vacío — todavía no se consiguió. Sin ella, la lectura con IA de las hojas no funciona
-(tira "Falta configurar ANTHROPIC_API_KEY"), pero el resto de la sección sí.
+`GEMINI_API_KEY` se saca de https://aistudio.google.com/apikey. Sin ella, la lectura con IA de las hojas no funciona
+(tira "Falta configurar GEMINI_API_KEY"), pero el resto de la sección sí.
 
 **No hace falta tocar Supabase**: las tablas nuevas (`cap_eventos`, `cap_hojas`, etc.) y los buckets de Storage
 (`cap-fotos`, `cap-excel`) ya están creados en la base de datos compartida — se ven solos desde cualquier máquina.
@@ -41,14 +41,14 @@ PC y quieres conservarla de respaldo, es tuya; no afecta nada seguir trabajando 
 ## En qué va el avance (7 fases, ver el plan completo más abajo)
 
 - ✅ **Fase 1** — Esquema de Supabase (tablas `cap_*` + función `tomar_hoja_libre`, ya corridas), dependencias nuevas
-  (`@anthropic-ai/sdk`, `exceljs`, `pdfjs-dist`, `react-zoom-pan-pinch`, `zod`), plantilla de Excel.
+  (`@google/genai`, `exceljs`, `pdfjs-dist`, `react-zoom-pan-pinch`, `zod`), plantilla de Excel.
 - ✅ **Fase 2** — Toda la librería portada: `src/lib/captura-datos/` (modelo, validación, `db.ts` con el CRUD real,
   Google Drive, Axis por teléfono, lectura con IA, generación de Excel). Probada de punta a punta contra Supabase.
 - ✅ **Fase 3** — Las 13 rutas API bajo `src/app/api/captura-datos/*` (eventos, hojas, tomar/liberar, confirmar,
   Drive, Axis). Probadas de punta a punta (crear evento → hojas → tomar → confirmar → folio duplicado → eliminar).
 - ⏳ **Fase 4** — Probar Google Drive de verdad (ya con las credenciales reales). Falta que Samuel pase el enlace de
   una carpeta de Drive de prueba para completarla.
-- ⏳ **Fase 5** — Probar la lectura con IA de verdad (falta `ANTHROPIC_API_KEY`).
+- ⏳ **Fase 5** — Probar la lectura con IA de verdad (falta `GEMINI_API_KEY`).
 - ✅ **Fase 6** — UI escrita (sin probar en navegador todavía): lista de eventos, detalle de evento y editor de hojas. Ver
   "Cambios de la sesión 3" abajo.
 - ⏳ **Fase 7** — Borrar la carpeta `Escaner de hojas/` cuando ya no haga falta de referencia (con tu visto bueno).
@@ -63,7 +63,7 @@ Acceso: **solo admin** por ahora (`verCapturaDatos` en `permisos.ts`) — coordi
   (`setInterval`), igual que el resto del proyecto.
 - `lib/axis.ts` de Captura de Datos (busca por teléfono) es un archivo aparte del `src/lib/axis.ts` del Club (busca
   por correo, otro endpoint) — no se fusionan.
-- Se quitó el modo "Claude Code local" del lector de IA original (no sirve en Vercel) — solo queda el modo API real.
+- Se quitó el modo "local" (CLI en la máquina del operador) del lector de IA original (no sirve en Vercel) — solo queda el modo API real, con Gemini.
 
 El plan completo y detallado (con el esquema SQL exacto, el mapeo de cada archivo portado, y el diseño de cada ruta)
 está guardado en esta sesión de Claude Code — si se retoma en la otra máquina desde una sesión nueva, dile a Claude
@@ -100,9 +100,6 @@ que lea este resumen primero y que continúe con la Fase 4 en adelante.
 - **Tests (vitest 3, `npm test` / `npm run test:coverage`):** 36 tests sobre `fields`, `conciliacion`, `enlaces`,
   `validacion`/`modelo` y `cliente` (cobertura 81 % de esos archivos). **No** cubren `db.ts`, `google.ts`, `extract.ts`,
   rutas ni componentes (necesitan Supabase/Drive/IA; se prueban en vivo).
-- **`scripts/evaluar-lectura-ia.ts`** (comparar modelos con poco gasto): por defecto solo cuenta tokens (gratis);
-  `--ejecutar` procesa máx. `--max` archivos (por defecto 2, tope duro 5). Los precios se pasan por flag. Uso:
-  `npx tsx scripts/evaluar-lectura-ia.ts <carpeta> --modelo=claude-sonnet-5-5`.
 
 **Fase 4 (parcial, solo lectura de Drive):** con la carpeta de prueba "Test" funcionan `infoCarpeta`, `listarArchivos` y
 `descargarArchivo` (subcarpetas Interesados: 3 fotos JPEG, Apartados: 4). Falta probar lo que escribe en Drive
@@ -213,9 +210,8 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 
 - **Lectura de hojas con Gemini** (27 oct): `src/lib/captura-datos/extract.ts` lee las hojas con Gemini
   (`@google/genai`, modelo `gemini-3.6-flash`, cambiable con `CAPTURA_DATOS_GEMINI_MODEL`) y pide `GEMINI_API_KEY`.
-  `CAPTURA_DATOS_IA=claude` fuerza Claude (`ANTHROPIC_API_KEY`). Variables en `.env.example`. Sin probar contra la API todavía.
-- Probe de Claude vía Vertex AI (`scripts/probar-claude-vertex.ts`, paquete `@anthropic-ai/vertex-sdk`): ya no es la ruta
-  elegida; se puede borrar junto con el paquete.
+  Es el único proveedor de IA de las hojas: se quitó todo lo de Claude (código, scripts `evaluar-lectura-ia.ts` y
+  `probar-claude-vertex.ts`, paquetes de Anthropic y variables). Variables en `.env.example`. Sin probar contra la API todavía.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.
