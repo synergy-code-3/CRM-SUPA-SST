@@ -248,6 +248,7 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 
 Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
 1. `supabase/captura-datos-borrado.sql` (opcional: solo la cascada de reaperturas; el código ya la suple al borrar; ya no crea tabla).
-2. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`).
+2. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`). **Obligatorio**: sin la columna,
+   crear un evento falla (ahora el error lo dice); el orden de `tomar_hoja_libre` es el que sigue la lectura adelantada.
 3. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
 4. Opcional: `supabase/captura-datos-ajustes.sql` (índices y revocar EXECUTE; la función ya la reemplaza el paso 2).
