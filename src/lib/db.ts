@@ -478,7 +478,18 @@ export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promis
   return filas.map(filaACliente);
 }
 
-export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membresias: string[]; etiquetas: string[] }> {
+type OpcionesFiltro = { eventos: string[]; membresias: string[]; etiquetas: string[] };
+// Caché en memoria del proceso: listarOpcionesFiltro() escaneaba la tabla
+// completa de clientes (traerTodo, de 1000 en 1000) en cada visita a la
+// pestaña Clientes, y de nuevo dentro de resolverFiltroTipoEvento() en cada
+// búsqueda/filtro con Webinar/Presencial activo — estos valores cambian
+// poquísimo en el día a día, no hace falta recalcularlos en cada request.
+let cacheOpcionesFiltro: { valor: OpcionesFiltro; expiraEn: number } | null = null;
+const TTL_OPCIONES_FILTRO_MS = 5 * 60_000;
+
+export async function listarOpcionesFiltro(): Promise<OpcionesFiltro> {
+  if (cacheOpcionesFiltro && cacheOpcionesFiltro.expiraEn > Date.now()) return cacheOpcionesFiltro.valor;
+
   const filas = await traerTodo<{
     evento: string | null;
     tipo_membresia: string | null;
@@ -494,11 +505,13 @@ export async function listarOpcionesFiltro(): Promise<{ eventos: string[]; membr
     if (f.etiqueta) etiquetas.add(f.etiqueta);
     for (const e of f.etiquetas_extra ?? []) etiquetas.add(e);
   }
-  return {
+  const valor: OpcionesFiltro = {
     eventos: Array.from(eventos).sort((a, b) => a.localeCompare(b)),
     membresias: Array.from(membresias).sort((a, b) => a.localeCompare(b)),
     etiquetas: Array.from(etiquetas).sort((a, b) => a.localeCompare(b)),
   };
+  cacheOpcionesFiltro = { valor, expiraEn: Date.now() + TTL_OPCIONES_FILTRO_MS };
+  return valor;
 }
 
 export async function obtenerCliente(id: string): Promise<Cliente | null> {

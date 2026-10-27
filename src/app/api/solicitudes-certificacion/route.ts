@@ -25,11 +25,20 @@ export async function GET(req: NextRequest) {
     estado,
   });
 
+  // Firmar comprobantes es una llamada a Storage por archivo — solo
+  // pendiente/correo_invalido los muestran inline en la tarjeta; para el
+  // resto se firma bajo demanda al abrir el detalle (ver GET
+  // /api/solicitudes-certificacion/[id]/comprobantes), mismo criterio que
+  // GET /api/solicitudes.
   const conUrls = await Promise.all(
-    solicitudes.map(async (s) => ({
-      ...s,
-      comprobantesUrl: await Promise.all(s.comprobantes.map((ruta) => urlFirmadaComprobante(ruta))),
-    }))
+    solicitudes.map(async (s) => {
+      if (s.estado !== "pendiente") return { ...s, comprobantesUrl: [] as string[] };
+      const resultados = await Promise.allSettled(s.comprobantes.map((ruta) => urlFirmadaComprobante(ruta)));
+      const comprobantesUrl = resultados
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+        .map((r) => r.value);
+      return { ...s, comprobantesUrl };
+    })
   );
 
   return NextResponse.json({ solicitudes: conUrls });
