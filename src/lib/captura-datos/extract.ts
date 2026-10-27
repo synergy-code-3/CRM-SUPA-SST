@@ -1,10 +1,9 @@
 // Lectura con IA de una hoja de inscripción escaneada. A diferencia del
-// proyecto original, aquí SOLO existe el modo "api" (Anthropic real) — se
-// quita el modo "claude-code" (ejecutaba la CLI de Claude Code instalada en
-// la máquina del operador; no tiene sentido en un servidor de Vercel, que
-// no tiene la CLI ni una sesión de Claude Code iniciada). Sin
-// ANTHROPIC_API_KEY, se tira un error claro en vez de intentar un modo que
-// no puede funcionar aquí — mismo criterio que kajabi.ts/asistente-abeja-ia.ts.
+// proyecto original, aquí SOLO existen modos de API (no el modo "claude-code",
+// que ejecutaba la CLI de la máquina del operador y no sirve en Vercel).
+// Por defecto usa Gemini (GEMINI_API_KEY); CAPTURA_DATOS_IA=claude usa Claude
+// (ANTHROPIC_API_KEY). Sin la clave del proveedor elegido se tira un error
+// claro — mismo criterio que kajabi.ts/asistente-abeja-ia.ts.
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { GoogleGenAI } from "@google/genai";
@@ -88,7 +87,7 @@ Si un campo está en blanco, devuélvelo vacío; nunca inventes datos.`;
 
 /** `mime`: image/jpeg|png|webp|gif o application/pdf (el PDF se manda completo, sin partirlo). */
 export async function extractFromImage(base64: string, mime = "image/jpeg"): Promise<Extraction> {
-  const out = process.env.CAPTURA_DATOS_IA === "gemini" ? await extractWithGemini(base64, mime) : await extractWithClaude(base64, mime);
+  const out = process.env.CAPTURA_DATOS_IA === "claude" ? await extractWithClaude(base64, mime) : await extractWithGemini(base64, mime);
   if (!out.esHojaDeRegistro) {
     return {
       ...normalizeFields({ ...out, folio: "", nombre: "", correo: "", telefono: "", tarjeta: "", marcaTarjeta: "", metodoPago: "", cantidad: "", membresia: "", notas: "" }),

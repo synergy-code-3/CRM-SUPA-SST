@@ -211,9 +211,9 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 
 - **Captura de datos** (26 oct): en el detalle del evento, "Cerrar evento" ocupa el lugar de "Borrar evento" y este va a la derecha (hover rojo con texto blanco); el aviso de borrado ya no menciona el historial.
 
-- **Lectura de hojas con Gemini** (27 oct): `src/lib/captura-datos/extract.ts` puede leer las hojas con Gemini
-  (`@google/genai`, modelo `gemini-3.6-flash`) si `CAPTURA_DATOS_IA=gemini`; por defecto sigue Claude. Variables nuevas en
-  `.env.example`: `CAPTURA_DATOS_IA`, `GEMINI_API_KEY`, `CAPTURA_DATOS_GEMINI_MODEL`. Sin probar contra la API todavía.
+- **Lectura de hojas con Gemini** (27 oct): `src/lib/captura-datos/extract.ts` lee las hojas con Gemini
+  (`@google/genai`, modelo `gemini-3.6-flash`, cambiable con `CAPTURA_DATOS_GEMINI_MODEL`) y pide `GEMINI_API_KEY`.
+  `CAPTURA_DATOS_IA=claude` fuerza Claude (`ANTHROPIC_API_KEY`). Variables en `.env.example`. Sin probar contra la API todavía.
 - Probe de Claude vía Vertex AI (`scripts/probar-claude-vertex.ts`, paquete `@anthropic-ai/vertex-sdk`): ya no es la ruta
   elegida; se puede borrar junto con el paquete.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
