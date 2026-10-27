@@ -17,6 +17,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [origen, setOrigen] = useState<OrigenEvento>("local");
   const [estatus, setEstatus] = useState<Estatus>("Completo");
   const [nombre, setNombre] = useState("");
+  const [fecha, setFecha] = useState("");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enlaceBuscado, setEnlaceBuscado] = useState(""); // el enlace que produjo `info` (no el que se esté editando)
@@ -44,7 +45,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     setError(null);
     try {
       const evento = eventoCreado ?? (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
-        json: { nombre, estatus, origen, destino: { id: info.id, url: info.url, nombre: info.nombre } },
+        json: { nombre, fecha, estatus, origen, destino: { id: info.id, url: info.url, nombre: info.nombre } },
       })).evento;
       setEventoCreado(evento);
       if (origen === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
@@ -61,6 +62,11 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Nombre del evento</span>
           <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Evento Guadalajara" maxLength={200} className={CLASE_INPUT} />
+        </label>
+
+        <label className="block space-y-1 text-sm">
+          <span className="text-muted">Fecha del evento</span>
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={CLASE_INPUT} />
         </label>
 
         <label className="block space-y-1 text-sm">
@@ -105,7 +111,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button onClick={() => setConfirmandoCierre(true)} disabled={cargando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
-          <button onClick={crear} disabled={!info || cargando} className={CLASE_BOTON}>
+          <button onClick={crear} disabled={!info || !fecha || cargando} className={CLASE_BOTON}>
             {cargando && info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear evento"}
           </button>
         </div>

@@ -14,6 +14,7 @@ export const maxDuration = 60;
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("verCapturaDatos");
   if (!permiso.ok) return permiso.respuesta;
+  if (permiso.usuario.rol !== "admin") return NextResponse.json({ error: "No tienes permiso para esto" }, { status: 403 });
 
   const { id } = await params;
   try {

@@ -3,9 +3,13 @@ node_modules
 dev.log
 *.tsbuildinfo
 .env*.local
+.claude
 
 # Datos reales de clientes (PII) — nunca al repo, el repo es público.
 data/db.json
 Atención y Seguimiento - Club Sinergético - Registro de atención.csv
 Atención y Seguimiento - Club Sinergético - DISPUTAS 2025.csv
 Atención y Seguimiento - Club Sinergético - DISPUTAS 2026.csv
+
+# Script de Google Apps Script (copia local para pegar en Drive)
+/Codigo-para-pegar.gs

@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload, Users } from "lucide-react";
-import { AsignacionesModal } from "./AsignacionesModal";
+import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
+import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
 import { Modal } from "./Modal";
-import { SolicitudBorradoModal } from "./SolicitudBorradoModal";
-import { api, ErrorApi, imagenAJpeg } from "@/lib/captura-datos/cliente";
+import { BorrarEventoModal } from "./BorrarEventoModal";
+import { SubirFotosModal } from "./SubirFotosModal";
+import { api, ErrorApi, formatearFecha, imagenAJpeg } from "@/lib/captura-datos/cliente";
+import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
@@ -22,16 +24,17 @@ const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber
 
 export function EventoDetalle({ id }: { id: string }) {
   const { usuario } = useSesion();
-  const [evento, setEvento] = useState<EventoCaptura | null>(null);
-  const [hojas, setHojas] = useState<HojaCaptura[]>([]);
+  const router = useRouter();
+  const cacheado = leerCache<{ evento: EventoCaptura; hojas: HojaCaptura[] }>(usuario?.id, `evento:${id}`);
+  const [evento, setEvento] = useState<EventoCaptura | null>(cacheado?.evento ?? null);
+  const [hojas, setHojas] = useState<HojaCaptura[]>(cacheado?.hojas ?? []);
   const [actual, setActual] = useState<HojaCaptura | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
-  const [estatusSubida, setEstatusSubida] = useState<Estatus>("Completo");
+  const [subiendoFotos, setSubiendoFotos] = useState(false);
+  const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
-  const [asignando, setAsignando] = useState(false);
   const [borrando, setBorrando] = useState(false);
-  const entrada = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -41,10 +44,11 @@ export function EventoDetalle({ id }: { id: string }) {
       ]);
       setEvento(e.evento);
       setHojas(h.hojas);
+      guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas });
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
     }
-  }, [id]);
+  }, [id, usuario?.id]);
 
   usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
@@ -90,16 +94,14 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
-  async function subirFotos(archivos: FileList | null) {
-    if (!archivos?.length) return;
-    setOcupado("subir");
+  async function subirFotos(archivos: File[], estatus: Estatus) {
     setMensaje(null);
     try {
-      const lista = [...archivos].filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
+      const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
       for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
         const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
         const form = new FormData();
-        form.set("estatus", estatusSubida);
+        form.set("estatus", estatus);
         form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
         // Los PDF se suben tal cual (sin partir); las imágenes se reducen a JPEG.
         for (const a of tanda) {
@@ -111,9 +113,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await cargar();
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");
-    } finally {
-      setOcupado(null);
-      if (entrada.current) entrada.current.value = "";
+      throw err;
     }
   }
 
@@ -124,7 +124,7 @@ export function EventoDetalle({ id }: { id: string }) {
     setExito(null);
     try {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion, ...opciones } });
-      setExito(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : "Se subió a Drive correctamente. El evento sigue abierto.");
+      setExito(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : evento?.estado === "abierto" ? "Se subió a Drive correctamente. El evento sigue abierto." : "Se subió a Drive correctamente.");
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
@@ -148,10 +148,19 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
+  function alternarSeccion(estatus: Estatus) {
+    setColapsadas((previas) => {
+      const nuevas = new Set(previas);
+      if (!nuevas.delete(estatus)) nuevas.add(estatus);
+      return nuevas;
+    });
+  }
+
   if (!evento) return <p className="py-12 text-center text-sm text-muted">{mensaje ?? "Cargando…"}</p>;
 
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
+  const hayCaptura = conteo("confirmada") > 0;
 
   if (actual) {
     return (
@@ -167,6 +176,7 @@ export function EventoDetalle({ id }: { id: string }) {
       <div>
         <h1 className="break-words text-2xl font-semibold text-foreground">{evento.nombre}</h1>
         <p className="text-sm text-muted">
+          {evento.fecha && <>{formatearFecha(evento.fecha)} · </>}
           {conteo("confirmada")} confirmadas · {porRevisar} por revisar{conteo("no_valida") ? ` · ${conteo("no_valida")} no válidas` : ""}
           {evento.drive && <> · <a href={evento.drive.hojaUrl} target="_blank" rel="noreferrer" className="text-primary underline">Hoja en Drive</a></>}
         </p>
@@ -176,36 +186,32 @@ export function EventoDetalle({ id }: { id: string }) {
       {mensaje && <AvisoTemporal key={mensaje} peligro onCerrar={() => setMensaje(null)}>{mensaje}</AvisoTemporal>}
 
       <div className="flex flex-wrap items-center gap-2">
-        {evento.estado === "abierto" ? (
+        {evento.estado === "abierto" && (
           <>
-            <Boton onClick={() => void tomarSiguiente()} cargando={ocupado === "tomar"} icono={<PlayCircle className="h-4 w-4" />} primario>Tomar siguiente hoja</Boton>
-            {evento.origen === "local" && (
-              <>
-                <select value={estatusSubida} onChange={(e) => setEstatusSubida(e.target.value as Estatus)} className="rounded-lg border border-silver bg-surface px-2 py-2 text-sm">
-                  {ESTATUS.map((e) => <option key={e.value}>{e.value}</option>)}
-                </select>
-                <Boton onClick={() => entrada.current?.click()} cargando={ocupado === "subir"} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
-                <input ref={entrada} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => subirFotos(e.target.files)} />
-              </>
-            )}
-            <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
+            <Boton onClick={() => void tomarSiguiente()} cargando={ocupado === "tomar"} icono={<PlayCircle className="h-4 w-4" />} primario>{hayCaptura ? "Seguir capturando" : "Empezar a Capturar"}</Boton>
+            <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
-        ) : (
-          usuario?.rol === "admin" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>
         )}
-        {usuario?.rol === "admin" && <Boton onClick={() => setAsignando(true)} icono={<Users className="h-4 w-4" />}>Personas</Boton>}
-        {usuario?.rol === "admin" && <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />}>Solicitar borrado</Boton>}
-        <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>
-        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />} className="ml-auto">Cerrar evento</Boton>}
+        <Boton onClick={() => window.confirm(evento.estado === "abierto" && porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
+        {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
+        {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
+        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>}
+        <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} className="ml-auto hover:border-danger hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
 
       {ocupado === "confirmar" && <SubiendoADrive />}
-      {asignando && <AsignacionesModal eventoId={id} onCerrar={() => setAsignando(false)} />}
+      {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}
       {borrando && (
-        <SolicitudBorradoModal
+        <BorrarEventoModal
           eventoId={id}
+          nombre={evento.nombre}
           onCerrar={() => setBorrando(false)}
-          onEnviada={() => { setBorrando(false); setExito("Solicitud enviada. El evento se borrará solo si se aprueba."); }}
+          onBorrado={() => {
+            setBorrando(false);
+            olvidarCache(usuario?.id, `evento:${id}`);
+            olvidarCache(usuario?.id, "eventos");
+            router.push("/captura-datos");
+          }}
         />
       )}
 
@@ -214,8 +220,12 @@ export function EventoDetalle({ id }: { id: string }) {
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
             <section key={e.value} aria-label={e.carpeta} className="space-y-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">{e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span></h2>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <h2 className="text-sm font-semibold text-foreground">
+                <button onClick={() => alternarSeccion(e.value)} aria-expanded={!colapsadas.has(e.value)} className="flex w-full items-center gap-2 text-left">
+                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> {e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                </button>
+              </h2>
+              {!colapsadas.has(e.value) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lista.map((h) => (
                   <li key={h.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
                     <span className="min-w-0 flex-1 basis-40 space-y-1">
@@ -239,7 +249,7 @@ export function EventoDetalle({ id }: { id: string }) {
                     </span>
                   </li>
                 ))}
-              </ul>
+              </ul>}
             </section>
           ))}
         </div>

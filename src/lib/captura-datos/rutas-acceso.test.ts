@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const RAIZ = join(process.cwd(), "src/app/api/captura-datos");
-// Rutas que no son de un evento/hoja concreto o cuyo control de acceso es otro (rol admin / aprobador).
-const EXENTAS = new Set(["eventos/route.ts", "solicitudes-borrado/route.ts", "solicitudes-borrado/[id]/route.ts", "axis/route.ts", "drive/carpeta/route.ts"]);
+// Rutas que no son de un evento/hoja concreto o cuyo control de acceso es otro (rol admin).
+const EXENTAS = new Set(["eventos/route.ts", "axis/route.ts", "drive/carpeta/route.ts"]);
 
 function rutas(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -25,8 +25,9 @@ describe("rutas de evento y hoja", () => {
     expect(codigo).toMatch(/requerir(Evento|Hoja)\(permiso\.usuario/);
   });
 
-  it("DELETE de evento no borra directamente (solo solicita)", () => {
+  it("DELETE de evento borra solo vía borrarEventoDirecto (deja historial)", () => {
     const codigo = readFileSync(join(RAIZ, "eventos/[id]/route.ts"), "utf8");
     expect(codigo).not.toMatch(/eliminarEvento/);
+    expect(codigo).toMatch(/borrarEventoDirecto/);
   });
 });

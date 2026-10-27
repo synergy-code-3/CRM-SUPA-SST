@@ -349,14 +349,14 @@ export function fromRecord(r: Partial<Record<keyof SheetRecord, string | number>
 }
 
 /** Nombre del archivo de la foto: "<folio>_<Nombre_sin_acentos>.jpg" (o "…_pago2.jpg" en un pago adicional de la misma ficha). */
-export function imageFileName(fields: SheetFields, pago?: number): string {
+export function imageFileName(fields: SheetFields, pago?: number, extension: "jpg" | "pdf" = "jpg"): string {
   const safeName = fields.nombre
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\w ]/g, "")
     .trim()
     .replace(/\s+/g, "_");
-  return `${fields.folio}_${safeName || "sin_nombre"}${pago ? `_pago${pago}` : ""}.jpg`;
+  return `${fields.folio}_${safeName || "sin_nombre"}${pago ? `_pago${pago}` : ""}.${extension}`;
 }
 
 /** Renglones en blanco entre las secciones (Completos / Apartados / Interesados) de la Hoja de Drive y del Excel. */

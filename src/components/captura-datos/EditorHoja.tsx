@@ -31,6 +31,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
   const [leyendo, setLeyendo] = useState(false);
+  const [leidaIa, setLeidaIa] = useState(!!inicial.origen.leidaIa); // la IA solo lee una vez cada hoja
   const [confirmando, setConfirmando] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
   const [cambiando, setCambiando] = useState(false); // saltando a otra hoja desde la tira
@@ -162,10 +163,12 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
   }
 
   async function leerConIa() {
+    if (leidaIa) return;
     setLeyendo(true);
     setError(null);
     try {
       if (!(await guardar())) return;
+      setLeidaIa(true); // se bloquea de inmediato: el servidor ya cobra la lectura aunque se salgan
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
       const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
       if (!leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
@@ -178,6 +181,8 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
       setGuardado("guardado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo leer la hoja.");
+      if (err instanceof ErrorApi && err.status === 409 && !bloqueadaRef.current) setLeidaIa(true); // ya estaba leída o la tiene otra persona
+      else if (!(err instanceof ErrorApi && err.status === 422)) setLeidaIa(!!inicial.origen.leidaIa); // la IA no contestó: se puede reintentar
       if (err instanceof ErrorApi && err.status === 422) await onSiguiente(); // no es una hoja de registro: ya quedó marcada
       else if (err instanceof ErrorApi && err.status === 409) { bloqueadaRef.current = true; setBloqueada(true); }
     } finally {
@@ -275,8 +280,8 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
           </div>
         )}
 
-        <button onClick={leerConIa} disabled={trabajando || reedicion} className="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary">
-          {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Leer con IA
+        <button onClick={leerConIa} disabled={trabajando || reedicion || leidaIa} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary">
+          {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {leidaIa ? "Hoja ya leída con IA" : "Leer con IA"}
         </button>
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
@@ -300,22 +305,27 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
               <input value={campos.correo} onChange={(e) => cambiar("correo", sanitizeInput("correo", e.target.value))} maxLength={80} type="email" className={claseAxis(conciliacion?.correo)} />
             </Campo>
           </div>
-          {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. */}
-          <div className="h-[3.25rem] space-y-1.5">
-            {axis?.estado === "encontrado" && (
-              <>
-                <p className="truncate text-xs text-muted">Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {CAMPOS_COMPARABLES_ETIQUETA.map(({ k, texto }) => (
-                    <button key={k} type="button" onClick={() => usarDatoAxis(k)} disabled={!hayDiferencia(k)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition hover:bg-primary hover:text-white disabled:cursor-default disabled:border-silver disabled:bg-transparent disabled:text-muted disabled:opacity-50 disabled:shadow-none disabled:hover:bg-transparent disabled:hover:text-muted">
-                      <ArrowLeftRight className="h-3 w-3" /> {texto}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            {axis?.estado === "no_encontrado" && <Aviso>Este teléfono no se encontró en Axis.</Aviso>}
+          {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. Los botones siempre se ven; solo se activan si hay diferencia. */}
+          <div className="space-y-1.5">
+            <p className="h-4 truncate text-xs text-muted">
+              {axis?.estado === "encontrado" ? (
+                <>Axis: {axis.contacto.nombre || "—"} · {axis.contacto.correo || "—"}{axis.coincidencias > 1 ? ` (${axis.coincidencias} coincidencias)` : ""}</>
+              ) : axis?.estado === "no_encontrado" ? (
+                <span className="inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="h-3 w-3" /> Sin coincidencias en Axis para este teléfono.</span>
+              ) : axis?.estado === "no_disponible" ? (
+                <span className="text-amber-700">Axis no está disponible por ahora.</span>
+              ) : (
+                "Axis: se consulta al completar el teléfono."
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {CAMPOS_COMPARABLES_ETIQUETA.map(({ k, texto }) => (
+                <button key={k} type="button" onClick={() => usarDatoAxis(k)} disabled={!hayDiferencia(k)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition hover:bg-primary hover:text-white disabled:cursor-default disabled:border-silver disabled:bg-transparent disabled:text-muted disabled:opacity-50 disabled:shadow-none disabled:hover:bg-transparent disabled:hover:text-muted">
+                  <ArrowLeftRight className="h-3 w-3" /> {texto}
+                </button>
+              ))}
+            </div>
           </div>
 
           {llevaPago(inicial.estatus) && (

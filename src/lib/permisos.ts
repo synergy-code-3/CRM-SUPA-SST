@@ -53,11 +53,8 @@ export const PERMISOS = {
   // Coordinación Académica (mentorías, giras, mentores) — portado desde una
   // app aparte, solo para administradores.
   verCoordinacion: ["admin"],
-  // Nueva sección "Captura de Datos" — todos pueden entrar a la ruta, pero
-  // mientras se construye solo admin ve contenido real; coordinador/abeja
-  // ven "En construcción" (ver captura-datos/layout.tsx), mismo criterio que
-  // Community Manager.
-  verCapturaDatos: ["admin", "coordinador", "abeja"],
+  // "Captura de Datos": solo admins, con todos los permisos y todos los eventos.
+  verCapturaDatos: ["admin"],
 } as const satisfies Record<string, readonly Rol[]>;
 
 export type Accion = keyof typeof PERMISOS;

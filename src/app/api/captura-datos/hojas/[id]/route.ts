@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
+import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
 import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
@@ -38,7 +39,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const forzar = new URL(req.url).searchParams.get("force") === "1";
       try {
         const hoja = await confirmarHoja(id, permiso.usuario.id, b.campos, b.voucherBox ?? null, { forzarDuplicado: forzar, versionEsperada: b.version });
-        return NextResponse.json({ hoja });
+        const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario.id);
+        return NextResponse.json({ hoja, eventoCerrado });
       } catch (err) {
         if (err instanceof ErrorFolioDuplicado) {
           return NextResponse.json({ error: err.message, duplicado: err.duplicado }, { status: 409 });

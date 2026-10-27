@@ -24,11 +24,13 @@ export interface Destino {
 export interface FotoRef {
   nombreOriginal: string; // archivo de origen (p. ej. IMG_1234.jpg o lista.pdf)
   driveId?: string; // archivo en Drive (la foto o el PDF), si ya está allá
-  rutaStorage?: string; // ruta en el bucket cap-fotos, si se subió desde la computadora
+  rutaStorage?: string; // ruta en el bucket cap-fotos (fotos viejas subidas antes de ir directo a Drive)
+  nombreDrive?: string; // nombre actual del archivo en Drive, solo si lo subió la app (esos se renombran con folio y nombre)
   pagina?: number; // página del PDF (1-based)
   paginas?: number;
   w?: number;
   h?: number;
+  leidaIa?: boolean; // ya se usó "Leer con IA" en esta hoja: solo se permite una vez
 }
 
 /**
@@ -51,6 +53,7 @@ export type OrigenEvento = "drive" | "local";
 export interface EventoCaptura {
   id: string;
   nombre: string;
+  fecha: string | null; // fecha del evento (YYYY-MM-DD)
   destino: Destino;
   origen: OrigenEvento;
   carpetaFotosId: string | null; // subcarpeta de Drive (Completos/…) donde van las fotos subidas desde la computadora

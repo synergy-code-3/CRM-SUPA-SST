@@ -42,6 +42,8 @@ const ExtractionSchema = z.object({
     .describe("Plan señalado: $9,997 → '3 Meses', $12,997 → '6 Meses', $14,997 → '12 Meses'."),
 });
 
+const VOUCHER_ESQUINA_DERECHA = { x: 0.62, y: 0, w: 0.38, h: 0.4 };
+
 const PROMPT = `Primero decide si la imagen es una hoja de inscripción en papel de "CLUB SINERGETICO": el formato
 impreso con el recuadro FOLIO, el logo CLUB SINERGETICO y las líneas Nombre / Correo / Celular (normalmente
 con el bloque MEMBRESÍA CLUB SINERGÉTICO y los precios). Cuenta aunque esté torcida, cortada en parte o mal
@@ -98,10 +100,12 @@ export async function extractFromImage(base64: string, mime = "image/jpeg"): Pro
     };
   }
   const c = out.voucherCaja;
-  const voucherBox =
-    out.tieneVoucher && c && c.ancho > 0 && c.alto > 0
+  // La esquina superior derecha es el voucher salvo que la IA diga que no hay voucher o ubique otro recuadro.
+  const voucherBox = !out.tieneVoucher
+    ? null
+    : c && c.ancho > 0 && c.alto > 0
       ? { x: clamp01(c.x), y: clamp01(c.y), w: clamp01(c.ancho), h: clamp01(c.alto) }
-      : null;
+      : VOUCHER_ESQUINA_DERECHA;
   return {
     // El campo NOTAS del Sheet lo llena la persona, no la IA
     ...normalizeFields({ ...out, notas: "" }),
