@@ -1,12 +1,15 @@
 // Lectura con IA (Gemini) de una hoja de inscripción escaneada. Sin
 // GEMINI_API_KEY se tira un error claro — mismo criterio que
 // kajabi.ts/asistente-abeja-ia.ts.
-import { GoogleGenAI } from "@google/genai";
+import { ApiError, GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
 import { ErrorPeticion } from "./errores";
 
 const GEMINI_MODEL = process.env.CAPTURA_DATOS_GEMINI_MODEL || "gemini-3.6-flash";
+// La ruta /extract tiene maxDuration = 60: hay que fallar antes para poder devolver la lectura (si Vercel corta la
+// función, la hoja queda marcada como leída sin haberse leído).
+const TIEMPO_MAXIMO_IA_MS = 45_000;
 
 const ExtractionSchema = z.object({
   esHojaDeRegistro: z
@@ -125,13 +128,47 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
     throw new ErrorPeticion(503, "Falta configurar GEMINI_API_KEY");
   }
   const ai = new GoogleGenAI({});
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType: mimeParaGemini(mime), data: base64 } }, { text: PROMPT }] }],
-    config: { responseMimeType: "application/json", responseJsonSchema: GEMINI_SCHEMA },
-  });
-  if (!response.text) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
-  const resultado = ExtractionSchema.safeParse(JSON.parse(response.text));
-  if (!resultado.success) throw new ErrorPeticion(502, "La IA no devolvió datos válidos.");
+  let texto: string | undefined;
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: mimeParaGemini(mime), data: base64 } }, { text: PROMPT }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: GEMINI_SCHEMA,
+        // Leer letra a mano no necesita razonamiento largo; el nivel por defecto de Gemini 3 puede tardar más del límite.
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        httpOptions: { timeout: TIEMPO_MAXIMO_IA_MS },
+      },
+    });
+    texto = response.text;
+  } catch (err) {
+    console.error("captura-datos/extract (Gemini):", err);
+    throw errorDeGemini(err);
+  }
+
+  let datos: unknown;
+  try {
+    datos = JSON.parse(texto ?? "");
+  } catch {
+    console.error("captura-datos/extract (Gemini): respuesta que no es JSON:", texto?.slice(0, 500));
+    throw new ErrorPeticion(502, "La IA no devolvió datos válidos. Intenta de nuevo.");
+  }
+  const resultado = ExtractionSchema.safeParse(datos);
+  if (!resultado.success) {
+    console.error("captura-datos/extract (Gemini): la respuesta no cumple el esquema:", resultado.error.issues);
+    throw new ErrorPeticion(502, "La IA no devolvió datos válidos. Intenta de nuevo.");
+  }
   return resultado.data;
+}
+
+/** Mensaje claro para quien usa la app; el detalle real ya quedó en la consola del servidor. */
+function errorDeGemini(err: unknown): ErrorPeticion {
+  if (err instanceof ApiError && err.status === 429) {
+    return new ErrorPeticion(503, "Gemini no tiene cuota disponible ahora. Espera un minuto e intenta de nuevo.");
+  }
+  if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return new ErrorPeticion(504, "La IA tardó demasiado en leer la hoja. Intenta de nuevo.");
+  }
+  return new ErrorPeticion(502, "No se pudo leer la hoja con la IA. Intenta de nuevo; si sigue, avisa a soporte.");
 }

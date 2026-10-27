@@ -212,6 +212,13 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   (`@google/genai`, modelo `gemini-3.6-flash`, cambiable con `CAPTURA_DATOS_GEMINI_MODEL`) y pide `GEMINI_API_KEY`.
   Es el único proveedor de IA de las hojas: se quitó todo lo de Claude (código, scripts `evaluar-lectura-ia.ts` y
   `probar-claude-vertex.ts`, paquetes de Anthropic y variables). Variables en `.env.example`. Sin probar contra la API todavía.
+- **Captura de datos** (27 oct, fix de "Leer con IA"): la llamada a Gemini no tenía límite de tiempo y, si pasaba de los 60 s
+  de la ruta, Vercel cortaba la función (el navegador solo veía "Algo salió mal") sin devolver la lectura, y la hoja quedaba
+  bloqueada como "ya leída". Ahora `extract.ts` corta a los 45 s, usa `thinkingLevel: LOW` (más rápido para leer letra a mano),
+  responde con mensajes claros (cuota agotada, tardó demasiado, respuesta inválida), registra el error real en la consola del
+  servidor y la ruta devuelve la lectura. **Hojas que ya quedaron bloqueadas** (SQL a correr a mano, ver la respuesta de la sesión):
+  `update cap_hojas set origen = origen - 'leidaIa' where origen->>'leidaIa' = 'true' and coalesce(campos->>'folio','') = ''
+  and coalesce(campos->>'nombre','') = '' and coalesce(campos->>'correo','') = '';`
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.

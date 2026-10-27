@@ -43,7 +43,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     try {
       extraccion = await extractFromImage(base64, mime);
     } catch (err) {
-      await devolverLecturaIa(id, hoja.origen).catch(() => {}); // la IA no contestó: no se gastó la lectura
+      await devolverLecturaIa(id, hoja.origen).catch((e) => console.error("extract: no se pudo devolver la lectura de la hoja", id, e)); // la IA no contestó: no se gastó la lectura
       throw err;
     }
     if (!extraccion.esHojaDeRegistro) {
