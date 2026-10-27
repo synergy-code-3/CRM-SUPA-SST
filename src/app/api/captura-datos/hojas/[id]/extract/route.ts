@@ -8,7 +8,7 @@ import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
 import { leerFotoHoja } from "@/lib/storage";
 import { descargarArchivo } from "@/lib/captura-datos/google";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 async function fotoBase64(hoja: { origen: { rutaStorage?: string; driveId?: string } }): Promise<{ base64: string; mime: string }> {
   if (hoja.origen.rutaStorage) {

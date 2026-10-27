@@ -7,9 +7,10 @@ import { MARCAS_TARJETA, normalizeFields, type Extraction } from "./fields";
 import { ErrorPeticion } from "./errores";
 
 const GEMINI_MODEL = process.env.CAPTURA_DATOS_GEMINI_MODEL || "gemini-3.6-flash";
-// La ruta /extract tiene maxDuration = 60: hay que fallar antes para poder devolver la lectura (si Vercel corta la
-// función, la hoja queda marcada como leída sin haberse leído).
-const TIEMPO_MAXIMO_IA_MS = 45_000;
+// La ruta /extract tiene maxDuration = 120: hay que fallar antes para poder devolver la lectura (si Vercel corta la
+// función, la hoja queda marcada como leída sin haberse leído). Este valor también se envía a Gemini como su propio
+// plazo (cabecera X-Server-Timeout): si tarda más, responde 504 DEADLINE_EXCEEDED.
+const TIEMPO_MAXIMO_IA_MS = 100_000;
 
 const ExtractionSchema = z.object({
   esHojaDeRegistro: z
@@ -129,6 +130,7 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
   }
   const ai = new GoogleGenAI({});
   let texto: string | undefined;
+  const inicio = Date.now();
   try {
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -143,7 +145,7 @@ async function extractWithGemini(base64: string, mime: string): Promise<z.infer<
     });
     texto = response.text;
   } catch (err) {
-    console.error("captura-datos/extract (Gemini):", err);
+    console.error(`captura-datos/extract (Gemini): falló tras ${Date.now() - inicio} ms (${GEMINI_MODEL}, ${mime}, ${Math.round((base64.length * 0.75) / 1024)} KB):`, err);
     throw errorDeGemini(err);
   }
 
