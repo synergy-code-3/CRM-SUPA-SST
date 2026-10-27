@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { FileText, Loader2, ReceiptText, SquareDashedMousePointer, TextSelect, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { Box } from "@/lib/captura-datos/fields";
-import { ajustarImagen, CAJA_DATOS, cajaDesdePuntos, transformParaCaja, type Punto, type Tamano } from "@/lib/captura-datos/visor";
+import { ajustarImagen, CAJA_DATOS, CAJA_VOUCHER_PREDETERMINADA, cajaDesdePuntos, transformParaCaja, type Punto, type Tamano } from "@/lib/captura-datos/visor";
 
 const ZOOM_MAXIMO = 8;
 const PASO_ZOOM = 0.5;
@@ -80,7 +80,7 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
       <div ref={vista} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-silver bg-black/5">
         <div className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex flex-wrap items-center gap-1.5 [&_button]:pointer-events-auto">
           <BotonVisor onClick={() => ampliar(CAJA_DATOS)} disabled={!listo} icono={<TextSelect className="h-4 w-4" />}>Datos</BotonVisor>
-          <BotonVisor onClick={() => voucherBox && ampliar(voucherBox)} disabled={!listo || !voucherBox} icono={<ReceiptText className="h-4 w-4" />}>Voucher</BotonVisor>
+          <BotonVisor onClick={() => ampliar(voucherBox ?? CAJA_VOUCHER_PREDETERMINADA)} disabled={!listo} icono={<ReceiptText className="h-4 w-4" />}>Voucher</BotonVisor>
           <BotonVisor onClick={() => { setTrazo(null); setMarcando((m) => !m); }} disabled={!listo} activo={marcando} icono={<SquareDashedMousePointer className="h-4 w-4" />}>
             {marcando ? "Dibuja el área…" : "Marcar voucher"}
           </BotonVisor>

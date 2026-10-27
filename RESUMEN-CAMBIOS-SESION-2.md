@@ -216,6 +216,9 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   `.env.example`: `CAPTURA_DATOS_IA`, `GEMINI_API_KEY`, `CAPTURA_DATOS_GEMINI_MODEL`. Sin probar contra la API todavía.
 - Probe de Claude vía Vertex AI (`scripts/probar-claude-vertex.ts`, paquete `@anthropic-ai/vertex-sdk`): ya no es la ruta
   elegida; se puede borrar junto con el paquete.
+- **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
+  mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
+  el botón usa ese recuadro exacto.
 - Sin SQL pendiente nuevo.
 
 ## Pendiente en Supabase (SQL a correr a mano)
