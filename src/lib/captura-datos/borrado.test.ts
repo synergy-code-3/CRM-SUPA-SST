@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   obtenerEvento: vi.fn(),
-  registrarBorradoDirecto: vi.fn(),
   eliminarEvento: vi.fn(),
 }));
 vi.mock("./db", () => db);
@@ -24,16 +23,19 @@ describe("borrarEventoDirecto", () => {
     await expect(borrarEventoDirecto(admin, "e1", " ")).rejects.toMatchObject({ status: 400 });
     expect(db.eliminarEvento).not.toHaveBeenCalled();
   });
-  it("registra en el historial y borra", async () => {
+  it("borra el evento directamente", async () => {
     db.obtenerEvento.mockResolvedValue({ id: "e1", nombre: "Evento" });
     await borrarEventoDirecto(admin, "e1", " duplicado ");
-    expect(db.registrarBorradoDirecto).toHaveBeenCalledWith({ eventoId: "e1", eventoNombre: "Evento", motivo: "duplicado", adminId: "a" });
     expect(db.eliminarEvento).toHaveBeenCalledWith("e1");
   });
-  it("si no se pudo registrar el historial, no borra", async () => {
-    db.obtenerEvento.mockResolvedValue({ id: "e1", nombre: "Evento" });
-    db.registrarBorradoDirecto.mockRejectedValue(new Error("db"));
-    await expect(borrarEventoDirecto(admin, "e1", "x")).rejects.toThrow("db");
+  it("si el evento no existe, responde 404 y no borra", async () => {
+    db.obtenerEvento.mockResolvedValue(null);
+    await expect(borrarEventoDirecto(admin, "e1", "x")).rejects.toMatchObject({ status: 404 });
     expect(db.eliminarEvento).not.toHaveBeenCalled();
+  });
+  it("si falla el borrado, el error llega a quien lo pidió", async () => {
+    db.obtenerEvento.mockResolvedValue({ id: "e1", nombre: "Evento" });
+    db.eliminarEvento.mockRejectedValue(new Error("db"));
+    await expect(borrarEventoDirecto(admin, "e1", "x")).rejects.toThrow("db");
   });
 });

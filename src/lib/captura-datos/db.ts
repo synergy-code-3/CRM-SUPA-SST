@@ -257,20 +257,13 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
   return filaAEvento(data as FilaEvento);
 }
 
-/** Si el borrado falla por falta del SQL de borrado en Supabase, se explica en vez de salir como "error interno". */
-function errorDeBorrado(error: { code?: string }): unknown {
-  if (error.code === "42P01" || error.code === "PGRST205") {
-    return new ErrorPeticion(503, "Falta crear la tabla del historial de borrados en Supabase: corre supabase/captura-datos-borrado.sql en el SQL Editor.");
-  }
-  if (error.code === "23503") {
-    return new ErrorPeticion(409, "El evento tiene registros ligados que impiden borrarlo: corre supabase/captura-datos-borrado.sql en Supabase (relación de reaperturas).");
-  }
-  return error;
-}
-
 export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
-  if (error) throw errorDeBorrado(error);
+  // 23503 = llave foránea: un evento que se reabrió no se podía borrar hasta que la FK de reaperturas lleve ON DELETE CASCADE.
+  if (error?.code === "23503") {
+    throw new ErrorPeticion(409, "El evento tiene registros ligados que impiden borrarlo: corre supabase/captura-datos-borrado.sql en Supabase (relación de reaperturas).");
+  }
+  if (error) throw error;
 }
 
 // --- Hojas -------------------------------------------------------------
@@ -614,20 +607,4 @@ export async function esNoValida(huella: string): Promise<boolean> {
   const { data, error } = await supabase.from("cap_imagenes_no_validas").select("huella").eq("huella", huella).maybeSingle();
   if (error) throw error;
   return !!data;
-}
-
-// --- Historial de borrado de evento ------------------------------------
-
-/** Historial de un borrado directo de admin: queda como solicitud ya aprobada por quien lo borró. */
-export async function registrarBorradoDirecto(input: { eventoId: string; eventoNombre: string; motivo: string; adminId: string }): Promise<void> {
-  const { error } = await supabase.from("cap_solicitudes_borrado").insert({
-    evento_id: input.eventoId,
-    evento_nombre: input.eventoNombre,
-    motivo: input.motivo,
-    solicitada_por: input.adminId,
-    estado: "aprobada",
-    resuelta_por: input.adminId,
-    resuelta_en: new Date().toISOString(),
-  });
-  if (error) throw errorDeBorrado(error);
 }

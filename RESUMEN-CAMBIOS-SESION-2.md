@@ -233,9 +233,11 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   cuota ni error de la app). `extract.ts` ahora reintenta: modelo principal, otra vez el principal y, al tercer intento, el
   modelo de respaldo (`CAPTURA_DATOS_GEMINI_MODEL_RESPALDO`, por defecto `gemini-3.5-flash`), con plazo de 35 s por intento.
   Si los 3 fallan, el mensaje dice "Gemini tiene alta demanda… intenta en un minuto".
-- **Captura de datos** (27 oct, borrar eventos): si el borrado falla porque falta la tabla `cap_solicitudes_borrado` o por la
-  relación de reaperturas, el error ahora lo dice (antes salía "Error interno"). Casi seguro falta correr
-  `supabase/captura-datos-borrado.sql` en Supabase (ver "Pendiente en Supabase" abajo).
+- **Captura de datos** (27 oct, borrar eventos): el borrado ya no usa la tabla `cap_solicitudes_borrado` (no hay solicitud ni
+  historial; se borra directo): se quitó del código, de los tests y de `schema.sql`/`captura-datos-borrado.sql`. Era lo que
+  hacía fallar el borrado cuando la tabla no existía en Supabase. Solo queda pendiente la cascada de reaperturas (un evento
+  que se reabrió no se puede borrar sin ella); si falla por eso, el error lo dice. El motivo del borrado se sigue pidiendo en
+  pantalla, pero ya no se guarda en ningún lado. Si la tabla existe en tu base, se puede ignorar o borrar.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.
@@ -244,7 +246,7 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 ## Pendiente en Supabase (SQL a correr a mano)
 
 Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
-1. `supabase/captura-datos-borrado.sql` (tabla del historial de borrados + cascada de reaperturas).
+1. `supabase/captura-datos-borrado.sql` (solo la cascada de reaperturas, para poder borrar eventos que se reabrieron; ya no crea tabla).
 2. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`).
 3. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
 4. Opcional: `supabase/captura-datos-ajustes.sql` (índices y revocar EXECUTE; la función ya la reemplaza el paso 2).
