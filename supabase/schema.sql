@@ -1060,6 +1060,26 @@ create table if not exists cap_eventos_reaperturas (
 -- intentar leerlas ni dejarlas colar al Excel/Drive.
 create table if not exists cap_imagenes_no_validas (huella text primary key, en timestamptz not null default now());
 
+-- Historial de movimientos importantes de Captura de Datos (solo lo ve un admin): crear, guardar en Drive, cerrar,
+-- reabrir y borrar eventos; confirmar y corregir hojas. NO lleva llaves foráneas a propósito: el rastro debe
+-- sobrevivir al borrado del evento, de la hoja o del usuario (por eso guarda también sus nombres). Se purga solo
+-- (cron semanal, ver RETENCION_AUDITORIA_DIAS en captura-datos/auditoria.ts). En bases ya creadas se añade con
+-- supabase/captura-datos-auditoria.sql.
+create table if not exists cap_auditoria (
+  id bigserial primary key,
+  en timestamptz not null default now(),
+  usuario_id uuid,
+  usuario_nombre text,
+  evento_id uuid,
+  evento_nombre text,
+  hoja_id uuid,
+  accion text not null,
+  detalle jsonb
+);
+create index if not exists idx_cap_auditoria_evento on cap_auditoria (evento_id, id desc);
+create index if not exists idx_cap_auditoria_en on cap_auditoria (en);
+alter table cap_auditoria enable row level security;
+
 -- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo.
 alter table cap_eventos_reaperturas drop constraint if exists cap_eventos_reaperturas_evento_id_fkey;
 alter table cap_eventos_reaperturas

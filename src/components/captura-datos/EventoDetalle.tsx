@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { EditorHoja } from "./EditorHoja";
+import { HistorialModal } from "./HistorialModal";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
@@ -35,6 +36,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
+  const [verHistorial, setVerHistorial] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -196,8 +198,10 @@ export function EventoDetalle({ id }: { id: string }) {
         {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
         {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
         {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>}
+        <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
+      {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
 
       {ocupado === "confirmar" && <SubiendoADrive />}
       {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}

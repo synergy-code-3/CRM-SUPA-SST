@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
+import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
 import { listarHojasDeEvento, obtenerEvento, reabrirEvento } from "@/lib/captura-datos/db";
 import { guardarEventoEnDrive } from "@/lib/captura-datos/google";
 import { generarExcelEvento } from "@/lib/captura-datos/excel";
@@ -38,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (permiso.usuario.rol !== "admin") throw new ErrorPeticion(403, "Solo un admin puede reabrir un evento confirmado.");
       if (!b.motivo?.trim()) throw new ErrorPeticion(400, "Indica el motivo de la reapertura.");
       const evento = await reabrirEvento(id, permiso.usuario.id, b.motivo.trim());
+      await registrarAuditoria({ usuario: permiso.usuario, accion: "evento_reabierto", eventoId: id, eventoNombre: evento.nombre, detalle: { motivo: b.motivo.trim() } });
       return NextResponse.json({ evento });
     }
 
@@ -47,6 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // "cerrar": lo mismo y además cierra el evento.
     const resultado = await guardarEventoEnDrive(id, permiso.usuario.id, { crearCarpeta: b.crearCarpeta, sinFotos: b.sinFotos, cerrar: b.accion === "cerrar" });
     if (!resultado.ok) return NextResponse.json({ faltaCarpeta: resultado.faltaCarpeta }, { status: 409 });
+    await registrarAuditoria({ usuario: permiso.usuario, accion: b.accion === "cerrar" ? "evento_cerrado" : "evento_guardado_drive", eventoId: id });
 
     // Copia descargable actualizada (best-effort: si falla, el evento ya
     // quedó confirmado de todos modos — la Hoja de Drive es la fuente real).

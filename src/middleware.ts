@@ -19,6 +19,8 @@ const PREFIJOS_PUBLICOS_API = [
   "/api/webhooks/landing",
   "/api/cron/sincronizar-kajabi",
   "/api/cron/sincronizar-vsl",
+  // Purga semanal del historial de Captura de Datos; la ruta exige CRON_SECRET (autorizadoParaCron).
+  "/api/cron/purgar-auditoria",
   // Consumido por synergy-axis (repo hermano), no por el navegador — se
   // autentica con su propio bearer token (SU26_QUOTA_API_TOKEN), no cookie.
   "/api/internal/su26-cuota",

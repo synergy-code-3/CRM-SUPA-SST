@@ -243,6 +243,16 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   `tomar_hoja_libre` (orden Completo/Apartado/Interesado, devuelve la hoja vigente, `revoke`/`grant`); antes estaba
   desactualizado. `captura-datos-ajustes.sql` quedó solo con 4 índices opcionales (antes también redefinía la función con el
   orden viejo, que pisaba a `fecha-orden` si se corría después).
+- **Captura de datos** (28 oct, historial de movimientos): nueva tabla `cap_auditoria` (SQL: `supabase/captura-datos-auditoria.sql`,
+  también en `schema.sql`; sin llaves foráneas para que el rastro sobreviva al borrado). Se registra solo lo importante: crear,
+  guardar en Drive, cerrar (manual y automático), reabrir y **borrar** eventos (con el motivo y cuántas hojas tenía; antes
+  se perdía) y confirmar / corregir hojas (en la primera confirmación solo el folio; en una corrección, los campos que
+  cambiaron). NO se registran lecturas con IA, autoguardados, asignaciones ni quién tomó una hoja. Registrar nunca frena la
+  acción (`registrarAuditoria` no lanza; si falla, queda en los logs del servidor). Lo ve solo un admin: botón "Historial" en la
+  lista de eventos (todo, incluso eventos borrados) y en cada evento (solo ese), ruta `GET /api/captura-datos/historial`.
+  Purga: `RETENCION_AUDITORIA_DIAS = 365` (`auditoria.ts`), cron semanal `/api/cron/purgar-auditoria` (lunes 09:00 UTC,
+  `vercel.json`; público en `middleware.ts` y protegido con `CRON_SECRET`). Código: `auditoria.ts` (servidor),
+  `historial.ts` (textos y diferencias, compartido con el navegador), `HistorialModal.tsx`. Sin probar contra Supabase real.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.
@@ -255,7 +265,8 @@ Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
    crear un evento falla (ahora el error lo dice); el orden de `tomar_hoja_libre` es el que sigue la lectura adelantada.
    `schema.sql` ya incluye ambas cosas (para bases nuevas); este archivo es la migración para la base que ya existe.
 2. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
-3. Opcional: `supabase/captura-datos-ajustes.sql` (solo 4 índices de rendimiento; ya no toca la función ni la cascada).
+3. `supabase/captura-datos-auditoria.sql` (tabla del historial de movimientos). Sin ella la app funciona, pero no guarda historial.
+4. Opcional: `supabase/captura-datos-ajustes.sql` (solo 4 índices de rendimiento; ya no toca la función ni la cascada).
 
 `supabase/captura-datos-borrado.sql` se eliminó (27/28 oct): su única instrucción, la cascada de reaperturas, ya está en
 `schema.sql` y el código la suple al borrar un evento.

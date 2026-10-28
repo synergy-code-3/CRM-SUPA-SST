@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
+import { registrarConfirmacionDeHoja } from "@/lib/captura-datos/auditoria";
 import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
 import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion } from "@/lib/captura-datos/db";
 import { adelantarLecturas } from "@/lib/captura-datos/lectura-ia";
@@ -37,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
-    await requerirHoja(permiso.usuario, id);
+    const previa = await requerirHoja(permiso.usuario, id);
     const b = await leerJson(req, patchHoja);
 
     if (b.confirmar) {
@@ -45,7 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const forzar = new URL(req.url).searchParams.get("force") === "1";
       try {
         const hoja = await confirmarHoja(id, permiso.usuario.id, b.campos, b.voucherBox ?? null, { forzarDuplicado: forzar, versionEsperada: b.version });
-        const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario.id);
+        await registrarConfirmacionDeHoja({ usuario: permiso.usuario, previa, hoja, duplicadoForzado: forzar });
+        const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario);
         // Solo si se está trabajando con IA (la hoja se leyó con IA): se mantiene el adelanto sin gastar lecturas a quien no la usa.
         if (!eventoCerrado && hoja.origen.leidaIa) after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_CONFIRMAR));
         return NextResponse.json({ hoja, eventoCerrado });

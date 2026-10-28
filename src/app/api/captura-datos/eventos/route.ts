@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
+import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
 import { crearEvento, listarEventos } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { crearEvento as esquemaCrearEvento } from "@/lib/captura-datos/validacion";
@@ -31,6 +32,13 @@ export async function POST(req: NextRequest) {
       origen: b.origen,
       creadoPorId: permiso.usuario.id,
       usuariosAsignados: b.usuariosAsignados,
+    });
+    await registrarAuditoria({
+      usuario: permiso.usuario,
+      accion: "evento_creado",
+      eventoId: evento.id,
+      eventoNombre: evento.nombre,
+      detalle: { fecha: evento.fecha, origen: evento.origen },
     });
     return NextResponse.json({ evento });
   } catch (err) {
