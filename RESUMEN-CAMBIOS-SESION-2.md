@@ -236,9 +236,13 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 - **Captura de datos** (27 oct, borrar eventos): el borrado ya no usa la tabla `cap_solicitudes_borrado` (no hay solicitud ni
   historial; se borra directo): se quitó del código, de los tests y de `schema.sql`/`captura-datos-borrado.sql`. Era lo que
   hacía fallar el borrado cuando la tabla no existía en Supabase. Un evento que se reabrió chocaba con la FK de reaperturas
-  (sin ON DELETE CASCADE): `eliminarEvento` ahora limpia sus reaperturas y reintenta, así que ya no depende de correr
-  `supabase/captura-datos-borrado.sql` (que sigue siendo recomendable, pero opcional). El motivo del borrado se sigue pidiendo
-  en pantalla, pero ya no se guarda en ningún lado. Si la tabla existe en tu base, se puede ignorar o borrar.
+  (sin ON DELETE CASCADE): `eliminarEvento` ahora limpia sus reaperturas y reintenta, así que no depende de ningún SQL
+  (`captura-datos-borrado.sql` se eliminó después por redundante). El motivo del borrado se sigue pidiendo en pantalla, pero
+  ya no se guarda en ningún lado. Si la tabla existe en tu base, se puede ignorar o borrar.
+- **Captura de datos** (28 oct, SQL consolidado): `schema.sql` ya trae la columna `cap_eventos.fecha` y la versión actual de
+  `tomar_hoja_libre` (orden Completo/Apartado/Interesado, devuelve la hoja vigente, `revoke`/`grant`); antes estaba
+  desactualizado. `captura-datos-ajustes.sql` quedó solo con 4 índices opcionales (antes también redefinía la función con el
+  orden viejo, que pisaba a `fecha-orden` si se corría después).
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.
@@ -247,8 +251,11 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 ## Pendiente en Supabase (SQL a correr a mano)
 
 Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
-1. `supabase/captura-datos-borrado.sql` (opcional: solo la cascada de reaperturas; el código ya la suple al borrar; ya no crea tabla).
-2. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`). **Obligatorio**: sin la columna,
+1. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`). **Obligatorio**: sin la columna,
    crear un evento falla (ahora el error lo dice); el orden de `tomar_hoja_libre` es el que sigue la lectura adelantada.
-3. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
-4. Opcional: `supabase/captura-datos-ajustes.sql` (índices y revocar EXECUTE; la función ya la reemplaza el paso 2).
+   `schema.sql` ya incluye ambas cosas (para bases nuevas); este archivo es la migración para la base que ya existe.
+2. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
+3. Opcional: `supabase/captura-datos-ajustes.sql` (solo 4 índices de rendimiento; ya no toca la función ni la cascada).
+
+`supabase/captura-datos-borrado.sql` se eliminó (27/28 oct): su única instrucción, la cascada de reaperturas, ya está en
+`schema.sql` y el código la suple al borrar un evento.

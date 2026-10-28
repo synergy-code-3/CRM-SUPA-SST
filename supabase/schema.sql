@@ -991,6 +991,7 @@ alter table coord_mentorias add column if not exists flyer_url text;
 create table if not exists cap_eventos (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
+  fecha date,                          -- fecha del evento; en bases ya creadas se añade con supabase/captura-datos-fecha-orden.sql
   destino jsonb not null,              -- { id, url, nombre } carpeta principal de Drive
   origen text not null check (origen in ('drive', 'local')),
   carpeta_fotos_id text,               -- subcarpeta de Drive donde se suben fotos locales (si aplica)
@@ -1059,7 +1060,7 @@ create table if not exists cap_eventos_reaperturas (
 -- intentar leerlas ni dejarlas colar al Excel/Drive.
 create table if not exists cap_imagenes_no_validas (huella text primary key, en timestamptz not null default now());
 
--- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo (ver supabase/captura-datos-borrado.sql).
+-- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo.
 alter table cap_eventos_reaperturas drop constraint if exists cap_eventos_reaperturas_evento_id_fkey;
 alter table cap_eventos_reaperturas
   add constraint cap_eventos_reaperturas_evento_id_fkey foreign key (evento_id) references cap_eventos (id) on delete cascade;
@@ -1071,11 +1072,6 @@ alter table cap_hojas_historial enable row level security;
 alter table cap_eventos_reaperturas enable row level security;
 alter table cap_imagenes_no_validas enable row level security;
 
--- Toma la siguiente hoja libre de un evento sin que dos personas tomen la
--- misma ("for update skip locked" — la segunda persona que llama al mismo
--- tiempo simplemente salta a la siguiente fila disponible en vez de
--- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
--- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
 -- Certificaciones: "Revocar acceso" (reembolsos u otros casos donde hay que
 -- sacar al cliente de la lista normal de inmediato) — a diferencia de la
 -- papelera (eliminado/fecha_eliminacion, pensada para corregir un alta por
@@ -1089,6 +1085,15 @@ alter table certificaciones_clientes add column if not exists revocado boolean n
 alter table certificaciones_clientes add column if not exists fecha_revocacion timestamptz;
 alter table certificaciones_clientes add column if not exists motivo_revocacion text;
 
+-- Captura de Datos: toma la siguiente hoja libre de un evento sin que dos personas tomen la
+-- misma ("for update skip locked" — la segunda persona que llama al mismo
+-- tiempo simplemente salta a la siguiente fila disponible en vez de
+-- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
+-- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
+-- Si la persona ya tiene una hoja vigente en el evento, se la devuelve (renovando el bloqueo) en vez de bloquear otra.
+-- Orden = el de la pantalla (Completos, Apartados, Interesados; dentro de cada uno, por id); la lectura adelantada
+-- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. En bases ya creadas se aplica con
+-- supabase/captura-datos-fecha-orden.sql.
 create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
 returns cap_hojas
 language plpgsql
@@ -1096,18 +1101,35 @@ as $$
 declare
   fila cap_hojas;
 begin
+  update cap_hojas set bloqueada_hasta = now() + interval '10 minutes'
+  where id = (
+    select id from cap_hojas
+    where evento_id = p_evento and estado in ('pendiente', 'leida')
+      and bloqueada_por = p_usuario and bloqueada_hasta > now()
+    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
+    for update skip locked
+  )
+  returning * into fila;
+  if fila.id is not null then
+    return fila;
+  end if;
+
   update cap_hojas set bloqueada_por = p_usuario, bloqueada_hasta = now() + interval '10 minutes'
   where id = (
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')
       and (bloqueada_hasta is null or bloqueada_hasta < now())
-    order by id limit 1
+    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
     for update skip locked
   )
   returning * into fila;
   return fila;
 end;
 $$;
+
+-- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarla.
+revoke execute on function tomar_hoja_libre(uuid, uuid) from public, anon, authenticated;
+grant execute on function tomar_hoja_libre(uuid, uuid) to service_role;
 
 -- Integración con el CRM de Renovaciones (sistema aparte, nos consulta los
 -- clientes inactivos vía GET /api/externo/renovaciones/inactivos y nos

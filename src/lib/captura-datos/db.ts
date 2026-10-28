@@ -264,7 +264,7 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
 export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
   if (!error) return;
-  // 23503 = llave foránea: si la FK de reaperturas no tiene ON DELETE CASCADE (supabase/captura-datos-borrado.sql), un evento
+  // 23503 = llave foránea: si la FK de reaperturas no tiene ON DELETE CASCADE (ver schema.sql), un evento
   // que se reabrió no se borra. Se limpian sus reaperturas y se reintenta, para no depender de ese SQL.
   if (error.code !== "23503") throw error;
   const { error: errReaperturas } = await supabase.from("cap_eventos_reaperturas").delete().eq("evento_id", id);
