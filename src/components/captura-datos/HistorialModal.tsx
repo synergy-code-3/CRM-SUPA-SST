@@ -13,10 +13,19 @@ interface HistorialModalProps {
   onCerrar: () => void;
 }
 
+/** Cuando el historial vive en un modal, el título y el cierre los pone el modal. */
+export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: HistorialModalProps) {
+  return (
+    <Modal titulo={titulo} onCerrar={onCerrar}>
+      <HistorialLista eventoId={eventoId} />
+    </Modal>
+  );
+}
+
 const FECHA = new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeStyle: "short" });
 
-/** Historial de movimientos importantes de Captura de Datos (solo admin): lo más reciente primero. */
-export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: HistorialModalProps) {
+/** Lista de movimientos importantes de Captura de Datos (solo admin): lo más reciente primero, con "Ver más". */
+export function HistorialLista({ eventoId }: { eventoId?: string }) {
   const [registros, setRegistros] = useState<RegistroAuditoria[] | null>(null);
   const [hayMas, setHayMas] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -49,34 +58,32 @@ export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: His
   const ultimo = registros?.[registros.length - 1];
 
   return (
-    <Modal titulo={titulo} onCerrar={onCerrar}>
-      <div className="space-y-3">
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        {!registros && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
-        {registros?.length === 0 && <p className="py-6 text-center text-sm text-muted">Todavía no hay movimientos registrados.</p>}
+    <div className="space-y-3">
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {!registros && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
+      {registros?.length === 0 && <p className="py-6 text-center text-sm text-muted">Todavía no hay movimientos registrados.</p>}
 
-        {registros && registros.length > 0 && (
-          <ul className="divide-y divide-silver/60">
-            {registros.map((r) => {
-              const detalle = lineasDeDetalle(r);
-              return (
-                <li key={r.id} className="space-y-0.5 py-2.5 text-sm">
-                  <p className="font-medium text-foreground">{ETIQUETA_ACCION[r.accion] ?? r.accion}</p>
-                  {!eventoId && r.eventoNombre && <p className="text-xs text-foreground">Evento: {r.eventoNombre}</p>}
-                  {detalle.map((linea, i) => <p key={i} className="break-words text-xs text-foreground">{linea}</p>)}
-                  <p className="text-xs text-muted">{FECHA.format(new Date(r.en))} · {r.usuarioNombre ?? "Usuario desconocido"}</p>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+      {registros && registros.length > 0 && (
+        <ul className="divide-y divide-silver/60">
+          {registros.map((r) => {
+            const detalle = lineasDeDetalle(r);
+            return (
+              <li key={r.id} className="space-y-0.5 py-2.5 text-sm">
+                <p className="font-medium text-foreground">{ETIQUETA_ACCION[r.accion] ?? r.accion}</p>
+                {!eventoId && r.eventoNombre && <p className="text-xs text-foreground">Evento: {r.eventoNombre}</p>}
+                {detalle.map((linea, i) => <p key={i} className="break-words text-xs text-foreground">{linea}</p>)}
+                <p className="text-xs text-muted">{FECHA.format(new Date(r.en))} · {r.usuarioNombre ?? "Usuario desconocido"}</p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
-        {hayMas && ultimo && (
-          <button onClick={() => void cargar(ultimo.id)} disabled={cargando} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm disabled:opacity-50">
-            {cargando && <Loader2 className="h-4 w-4 animate-spin" />} Ver más
-          </button>
-        )}
-      </div>
-    </Modal>
+      {hayMas && ultimo && (
+        <button onClick={() => void cargar(ultimo.id)} disabled={cargando} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm disabled:opacity-50">
+          {cargando && <Loader2 className="h-4 w-4 animate-spin" />} Ver más
+        </button>
+      )}
+    </div>
   );
 }

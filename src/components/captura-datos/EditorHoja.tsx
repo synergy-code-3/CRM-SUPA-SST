@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, Loader2, Sparkles, Undo2 } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
+import { Modal } from "./Modal";
 import { TiraHojas } from "./TiraHojas";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
@@ -362,11 +363,20 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
         </fieldset>
 
         {duplicado && (
-          <Aviso peligro>
-            {duplicado.mensaje}.{" "}
-            {enlaceDuplicado && <a href={enlaceDuplicado.url} target="_blank" rel="noreferrer" className="underline">{enlaceDuplicado.texto}</a>}
-            <button onClick={() => confirmar(true)} className="ml-2 underline">Confirmar de todos modos</button>
-          </Aviso>
+          <Modal titulo="Este folio ya existe" onCerrar={() => setDuplicado(null)} bloqueado={confirmando}>
+            <div className="space-y-4">
+              <p className="text-sm text-foreground">
+                {duplicado.mensaje}.{" "}
+                {enlaceDuplicado && <a href={enlaceDuplicado.url} target="_blank" rel="noreferrer" className="text-primary underline">{enlaceDuplicado.texto}</a>}
+              </p>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button onClick={() => setDuplicado(null)} disabled={confirmando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40 disabled:opacity-50">Cancelar</button>
+                <button onClick={() => { setDuplicado(null); void confirmar(true); }} disabled={confirmando} className="inline-flex items-center justify-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  Confirmar de todos modos
+                </button>
+              </div>
+            </div>
+          </Modal>
         )}
 
         <div className="flex justify-between gap-2 pt-1">
@@ -387,13 +397,5 @@ function Campo({ etiqueta, requerido, error, children }: { etiqueta: string; req
       {children}
       {error && <span className="block text-xs text-danger">{error}</span>}
     </label>
-  );
-}
-
-function Aviso({ peligro, children }: { peligro?: boolean; children: React.ReactNode }) {
-  return (
-    <p role={peligro ? "alert" : "status"} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${peligro ? "border-danger/30 bg-danger/10 text-danger" : "border-amber-500/30 bg-amber-500/10 text-amber-700"}`}>
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> <span>{children}</span>
-    </p>
   );
 }

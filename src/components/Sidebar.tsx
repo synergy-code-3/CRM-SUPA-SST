@@ -131,10 +131,10 @@ const NAV_COORDINACION: ItemNav[] = [
   { href: "/coordinacion/flyers", label: "Flyers", icon: ImagePlus, permiso: "verCoordinacion" },
 ];
 
-// Captura de Datos — todavía sin contenido real (ver captura-datos/layout.tsx),
-// un solo ítem a propósito hasta que se defina qué va aquí.
+// Captura de Datos: la lista de eventos y el historial de movimientos (solo admin, igual que todo el workspace).
 const NAV_CAPTURA_DATOS: ItemNav[] = [
   { href: "/captura-datos", label: "Captura de Datos", icon: ClipboardList, permiso: "verCapturaDatos" },
+  { href: "/captura-datos/historial", label: "Historial", icon: History, permiso: "verCapturaDatos" },
 ];
 
 export type Conteos = { solicitudes: number; solicitudesCertificacion: number; usuarios: number; avisos: number };

@@ -51,6 +51,9 @@ export type EstadoEvento = "abierto" | "confirmado";
 export type EstadoHoja = "pendiente" | "leida" | "confirmada" | "no_valida";
 export type OrigenEvento = "drive" | "local";
 
+/** Primer día permitido para la fecha de un evento (YYYY-MM-DD): no se crean eventos de antes de 2023. */
+export const FECHA_MINIMA_EVENTO = "2023-01-01";
+
 export interface EventoCaptura {
   id: string;
   nombre: string;

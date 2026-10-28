@@ -6,7 +6,7 @@ import { Modal } from "./Modal";
 import { api } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
-import type { EventoCaptura, OrigenEvento } from "@/lib/captura-datos/modelo";
+import { FECHA_MINIMA_EVENTO, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
 
 const CLASE_INPUT = "w-full rounded-lg border border-silver bg-surface px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2";
 const CLASE_BOTON = "inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50";
@@ -18,6 +18,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [estatus, setEstatus] = useState<Estatus>("Completo");
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
+  const fechaAnterior = fecha !== "" && fecha < FECHA_MINIMA_EVENTO;
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enlaceBuscado, setEnlaceBuscado] = useState(""); // el enlace que produjo `info` (no el que se esté editando)
@@ -66,7 +67,8 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Fecha del evento</span>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={CLASE_INPUT} />
+          <input type="date" value={fecha} min={FECHA_MINIMA_EVENTO} onChange={(e) => setFecha(e.target.value)} className={CLASE_INPUT} />
+          {fechaAnterior && <span role="alert" className="block text-xs text-danger">La fecha no puede ser anterior a 2023.</span>}
         </label>
 
         <label className="block space-y-1 text-sm">
@@ -111,7 +113,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button onClick={() => setConfirmandoCierre(true)} disabled={cargando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
-          <button onClick={crear} disabled={!info || !fecha || cargando} className={CLASE_BOTON}>
+          <button onClick={crear} disabled={!info || !fecha || fechaAnterior || cargando} className={CLASE_BOTON}>
             {cargando && info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear evento"}
           </button>
         </div>

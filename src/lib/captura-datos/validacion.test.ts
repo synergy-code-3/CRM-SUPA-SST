@@ -12,6 +12,22 @@ describe("esquemas de la API", () => {
     expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Raro", destino, origen: "local" }).success).toBe(false);
   });
 
+  it("crearEvento no acepta fechas anteriores a 2023", () => {
+    const con = (fecha: string) => crearEvento.safeParse({ nombre: "", fecha, estatus: "Completo", destino, origen: "local" }).success;
+    expect(con("2022-12-31")).toBe(false);
+    expect(con("2019-05-10")).toBe(false);
+    expect(con("2023-01-01")).toBe(true);
+    expect(con("2026-11-15")).toBe(true);
+  });
+
+  it("crearEvento rechaza fechas que no existen o están mal escritas", () => {
+    const con = (fecha: string) => crearEvento.safeParse({ nombre: "", fecha, estatus: "Completo", destino, origen: "local" }).success;
+    expect(con("2026-02-30")).toBe(false);
+    expect(con("2026-13-01")).toBe(false);
+    expect(con("15/11/2026")).toBe(false);
+    expect(con("")).toBe(false);
+  });
+
   it("crearEvento rechaza ids de usuario que no son uuid", () => {
     expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino, origen: "drive", usuariosAsignados: ["x"] }).success).toBe(false);
     expect(crearEvento.safeParse({ nombre: "", fecha: "2026-11-15", estatus: "Completo", destino, origen: "drive", usuariosAsignados: [UUID] }).success).toBe(true);

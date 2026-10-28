@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ClipboardList, Download, History, Plus } from "lucide-react";
-import { HistorialModal } from "./HistorialModal";
+import { ClipboardList, Download, Plus } from "lucide-react";
 import { NuevoEventoModal } from "./NuevoEventoModal";
 import { api, formatearFecha } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
@@ -22,7 +21,6 @@ export function ListaEventos() {
   const [eventos, setEventos] = useState<EventoConAvance[] | null>(() => leerCache<EventoConAvance[]>(usuario?.id, "eventos"));
   const [error, setError] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
-  const [verHistorial, setVerHistorial] = useState(false);
   const router = useRouter();
 
   const cargar = useCallback(() => {
@@ -42,16 +40,9 @@ export function ListaEventos() {
           </h1>
           <p className="text-sm text-muted">Hojas de inscripción por evento: lee, revisa y confirma.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {usuario?.rol === "admin" && (
-            <button onClick={() => setVerHistorial(true)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm font-medium">
-              <History className="h-4 w-4" /> Historial
-            </button>
-          )}
-          <button onClick={() => setCreando(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
-            <Plus className="h-4 w-4" /> Nuevo evento
-          </button>
-        </div>
+        <button onClick={() => setCreando(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
+          <Plus className="h-4 w-4" /> Nuevo evento
+        </button>
       </div>
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
@@ -68,7 +59,6 @@ export function ListaEventos() {
           onCreado={(evento) => { setCreando(false); router.push(`/captura-datos/${evento.id}`); }}
         />
       )}
-      {verHistorial && <HistorialModal titulo="Historial de Captura de Datos" onCerrar={() => setVerHistorial(false)} />}
     </div>
   );
 }

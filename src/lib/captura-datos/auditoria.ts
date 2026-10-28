@@ -2,11 +2,10 @@
 // que se está registrando: si falla (p. ej. la tabla aún no existe en Supabase), se anota en la consola del servidor y
 // todo sigue. Los textos y tipos compartidos con el navegador viven en historial.ts.
 import { supabase } from "@/lib/supabase";
-import { diferenciasDeCampos, type AccionAuditoria, type RegistroAuditoria } from "./historial";
+import { diferenciasDeCampos, RETENCION_AUDITORIA_DIAS, type AccionAuditoria, type RegistroAuditoria } from "./historial";
 import type { HojaCaptura } from "./modelo";
 
-/** Cuánto se conserva el historial; el cron semanal /api/cron/purgar-auditoria borra lo más viejo. */
-export const RETENCION_AUDITORIA_DIAS = 365;
+export { RETENCION_AUDITORIA_DIAS };
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 const LIMITE_POR_DEFECTO = 50;
 const LIMITE_MAXIMO = 100;

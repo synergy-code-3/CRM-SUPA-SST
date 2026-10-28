@@ -7,9 +7,15 @@
 // (excelLocal, borrador, metaArchivo de reapertura local) no aplican.
 import { z } from "zod";
 import { ESTATUS } from "./fields";
-import { idValido } from "./modelo";
+import { FECHA_MINIMA_EVENTO, idValido } from "./modelo";
 
 const texto = (max: number) => z.string().max(max);
+
+/** "2026-02-30" tiene forma de fecha pero no existe: se comprueba que al reconstruirla salga la misma. */
+const esFechaReal = (f: string) => {
+  const fecha = new Date(`${f}T00:00:00Z`);
+  return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === f;
+};
 const entero = (min: number, max: number) => z.number().int().min(min).max(max);
 const fraccion = z.number().finite().transform((n) => Math.min(1, Math.max(0, n)));
 
@@ -60,7 +66,11 @@ export const fotoRef = z.object({
 
 export const crearEvento = z.object({
   nombre: texto(200),
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+  fecha: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida")
+    .refine(esFechaReal, "Fecha inválida")
+    .refine((f) => f >= FECHA_MINIMA_EVENTO, "La fecha no puede ser anterior a 2023"),
   estatus,
   destino,
   origen,

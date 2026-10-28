@@ -253,6 +253,14 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   Purga: `RETENCION_AUDITORIA_DIAS = 365` (`auditoria.ts`), cron semanal `/api/cron/purgar-auditoria` (lunes 09:00 UTC,
   `vercel.json`; público en `middleware.ts` y protegido con `CRON_SECRET`). Código: `auditoria.ts` (servidor),
   `historial.ts` (textos y diferencias, compartido con el navegador), `HistorialModal.tsx`. Sin probar contra Supabase real.
+- **Captura de datos** (28 oct, interfaz): (1) el historial pasó a la **barra lateral** (ítem "Historial" bajo Captura de Datos →
+  página `/captura-datos/historial`, `HistorialPagina.tsx`; se quitó el botón de la lista de eventos y se dejó el de cada
+  evento, que abre solo el historial de ese evento). (2) La fecha de un evento nuevo **no puede ser anterior al 2023-01-01**:
+  `FECHA_MINIMA_EVENTO` en `modelo.ts`; se valida en el servidor (`crearEvento` de `validacion.ts`, que además rechaza fechas
+  que no existen como 2026-02-30) y en el modal (atributo `min`, aviso y botón desactivado). (3) Los avisos (`AvisoTemporal`)
+  ahora son **notificaciones emergentes arriba de la ventana** (portal fijo, por encima de los modales) en vez de ir al fondo
+  del panel, y el aviso de "folio duplicado / Confirmar de todos modos" del editor pasó a ser una **ventana emergente**.
+  Sin probar en el navegador.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.

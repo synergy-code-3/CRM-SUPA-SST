@@ -2,6 +2,9 @@
 // navegador (HistorialModal), por eso no importa nada de Supabase.
 import type { SheetFields } from "./fields";
 
+/** Cuánto se conserva el historial; el cron semanal /api/cron/purgar-auditoria borra lo más viejo (ver auditoria.ts). */
+export const RETENCION_AUDITORIA_DIAS = 365;
+
 export type AccionAuditoria =
   | "evento_creado"
   | "evento_guardado_drive"
