@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { campos, consultaAxis, crearEvento, patchEvento, patchHoja } from "./validacion";
-import { idValido } from "./modelo";
+import { fechaDeHoy, idValido } from "./modelo";
+
+// El tope de la fecha de un evento es "hoy": se fija el reloj para que las fechas de ejemplo (2026-11-15) no sean futuras.
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-12-01T18:00:00Z"));
+});
+afterAll(() => vi.useRealTimers());
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const destino = { id: "1w1nhREInIc7NGezEPg3l_-q1f9mkvqSG", url: "https://drive.google.com/drive/folders/x", nombre: "Prueba" };
@@ -18,6 +25,18 @@ describe("esquemas de la API", () => {
     expect(con("2019-05-10")).toBe(false);
     expect(con("2023-01-01")).toBe(true);
     expect(con("2026-11-15")).toBe(true);
+  });
+
+  it("crearEvento no acepta fechas futuras: el máximo es hoy", () => {
+    const con = (fecha: string) => crearEvento.safeParse({ nombre: "", fecha, estatus: "Completo", destino, origen: "local" }).success;
+    expect(con("2026-12-01")).toBe(true);
+    expect(con("2026-12-02")).toBe(false);
+    expect(con("2030-01-01")).toBe(false);
+  });
+
+  it("fechaDeHoy usa la hora de México (a las 03:00 UTC todavía es el día anterior)", () => {
+    expect(fechaDeHoy(new Date("2026-12-01T03:00:00Z"))).toBe("2026-11-30");
+    expect(fechaDeHoy(new Date("2026-12-01T12:00:00Z"))).toBe("2026-12-01");
   });
 
   it("crearEvento rechaza fechas que no existen o están mal escritas", () => {

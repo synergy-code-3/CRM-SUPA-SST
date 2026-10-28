@@ -261,6 +261,11 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   ahora son **notificaciones emergentes arriba de la ventana** (portal fijo, por encima de los modales) en vez de ir al fondo
   del panel, y el aviso de "folio duplicado / Confirmar de todos modos" del editor pasó a ser una **ventana emergente**.
   Sin probar en el navegador.
+- **Captura de datos** (28 oct, interfaz 2): la fecha de un evento también tiene **tope: hoy** (hora de México,
+  `fechaDeHoy()` en `modelo.ts`; servidor y modal), o sea, rango 2023-01-01 a hoy. Los diálogos de confirmación ahora son
+  **ventanas emergentes de la app** (`ConfirmarModal.tsx`) y ya no hay `window.confirm`/`window.prompt` en Captura de Datos:
+  cancelar el registro de un evento (antes un recuadro rojo al fondo del modal), cerrar el evento, guardar en Drive, "falta la
+  subcarpeta de fotos, ¿crearla?" y reabrir (que ahora pide el motivo en un campo del diálogo). Sin probar en el navegador.
 - **Captura de datos** (27 oct): el botón "Voucher" del visor ya no está deshabilitado sin recuadro; apunta por defecto a la
   mitad superior derecha de la hoja (`CAJA_VOUCHER_PREDETERMINADA` en `visor.ts`). Si la IA o la persona marcan el voucher,
   el botón usa ese recuadro exacto.

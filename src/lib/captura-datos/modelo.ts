@@ -54,6 +54,11 @@ export type OrigenEvento = "drive" | "local";
 /** Primer día permitido para la fecha de un evento (YYYY-MM-DD): no se crean eventos de antes de 2023. */
 export const FECHA_MINIMA_EVENTO = "2023-01-01";
 
+/** La fecha de hoy (YYYY-MM-DD) en hora de México, la zona del proyecto: tope de la fecha de un evento (no puede ser futura). */
+export function fechaDeHoy(ahora: Date = new Date()): string {
+  return ahora.toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+}
+
 export interface EventoCaptura {
   id: string;
   nombre: string;

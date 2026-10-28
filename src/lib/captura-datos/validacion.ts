@@ -7,7 +7,7 @@
 // (excelLocal, borrador, metaArchivo de reapertura local) no aplican.
 import { z } from "zod";
 import { ESTATUS } from "./fields";
-import { FECHA_MINIMA_EVENTO, idValido } from "./modelo";
+import { FECHA_MINIMA_EVENTO, fechaDeHoy, idValido } from "./modelo";
 
 const texto = (max: number) => z.string().max(max);
 
@@ -70,7 +70,9 @@ export const crearEvento = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida")
     .refine(esFechaReal, "Fecha inválida")
-    .refine((f) => f >= FECHA_MINIMA_EVENTO, "La fecha no puede ser anterior a 2023"),
+    .refine((f) => f >= FECHA_MINIMA_EVENTO, "La fecha no puede ser anterior a 2023")
+    // Se evalúa en cada petición (no al cargar el módulo): el tope es "hoy", que cambia cada día.
+    .refine((f) => f <= fechaDeHoy(), "La fecha no puede ser futura"),
   estatus,
   destino,
   origen,

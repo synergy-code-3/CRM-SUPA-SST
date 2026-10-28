@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
+import { ConfirmarModal } from "./ConfirmarModal";
 import { EditorHoja } from "./EditorHoja";
 import { HistorialModal } from "./HistorialModal";
 import { Modal } from "./Modal";
@@ -23,6 +24,16 @@ const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
+/** Pregunta pendiente en una ventana emergente (guardar en Drive, cerrar, reabrir…). */
+interface Dialogo {
+  titulo: string;
+  mensaje: string;
+  textoConfirmar: string;
+  /** Si se indica, la ventana pide un motivo obligatorio con esta etiqueta y lo entrega a `alConfirmar`. */
+  pedirMotivo?: string;
+  alConfirmar: (motivo: string) => void;
+}
+
 export function EventoDetalle({ id }: { id: string }) {
   const { usuario } = useSesion();
   const router = useRouter();
@@ -37,6 +48,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [exito, setExito] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
+  const [dialogo, setDialogo] = useState<Dialogo | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -130,7 +142,12 @@ export function EventoDetalle({ id }: { id: string }) {
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
-        if (window.confirm("Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?")) return await guardarEvento(accion, { ...opciones, crearCarpeta: true });
+        setDialogo({
+          titulo: "Falta la subcarpeta de fotos",
+          mensaje: "Falta la subcarpeta de fotos en Drive. ¿Crearla y continuar?",
+          textoConfirmar: "Crear y continuar",
+          alConfirmar: () => void guardarEvento(accion, { ...opciones, crearCarpeta: true }),
+        });
       } else {
         setMensaje(err instanceof Error ? err.message : "No se pudo guardar en Drive.");
       }
@@ -139,9 +156,7 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
-  async function reabrir() {
-    const motivo = window.prompt("Motivo de la reapertura:");
-    if (!motivo?.trim()) return;
+  async function reabrir(motivo: string) {
     try {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion: "reabrir", motivo } });
       await cargar();
@@ -194,14 +209,62 @@ export function EventoDetalle({ id }: { id: string }) {
             <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
         )}
-        <Boton onClick={() => window.confirm(evento.estado === "abierto" && porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?") && guardarEvento("confirmar")} cargando={ocupado === "confirmar"} icono={<CloudUpload className="h-4 w-4" />}>Guardar en Drive</Boton>
-        {evento.estado !== "abierto" && <Boton onClick={reabrir} icono={<RotateCcw className="h-4 w-4" />}>Reabrir evento</Boton>}
+        <Boton
+          onClick={() => setDialogo({
+            titulo: "Guardar en Drive",
+            mensaje: evento.estado === "abierto" && porRevisar ? `Quedan ${porRevisar} hojas por revisar. ¿Guardar en Drive solo lo confirmado?` : "¿Guardar el evento en Drive?",
+            textoConfirmar: "Guardar en Drive",
+            alConfirmar: () => void guardarEvento("confirmar"),
+          })}
+          cargando={ocupado === "confirmar"}
+          icono={<CloudUpload className="h-4 w-4" />}
+        >
+          Guardar en Drive
+        </Boton>
+        {evento.estado !== "abierto" && (
+          <Boton
+            onClick={() => setDialogo({
+              titulo: "Reabrir evento",
+              mensaje: "El evento volverá a quedar abierto para seguir capturando. Queda registrado quién lo reabrió y por qué.",
+              pedirMotivo: "Motivo de la reapertura",
+              textoConfirmar: "Reabrir evento",
+              alConfirmar: (motivo) => void reabrir(motivo),
+            })}
+            icono={<RotateCcw className="h-4 w-4" />}
+          >
+            Reabrir evento
+          </Boton>
+        )}
         {evento.estado !== "abierto" && <a href={urlExcelEvento(id)} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm"><Download className="h-4 w-4" /> Excel</a>}
-        {evento.estado === "abierto" && <Boton onClick={() => window.confirm(porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?") && guardarEvento("cerrar")} cargando={ocupado === "confirmar"} icono={<Lock className="h-4 w-4" />}>Cerrar evento</Boton>}
+        {evento.estado === "abierto" && (
+          <Boton
+            onClick={() => setDialogo({
+              titulo: "Cerrar evento",
+              mensaje: porRevisar ? `Quedan ${porRevisar} hojas por revisar y no se incluirán. ¿Guardar en Drive y cerrar el evento?` : "¿Guardar en Drive y cerrar el evento?",
+              textoConfirmar: "Guardar y cerrar",
+              alConfirmar: () => void guardarEvento("cerrar"),
+            })}
+            cargando={ocupado === "confirmar"}
+            icono={<Lock className="h-4 w-4" />}
+          >
+            Cerrar evento
+          </Boton>
+        )}
         <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
+      {dialogo && (
+        <ConfirmarModal
+          titulo={dialogo.titulo}
+          textoConfirmar={dialogo.textoConfirmar}
+          pedirMotivo={dialogo.pedirMotivo}
+          onCancelar={() => setDialogo(null)}
+          onConfirmar={(motivo) => { setDialogo(null); dialogo.alConfirmar(motivo); }}
+        >
+          {dialogo.mensaje}
+        </ConfirmarModal>
+      )}
 
       {ocupado === "confirmar" && <SubiendoADrive />}
       {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}
