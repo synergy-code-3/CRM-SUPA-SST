@@ -16,7 +16,13 @@ function rutas(dir: string): string[] {
 }
 
 describe("rutas de evento y hoja", () => {
-  const archivos = rutas(RAIZ).map((p) => p.slice(RAIZ.length + 1)).filter((r) => !EXENTAS.has(r));
+  // replaceAll: en Windows path.join arma las rutas con "\", y EXENTAS está
+  // escrito con "/" — sin normalizar, el filtro nunca hacía match ahí y las
+  // 3 rutas exentas se evaluaban igual que las demás (fallando, a propósito
+  // no tienen requerirEvento/requerirHoja).
+  const archivos = rutas(RAIZ)
+    .map((p) => p.slice(RAIZ.length + 1).replaceAll("\\", "/"))
+    .filter((r) => !EXENTAS.has(r));
 
   it("encuentra las rutas a revisar", () => expect(archivos.length).toBeGreaterThanOrEqual(10));
 
