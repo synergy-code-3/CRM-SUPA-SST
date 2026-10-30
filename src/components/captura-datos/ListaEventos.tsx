@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ClipboardList, Download, Plus } from "lucide-react";
+import { ClipboardList, Plus } from "lucide-react";
+import { MenuEvento } from "./MenuEvento";
 import { NuevoEventoModal } from "./NuevoEventoModal";
 import { api, formatearFecha } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
-import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { useSesion } from "@/lib/session-context";
 import type { ProgresoEvento } from "@/lib/captura-datos/db";
 import type { EventoCaptura } from "@/lib/captura-datos/modelo";
@@ -50,7 +50,7 @@ export function ListaEventos() {
       {eventos?.length === 0 && <p className="py-12 text-center text-sm text-muted">Todavía no hay eventos. Crea el primero.</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {eventos?.map((e) => <TarjetaEvento key={e.id} evento={e} />)}
+        {eventos?.map((e) => <TarjetaEvento key={e.id} evento={e} onCambio={cargar} />)}
       </div>
 
       {creando && (
@@ -63,19 +63,22 @@ export function ListaEventos() {
   );
 }
 
-function TarjetaEvento({ evento: e }: { evento: EventoConAvance }) {
+function TarjetaEvento({ evento: e, onCambio }: { evento: EventoConAvance; onCambio: () => void }) {
   const total = e.progreso.pendiente + e.progreso.leida + e.progreso.confirmada;
   const pct = total ? Math.round((e.progreso.confirmada / total) * 100) : 0;
   return (
-    // Toda la tarjeta navega: el enlace del título se estira (after:inset-0) y el Excel queda por encima para seguir siendo un enlace aparte.
+    // Toda la tarjeta navega: el enlace del título se estira (after:inset-0) y el menú queda por encima (z-10) para seguir siendo clicable.
     <div className="relative rounded-2xl border border-silver bg-surface p-4 transition hover:border-primary hover:shadow-md focus-within:border-primary">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">
             <Link href={`/captura-datos/${e.id}`} className="outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']">{e.nombre}</Link>
           </h2>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${e.estado === "confirmado" ? "bg-success/15 text-success" : "bg-primary/10 text-primary"}`}>
-            {e.estado === "confirmado" ? "Confirmado" : "Abierto"}
+          <span className="flex shrink-0 items-center gap-1">
+            <span className={`rounded-full px-2 py-0.5 text-xs ${e.estado === "confirmado" ? "bg-success/15 text-success" : "bg-primary/10 text-primary"}`}>
+              {e.estado === "confirmado" ? "Confirmado" : "Abierto"}
+            </span>
+            <MenuEvento evento={e} porRevisar={e.progreso.pendiente + e.progreso.leida} onCambio={onCambio} />
           </span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-silver/50">
@@ -84,9 +87,6 @@ function TarjetaEvento({ evento: e }: { evento: EventoConAvance }) {
         {e.fecha && <p className="text-xs text-muted">{formatearFecha(e.fecha)}</p>}
         <p className="text-xs text-muted">{e.progreso.confirmada} de {total} hojas confirmadas · {e.progreso.pendiente + e.progreso.leida} por revisar</p>
       </div>
-      <a href={urlExcelEvento(e.id)} className="relative mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
-        <Download className="h-3 w-3" /> Excel
-      </a>
     </div>
   );
 }
