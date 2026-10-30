@@ -141,11 +141,10 @@ export function parseCantidad(v: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-export function normalizeFields(f: SheetFields, estatus: Estatus = "Completo"): SheetFields {
+export function normalizeFields(f: SheetFields, _estatus: Estatus = "Completo"): SheetFields {
   const lada: Lada = LADAS.some((l) => l.value === f.lada) ? f.lada : "+52";
   const n = normalizeTodo(f, lada);
-  // Para interesados no se guarda nada de pago aunque la IA lo haya leído
-  return llevaPago(estatus) ? n : { ...n, tarjeta: "", marcaTarjeta: "", metodoPago: "", cantidad: "", membresia: "" };
+  return n;
 }
 
 function normalizeTodo(f: SheetFields, lada: Lada): SheetFields {
@@ -212,7 +211,7 @@ export function conNotaAMeses({ cantidad, notas }: { cantidad: string; notas: st
  * Errores bloqueantes por campo, según el estado:
  *  - Completo: todo obligatorio (salvo notas).
  *  - Apartado: todo obligatorio salvo la membresía (a veces cambian de plan y pagan la diferencia).
- *  - Interesado: solo folio y datos de contacto.
+ *  - Interesado: solo folio y datos de contacto; el pago y la membresía son opcionales (si se llenan, se validan).
  */
 export function validateFields(f: SheetFields, estatus: Estatus = "Completo"): Partial<Record<FieldKey, string>> {
   const errors: Partial<Record<FieldKey, string>> = {};
@@ -235,17 +234,17 @@ export function validateFields(f: SheetFields, estatus: Estatus = "Completo"): P
   else if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(correo)) errors.correo = "Correo con formato inválido";
 
   if ((f.notas ?? "").length > NOTAS_MAX) errors.notas = `Máximo ${NOTAS_MAX} caracteres`;
-  if (!llevaPago(estatus)) return errors;
+  const obligatorio = llevaPago(estatus);
 
-  if (!(METODOS_PAGO as readonly string[]).includes(f.metodoPago)) errors.metodoPago = "Elige el método de pago";
+  if (obligatorio && !(METODOS_PAGO as readonly string[]).includes(f.metodoPago)) errors.metodoPago = "Elige el método de pago";
 
-  if (requiereTarjeta(f.metodoPago)) {
+  if (obligatorio && requiereTarjeta(f.metodoPago)) {
     if (!f.tarjeta) errors.tarjeta = "Faltan los últimos 4 dígitos";
     else if (!/^\d{4}$/.test(f.tarjeta)) errors.tarjeta = "Deben ser 4 dígitos";
   } else if (f.tarjeta && !/^\d{4}$/.test(f.tarjeta)) errors.tarjeta = "Deben ser 4 dígitos";
 
   const cantidad = parseCantidad(f.cantidad);
-  if (!f.cantidad) errors.cantidad = "Falta la cantidad pagada";
+  if (!f.cantidad) { if (obligatorio) errors.cantidad = "Falta la cantidad pagada"; }
   else if (cantidad === null || cantidad <= 0 || !/^\d+(\.\d{1,2})?$/.test(f.cantidad)) errors.cantidad = "Cantidad inválida";
 
   if (estatus === "Completo" && !MEMBRESIAS.some((m) => m.value === f.membresia)) errors.membresia = "Elige la membresía";

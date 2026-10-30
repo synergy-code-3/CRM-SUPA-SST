@@ -284,3 +284,12 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
 ## Supabase
 
 Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente). Ya se ejecutó en la base actual.
+
+## Ajustes de revisión de hojas
+- Visor: zoom automático a "Datos" al abrir una hoja.
+- Insignias de color por estatus (Completo / Apartado / Interesado) en secciones del evento y en el editor.
+- Interesados: se muestran y guardan método de pago, cantidad, membresía y tarjeta (opcionales, se validan solo si se llenan).
+- Al confirmar la última hoja: aviso verde "Se completaron todas las hojas" (ya no el rojo).
+- Botón IA: "Leyendo con IA…" mientras carga y "Hoja ya leída con IA" al terminar.
+- Ventana de Drive: pasa de "Subiendo" a "Drive subido".
+- SQL pendiente: ninguno.

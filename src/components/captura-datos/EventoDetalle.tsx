@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { EditorHoja } from "./EditorHoja";
 import { HistorialModal } from "./HistorialModal";
+import { InsigniaEstatus, ESTILO_ESTATUS } from "./InsigniaEstatus";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
@@ -45,11 +46,12 @@ export function EventoDetalle({ id }: { id: string }) {
   const [subiendoFotos, setSubiendoFotos] = useState(false);
   const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
+  const [driveSubido, setDriveSubido] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (): Promise<HojaCaptura[] | null> => {
     try {
       const [e, h] = await Promise.all([
         api<{ evento: EventoCaptura }>(`/api/captura-datos/eventos/${id}`),
@@ -58,20 +60,22 @@ export function EventoDetalle({ id }: { id: string }) {
       setEvento(e.evento);
       setHojas(h.hojas);
       guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas });
+      return h.hojas;
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
+      return null;
     }
   }, [id, usuario?.id]);
 
   usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
-  async function tomarSiguiente(): Promise<boolean> {
+  async function tomarSiguiente(silencioso = false): Promise<boolean> {
     setOcupado("tomar");
     setMensaje(null);
     try {
       const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
       if (r.hoja) setActual(r.hoja);
-      else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+      else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
       return !!r.hoja;
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo tomar una hoja.");
@@ -89,8 +93,11 @@ export function EventoDetalle({ id }: { id: string }) {
       setActual(null);
       return;
     }
-    const [hayOtra] = await Promise.all([tomarSiguiente(), cargar()]);
-    if (!hayOtra) setActual(null);
+    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(true), cargar()]);
+    if (hayOtra) return;
+    setActual(null);
+    if (actualizadas?.length && actualizadas.every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito("¡Listo! Se completaron todas las hojas del evento.");
+    else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
   }
 
   async function abrirHoja(hojaId: string) {
@@ -125,7 +132,7 @@ export function EventoDetalle({ id }: { id: string }) {
     setExito(null);
     try {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion, ...opciones } });
-      setExito(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : evento?.estado === "abierto" ? "Se subió a Drive correctamente. El evento sigue abierto." : "Se subió a Drive correctamente.");
+      setDriveSubido(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : evento?.estado === "abierto" ? "Se subió a Drive correctamente. El evento sigue abierto." : "Se subió a Drive correctamente.");
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
@@ -186,7 +193,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </p>
       </div>
 
-      {exito && <AvisoTemporal key={exito} onCerrar={() => setExito(null)}>{exito}</AvisoTemporal>}
+      {exito && <AvisoTemporal key={exito} positivo onCerrar={() => setExito(null)}>{exito}</AvisoTemporal>}
       {mensaje && <AvisoTemporal key={mensaje} peligro onCerrar={() => setMensaje(null)}>{mensaje}</AvisoTemporal>}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +260,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </ConfirmarModal>
       )}
 
-      {ocupado === "confirmar" && <SubiendoADrive />}
+      {(ocupado === "confirmar" || driveSubido) && <SubiendoADrive subido={driveSubido} onCerrar={() => setDriveSubido(null)} />}
       {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}
       {borrando && (
         <BorrarEventoModal
@@ -273,10 +280,10 @@ export function EventoDetalle({ id }: { id: string }) {
       {hojas.length > 0 && (
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
-            <section key={e.value} aria-label={e.carpeta} className="space-y-3">
+            <section key={e.value} aria-label={e.carpeta} className={`space-y-3 rounded-xl border p-3 ${ESTILO_ESTATUS[e.value].seccion}`}>
               <h2 className="text-sm font-semibold text-foreground">
                 <button onClick={() => alternarSeccion(e.value)} aria-expanded={!colapsadas.has(e.value)} className="flex w-full items-center gap-2 text-left">
-                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> {e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
                 </button>
               </h2>
               {!colapsadas.has(e.value) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -321,8 +328,20 @@ function Boton({ onClick, cargando, icono, primario, peligro, className = "", ch
   );
 }
 
-/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive. */
-function SubiendoADrive() {
+/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive y confirma cuando terminó. */
+function SubiendoADrive({ subido, onCerrar }: { subido: string | null; onCerrar: () => void }) {
+  if (subido) {
+    return (
+      <Modal titulo="Drive subido" onCerrar={onCerrar}>
+        <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-4 text-center">
+          <CheckCircle2 className="h-12 w-12 text-success" />
+          <p className="text-sm font-medium text-success">Drive subido</p>
+          <p className="text-sm text-foreground">{subido}</p>
+          <button type="button" onClick={onCerrar} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">Aceptar</button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal titulo="Guardando en Drive" onCerrar={() => {}} bloqueado>
       <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-4 text-center">

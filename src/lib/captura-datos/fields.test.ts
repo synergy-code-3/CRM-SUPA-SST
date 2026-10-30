@@ -92,10 +92,10 @@ describe("normalizadores", () => {
     expect(normalizeCantidad("9997.00")).toBe("9997");
   });
 
-  it("normalizeFields limpia datos y vacía el pago en Interesado", () => {
+  it("normalizeFields limpia datos y conserva el pago en Interesado", () => {
     const sucia = { ...completa, nombre: "  Ana   Lopez ", correo: " ANA@Mail.com ", folio: "0044" };
     expect(normalizeFields(sucia)).toMatchObject({ nombre: "Ana Lopez", correo: "ana@mail.com", folio: "44" });
-    expect(normalizeFields(completa, "Interesado")).toMatchObject({ metodoPago: "", cantidad: "", membresia: "", tarjeta: "" });
+    expect(normalizeFields(completa, "Interesado")).toMatchObject({ metodoPago: completa.metodoPago, cantidad: completa.cantidad });
   });
 
   it("normalizeFields descarta valores fuera de catálogo", () => {

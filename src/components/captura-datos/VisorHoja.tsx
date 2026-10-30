@@ -47,6 +47,14 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
     zoom.current?.setTransform(t.x, t.y, t.scale, ANIMACION_MS);
   }
 
+  // Al abrir una hoja se acerca sola a la zona de datos.
+  useEffect(() => {
+    if (!listo) return;
+    const t = setTimeout(() => ampliar(CAJA_DATOS), 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listo]);
+
   function hojaCompleta() {
     zoom.current?.setTransform((tamanoVista.w - imagen.w) / 2, (tamanoVista.h - imagen.h) / 2, 1, ANIMACION_MS);
   }

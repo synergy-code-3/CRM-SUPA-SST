@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 
 const DURACION_MS = 8000;
 const TICK_MS = 100;
@@ -28,6 +28,8 @@ interface AvisoTemporalProps {
   /** El aviso se quita solo; se llama con él al terminar el tiempo o al darle a la X. */
   onCerrar: () => void;
   peligro?: boolean;
+  /** Aviso de éxito (verde). */
+  positivo?: boolean;
   duracionMs?: number;
   children: React.ReactNode;
 }
@@ -36,7 +38,7 @@ interface AvisoTemporalProps {
  * Aviso emergente (arriba de la ventana) con cuenta regresiva: la barra se vacía, se pausa con el cursor encima y se
  * puede cerrar con la X.
  */
-export function AvisoTemporal({ onCerrar, peligro, duracionMs = DURACION_MS, children }: AvisoTemporalProps) {
+export function AvisoTemporal({ onCerrar, peligro, positivo, duracionMs = DURACION_MS, children }: AvisoTemporalProps) {
   const [restante, setRestante] = useState(duracionMs);
   const [pausado, setPausado] = useState(false);
   const alCerrar = useRef(onCerrar);
@@ -56,7 +58,7 @@ export function AvisoTemporal({ onCerrar, peligro, duracionMs = DURACION_MS, chi
 
   if (!destino) return null;
 
-  const colores = peligro ? "border-danger/30 bg-danger/10 text-danger" : "border-amber-500/30 bg-amber-500/10 text-amber-700";
+  const colores = peligro ? "border-danger/30 bg-danger/10 text-danger" : positivo ? "border-success/30 bg-success/10 text-success" : "border-amber-500/30 bg-amber-500/10 text-amber-700";
   return createPortal(
     // Capa sólida debajo del color translúcido: flotando sobre la pantalla el texto debe leerse bien.
     <div
@@ -67,7 +69,7 @@ export function AvisoTemporal({ onCerrar, peligro, duracionMs = DURACION_MS, chi
     >
       <div className={`relative overflow-hidden rounded-lg border text-sm ${colores}`}>
         <div className="flex items-start gap-2 px-3 py-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          {positivo ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
           <span className="flex-1">{children}</span>
           <span className="mt-0.5 text-xs tabular-nums opacity-70" aria-hidden="true">{Math.ceil(restante / 1000)} s{pausado ? " ⏸" : ""}</span>
           <button type="button" onClick={onCerrar} aria-label="Cerrar aviso" className="rounded p-0.5 hover:bg-black/10">
