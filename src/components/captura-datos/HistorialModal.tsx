@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { Modal } from "./Modal";
+import { FiltrosHistorial, hayFiltros, paramsDeFiltros, SIN_FILTROS, type Filtros } from "./FiltrosHistorial";
 import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
 import { api } from "@/lib/captura-datos/cliente";
 import { ETIQUETA_ACCION, lineasDeDetalle, type AccionAuditoria, type RegistroAuditoria } from "@/lib/captura-datos/historial";
@@ -45,44 +46,62 @@ interface CacheHistorial {
 const FECHA = new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeStyle: "short" });
 
 /** Lista de movimientos importantes de Captura de Datos (solo admin): lo más reciente primero, con "Ver más". */
-export function HistorialLista({ eventoId }: { eventoId?: string }) {
+export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: string; conFiltros?: boolean }) {
   const { usuario } = useSesion();
   const nombreCache = `historial:${eventoId ?? "todo"}`;
   const [registros, setRegistros] = useState<RegistroAuditoria[] | null>(() => leerCache<CacheHistorial>(usuario?.id, nombreCache)?.registros ?? null);
   const [hayMas, setHayMas] = useState(() => leerCache<CacheHistorial>(usuario?.id, nombreCache)?.hayMas ?? false);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState<Filtros>(SIN_FILTROS);
+  const [aplicados, setAplicados] = useState<Filtros>(SIN_FILTROS);
+  const filtrando = conFiltros && hayFiltros(aplicados);
+  const visibles = useRef<RegistroAuditoria[]>([]);
+  const peticion = useRef(0);
+  visibles.current = registros ?? [];
+
+  // El texto se aplica con una pausa para no pedir al servidor en cada tecla.
+  useEffect(() => {
+    const t = setTimeout(() => setAplicados(filtros), 350);
+    return () => clearTimeout(t);
+  }, [filtros]);
 
   const cargar = useCallback(
     async (antes?: number) => {
+      const esta = ++peticion.current;
       setCargando(true);
       setError(null);
       try {
-        const params = new URLSearchParams();
+        const params = filtrando ? paramsDeFiltros(aplicados) : new URLSearchParams();
         if (eventoId) params.set("eventoId", eventoId);
         if (antes !== undefined) params.set("antes", String(antes));
         const r = await api<{ registros: RegistroAuditoria[]; hayMas: boolean }>(`/api/captura-datos/historial?${params}`);
-        const previa = leerCache<CacheHistorial>(usuario?.id, nombreCache);
+        // Con filtros no se usa la caché: solo guarda el historial completo.
+        const previa = filtrando ? { registros: visibles.current, hayMas: false } : leerCache<CacheHistorial>(usuario?.id, nombreCache);
         const siguiente: CacheHistorial = antes === undefined ? r : { registros: [...(previa?.registros ?? []), ...r.registros], hayMas: r.hayMas };
-        guardarCache(usuario?.id, nombreCache, siguiente);
+        if (esta !== peticion.current) return; // llegó tarde: ya hay otra búsqueda en curso
+        if (!filtrando) guardarCache(usuario?.id, nombreCache, siguiente);
         setRegistros(siguiente.registros);
         setHayMas(siguiente.hayMas);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
       } finally {
-        setCargando(false);
+        if (esta === peticion.current) setCargando(false);
       }
     },
-    [eventoId, nombreCache, usuario?.id]
+    [eventoId, nombreCache, usuario?.id, filtrando, aplicados]
   );
 
   // Con caché solo se pide lo posterior al último movimiento visto; sin caché, la primera página.
   useEffect(() => {
-    const cache = leerCache<CacheHistorial>(usuario?.id, nombreCache);
+    const cache = filtrando ? null : leerCache<CacheHistorial>(usuario?.id, nombreCache);
     if (!cache) {
       void cargar();
       return;
     }
+    peticion.current++; // descarta respuestas pendientes de una búsqueda con filtros
+    setRegistros(cache.registros);
+    setHayMas(cache.hayMas);
     const desde = cache.registros[0]?.id ?? 0;
     const params = new URLSearchParams({ desde: String(desde) });
     if (eventoId) params.set("eventoId", eventoId);
@@ -94,15 +113,16 @@ export function HistorialLista({ eventoId }: { eventoId?: string }) {
         setRegistros(actualizado.registros);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudo actualizar el historial."));
-  }, [cargar, eventoId, nombreCache, usuario?.id]);
+  }, [cargar, eventoId, nombreCache, usuario?.id, filtrando]);
 
   const ultimo = registros?.[registros.length - 1];
 
   return (
     <div className="space-y-3">
+      {conFiltros && <FiltrosHistorial filtros={filtros} onCambio={setFiltros} />}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!registros && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
-      {registros?.length === 0 && <p className="py-6 text-center text-sm text-muted">Todavía no hay movimientos registrados.</p>}
+      {registros?.length === 0 && <p className="py-6 text-center text-sm text-muted">{filtrando ? "Ningún movimiento coincide con los filtros." : "Todavía no hay movimientos registrados."}</p>}
 
       {registros && registros.length > 0 && (
         <ul className="divide-y divide-silver/60">

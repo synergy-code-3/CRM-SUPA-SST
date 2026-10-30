@@ -25,7 +25,7 @@ export function HistorialPagina() {
 
       {usuario?.rol === "admin" ? (
         <div className="rounded-2xl border border-silver bg-surface p-4">
-          <HistorialLista />
+          <HistorialLista conFiltros />
         </div>
       ) : (
         <p className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">

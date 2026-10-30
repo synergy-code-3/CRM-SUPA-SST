@@ -38,6 +38,20 @@ export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   hoja_corregida: "Corrigió una hoja ya confirmada",
 };
 
+export const ACCIONES_AUDITORIA = Object.keys(ETIQUETA_ACCION) as AccionAuditoria[];
+
+/** Nombre corto de cada acción para los filtros del historial. */
+export const ETIQUETA_FILTRO_ACCION: Record<AccionAuditoria, string> = {
+  evento_creado: "Creado",
+  evento_guardado_drive: "Guardado en Drive",
+  evento_cerrado: "Cerrado",
+  evento_cerrado_auto: "Cerrado solo",
+  evento_reabierto: "Reabierto",
+  evento_borrado: "Borrado",
+  hoja_confirmada: "Hoja confirmada",
+  hoja_corregida: "Hoja corregida",
+};
+
 const ETIQUETA_CAMPO: Record<string, string> = {
   folio: "Folio", nombre: "Nombre", correo: "Correo", lada: "Lada", telefono: "Celular", tarjeta: "Últimos 4 dígitos",
   marcaTarjeta: "Marca de tarjeta", metodoPago: "Método de pago", cantidad: "Monto", membresia: "Membresía", notas: "Notas",

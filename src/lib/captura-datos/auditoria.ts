@@ -99,7 +99,18 @@ export interface ConsultaAuditoria {
   /** Solo registros con id mayor a este (lo nuevo desde la última vez que se vio la lista). */
   desde?: number;
   limite?: number;
+  /** Texto libre: evento, admin, folio, motivo o nombre del cliente en una corrección. */
+  q?: string;
+  /** Texto que debe contener el nombre del evento (el lugar suele ir en el nombre). */
+  lugar?: string;
+  acciones?: AccionAuditoria[];
+  /** Rango (ISO) sobre el momento del movimiento. */
+  fechaDesde?: string;
+  fechaHasta?: string;
 }
+
+// Los caracteres que usa la sintaxis de .or() de PostgREST se quitan del texto buscado.
+const limpiarBusqueda = (t: string) => t.replace(/[,()"\\%*]/g, " ").trim();
 
 /** Los movimientos más recientes primero; `hayMas` indica si queda más historial para pedir con `antes`. */
 export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise<{ registros: RegistroAuditoria[]; hayMas: boolean }> {
@@ -108,6 +119,16 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
   if (consulta.eventoId) q = q.eq("evento_id", consulta.eventoId);
   if (consulta.antes !== undefined) q = q.lt("id", consulta.antes);
   if (consulta.desde !== undefined) q = q.gt("id", consulta.desde);
+  if (consulta.acciones?.length) q = q.in("accion", consulta.acciones);
+  if (consulta.fechaDesde) q = q.gte("en", consulta.fechaDesde);
+  if (consulta.fechaHasta) q = q.lte("en", consulta.fechaHasta);
+  const lugar = limpiarBusqueda(consulta.lugar ?? "");
+  if (lugar) q = q.ilike("evento_nombre", `%${lugar}%`);
+  const texto = limpiarBusqueda(consulta.q ?? "");
+  if (texto) {
+    const campos = ["evento_nombre", "usuario_nombre", "detalle->>folio", "detalle->>motivo", "detalle->cambios->nombre->>antes", "detalle->cambios->nombre->>despues"];
+    q = q.or(campos.map((c) => `${c}.ilike.%${texto}%`).join(","));
+  }
   const { data, error } = await q;
   if (error) throw error;
   const filas = data as FilaAuditoria[];

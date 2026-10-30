@@ -252,7 +252,7 @@ export function EventoDetalle({ id }: { id: string }) {
         <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
-      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} />}
+      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" ? () => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
