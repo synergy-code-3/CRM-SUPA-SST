@@ -1077,6 +1077,14 @@ create table if not exists cap_auditoria (
 );
 create index if not exists idx_cap_auditoria_evento on cap_auditoria (evento_id, id desc);
 create index if not exists idx_cap_auditoria_en on cap_auditoria (en);
+-- Búsqueda del historial (ilike '%texto%'): sin estos índices trigram cada tecla recorre toda la tabla.
+create index if not exists idx_cap_auditoria_busq_evento on cap_auditoria using gin (evento_nombre gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_usuario on cap_auditoria using gin (usuario_nombre gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_folio on cap_auditoria using gin ((detalle ->> 'folio') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_motivo on cap_auditoria using gin ((detalle ->> 'motivo') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_nombre_antes on cap_auditoria using gin ((detalle -> 'cambios' -> 'nombre' ->> 'antes') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_nombre_despues on cap_auditoria using gin ((detalle -> 'cambios' -> 'nombre' ->> 'despues') gin_trgm_ops);
+create index if not exists idx_cap_hojas_busq_nombre on cap_hojas using gin ((campos ->> 'nombre') gin_trgm_ops);
 alter table cap_auditoria enable row level security;
 
 -- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo.

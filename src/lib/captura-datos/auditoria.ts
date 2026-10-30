@@ -111,6 +111,14 @@ export interface ConsultaAuditoria {
 
 // Los caracteres que usa la sintaxis de .or() de PostgREST se quitan del texto buscado.
 const limpiarBusqueda = (t: string) => t.replace(/[,()"\\%*]/g, " ").trim();
+const MAX_HOJAS_POR_NOMBRE = 200;
+
+/** Ids de las hojas cuyo cliente se llama así: el movimiento de confirmar no guarda el nombre, solo el folio. */
+async function hojasConNombre(texto: string): Promise<string[]> {
+  const { data, error } = await supabase.from("cap_hojas").select("id").ilike("campos->>nombre", `%${texto}%`).limit(MAX_HOJAS_POR_NOMBRE);
+  if (error) throw error;
+  return (data as { id: string }[]).map((h) => h.id);
+}
 
 /** Los movimientos más recientes primero; `hayMas` indica si queda más historial para pedir con `antes`. */
 export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise<{ registros: RegistroAuditoria[]; hayMas: boolean }> {
@@ -127,7 +135,10 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
   const texto = limpiarBusqueda(consulta.q ?? "");
   if (texto) {
     const campos = ["evento_nombre", "usuario_nombre", "detalle->>folio", "detalle->>motivo", "detalle->cambios->nombre->>antes", "detalle->cambios->nombre->>despues"];
-    q = q.or(campos.map((c) => `${c}.ilike.%${texto}%`).join(","));
+    const condiciones = campos.map((c) => `${c}.ilike.%${texto}%`);
+    const hojas = await hojasConNombre(texto);
+    if (hojas.length) condiciones.push(`hoja_id.in.(${hojas.join(",")})`);
+    q = q.or(condiciones.join(","));
   }
   const { data, error } = await q;
   if (error) throw error;

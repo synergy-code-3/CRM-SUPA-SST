@@ -122,6 +122,15 @@ describe("listarAuditoria", () => {
     expect(operacionesDe("cap_auditoria")).toContainEqual(["gt", ["id", 10]]);
   });
 
+  it("al buscar texto también incluye los movimientos de las hojas cuyo cliente se llama así", async () => {
+    mock.respuestas.cap_hojas = { data: [{ id: "h1" }, { id: "h2" }], error: null };
+    mock.respuestas.cap_auditoria = { data: [], error: null };
+    await listarAuditoria({ q: "Ana" });
+    const [, [condiciones]] = operacionesDe("cap_auditoria").find(([op]) => op === "or")!;
+    expect(condiciones).toContain("hoja_id.in.(h1,h2)");
+    expect(condiciones).toContain("evento_nombre.ilike.%Ana%");
+  });
+
   it("sin más resultados, hayMas es false", async () => {
     mock.respuestas.cap_auditoria = { data: [fila(2)], error: null };
     expect((await listarAuditoria({ limite: 5 })).hayMas).toBe(false);
