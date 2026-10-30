@@ -271,15 +271,16 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   el botón usa ese recuadro exacto.
 - Sin SQL pendiente nuevo.
 
-## Pendiente en Supabase (SQL a correr a mano)
+- **Captura de Datos** (30 oct): (1) los SQL sueltos se integraron en `supabase/schema.sql` (columna `fecha`, `cap_auditoria`,
+  `tomar_hoja_libre` ya estaban; se añadieron un `alter table cap_eventos add column if not exists fecha` y los 4 índices de
+  rendimiento) y se borraron `captura-datos-ajustes.sql`, `-auditoria.sql` y `-fecha-orden.sql`. (2) Nuevo evento con subida local:
+  menú Completos / Apartados / Interesados (con contador), zona "Subir o arrastrar" (`ZonaArchivos.tsx`, también en
+  "Subir fotos o PDF" del evento) con quitar archivo / quitar selección; los archivos se guardan por categoría y se suben al darle
+  "Crear evento" (`subirHojas` en `cliente.ts`; si falla a medias, el reintento no repite lo ya subido). (3) Historial con código de
+  color por acción y caché en memoria por persona: al reabrirlo solo pide lo posterior al último movimiento visto (`desde` en
+  `GET /api/captura-datos/historial`). Sin probar en el navegador.
+- Sin SQL pendiente nuevo.
 
-Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
-1. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`). **Obligatorio**: sin la columna,
-   crear un evento falla (ahora el error lo dice); el orden de `tomar_hoja_libre` es el que sigue la lectura adelantada.
-   `schema.sql` ya incluye ambas cosas (para bases nuevas); este archivo es la migración para la base que ya existe.
-2. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
-3. `supabase/captura-datos-auditoria.sql` (tabla del historial de movimientos). Sin ella la app funciona, pero no guarda historial.
-4. Opcional: `supabase/captura-datos-ajustes.sql` (solo 4 índices de rendimiento; ya no toca la función ni la cascada).
+## Supabase
 
-`supabase/captura-datos-borrado.sql` se eliminó (27/28 oct): su única instrucción, la cascada de reaperturas, ya está en
-`schema.sql` y el código la suple al borrar un evento.
+Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente). Ya se ejecutó en la base actual.

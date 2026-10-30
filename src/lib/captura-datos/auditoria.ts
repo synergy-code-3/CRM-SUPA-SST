@@ -96,6 +96,8 @@ export interface ConsultaAuditoria {
   eventoId?: string;
   /** Cursor: solo registros con id menor a este (los más nuevos van primero). */
   antes?: number;
+  /** Solo registros con id mayor a este (lo nuevo desde la última vez que se vio la lista). */
+  desde?: number;
   limite?: number;
 }
 
@@ -105,6 +107,7 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
   let q = supabase.from("cap_auditoria").select("*").order("id", { ascending: false }).limit(limite + 1);
   if (consulta.eventoId) q = q.eq("evento_id", consulta.eventoId);
   if (consulta.antes !== undefined) q = q.lt("id", consulta.antes);
+  if (consulta.desde !== undefined) q = q.gt("id", consulta.desde);
   const { data, error } = await q;
   if (error) throw error;
   const filas = data as FilaAuditoria[];

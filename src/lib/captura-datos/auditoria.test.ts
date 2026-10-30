@@ -116,6 +116,12 @@ describe("listarAuditoria", () => {
     expect(r.registros[0]).toMatchObject({ usuarioNombre: "Ana", eventoNombre: "E", accion: "evento_creado" });
   });
 
+  it("con desde pide solo los registros más nuevos que ese id", async () => {
+    mock.respuestas.cap_auditoria = { data: [fila(12)], error: null };
+    await listarAuditoria({ desde: 10 });
+    expect(operacionesDe("cap_auditoria")).toContainEqual(["gt", ["id", 10]]);
+  });
+
   it("sin más resultados, hayMas es false", async () => {
     mock.respuestas.cap_auditoria = { data: [fila(2)], error: null };
     expect((await listarAuditoria({ limite: 5 })).hayMas).toBe(false);

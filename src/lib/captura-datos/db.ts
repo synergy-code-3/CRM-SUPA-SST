@@ -112,7 +112,7 @@ export async function crearEvento(input: {
     .single();
   // PGRST204 / 42703 = la columna `fecha` no existe: falta correr el SQL que la crea (se explica en vez de "error interno").
   if (error?.code === "PGRST204" || error?.code === "42703") {
-    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/captura-datos-fecha-orden.sql en el SQL Editor de Supabase (columna fecha de los eventos).");
+    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/schema.sql en el SQL Editor de Supabase (columna fecha de los eventos).");
   }
   if (error) throw error;
 

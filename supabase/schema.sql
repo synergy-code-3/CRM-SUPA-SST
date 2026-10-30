@@ -991,7 +991,7 @@ alter table coord_mentorias add column if not exists flyer_url text;
 create table if not exists cap_eventos (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
-  fecha date,                          -- fecha del evento; en bases ya creadas se añade con supabase/captura-datos-fecha-orden.sql
+  fecha date,                          -- fecha del evento (en bases ya creadas: alter table cap_eventos add column if not exists fecha date)
   destino jsonb not null,              -- { id, url, nombre } carpeta principal de Drive
   origen text not null check (origen in ('drive', 'local')),
   carpeta_fotos_id text,               -- subcarpeta de Drive donde se suben fotos locales (si aplica)
@@ -1063,8 +1063,7 @@ create table if not exists cap_imagenes_no_validas (huella text primary key, en 
 -- Historial de movimientos importantes de Captura de Datos (solo lo ve un admin): crear, guardar en Drive, cerrar,
 -- reabrir y borrar eventos; confirmar y corregir hojas. NO lleva llaves foráneas a propósito: el rastro debe
 -- sobrevivir al borrado del evento, de la hoja o del usuario (por eso guarda también sus nombres). Se purga solo
--- (cron semanal, ver RETENCION_AUDITORIA_DIAS en captura-datos/auditoria.ts). En bases ya creadas se añade con
--- supabase/captura-datos-auditoria.sql.
+-- (cron semanal, ver RETENCION_AUDITORIA_DIAS en captura-datos/auditoria.ts).
 create table if not exists cap_auditoria (
   id bigserial primary key,
   en timestamptz not null default now(),
@@ -1112,8 +1111,7 @@ alter table certificaciones_clientes add column if not exists motivo_revocacion 
 -- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
 -- Si la persona ya tiene una hoja vigente en el evento, se la devuelve (renovando el bloqueo) en vez de bloquear otra.
 -- Orden = el de la pantalla (Completos, Apartados, Interesados; dentro de cada uno, por id); la lectura adelantada
--- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. En bases ya creadas se aplica con
--- supabase/captura-datos-fecha-orden.sql.
+-- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden.
 create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
 returns cap_hojas
 language plpgsql
@@ -1150,6 +1148,16 @@ $$;
 -- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarla.
 revoke execute on function tomar_hoja_libre(uuid, uuid) from public, anon, authenticated;
 grant execute on function tomar_hoja_libre(uuid, uuid) to service_role;
+
+-- Bases creadas antes de existir la fecha del evento (no hace nada si la columna ya está).
+alter table cap_eventos add column if not exists fecha date;
+
+-- Captura de Datos: índices de rendimiento (folio ya confirmado en cualquier evento, y tablas hijas por evento/hoja/usuario).
+create index if not exists idx_cap_hojas_folio_confirmada on cap_hojas (folio)
+  where estado = 'confirmada' and folio is not null and folio <> '';
+create index if not exists idx_cap_hojas_historial_hoja on cap_hojas_historial (hoja_id);
+create index if not exists idx_cap_reaperturas_evento on cap_eventos_reaperturas (evento_id);
+create index if not exists idx_cap_asignaciones_usuario on cap_evento_asignaciones (usuario_id);
 
 -- Integración con el CRM de Renovaciones (sistema aparte, nos consulta los
 -- clientes inactivos vía GET /api/externo/renovaciones/inactivos y nos

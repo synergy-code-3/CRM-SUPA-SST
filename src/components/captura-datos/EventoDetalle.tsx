@@ -11,7 +11,7 @@ import { HistorialModal } from "./HistorialModal";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
-import { api, ErrorApi, formatearFecha, imagenAJpeg } from "@/lib/captura-datos/cliente";
+import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
@@ -20,7 +20,6 @@ import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const POLLING_MS = 10_000;
-const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
@@ -111,19 +110,7 @@ export function EventoDetalle({ id }: { id: string }) {
   async function subirFotos(archivos: File[], estatus: Estatus) {
     setMensaje(null);
     try {
-      const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
-      for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
-        const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
-        const form = new FormData();
-        form.set("estatus", estatus);
-        form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
-        // Los PDF se suben tal cual (sin partir); las imágenes se reducen a JPEG.
-        for (const a of tanda) {
-          if (a.type === "application/pdf") form.append("archivos", a, a.name);
-          else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
-        }
-        await api(`/api/captura-datos/eventos/${id}/hojas/subir`, { method: "POST", body: form });
-      }
+      await subirHojas(id, archivos, estatus);
       await cargar();
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");

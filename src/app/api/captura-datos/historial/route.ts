@@ -6,6 +6,7 @@ import { ErrorPeticion, respuestaError } from "@/lib/captura-datos/api";
 
 const consulta = z.object({
   eventoId: z.uuid().optional(),
+  desde: z.coerce.number().int().min(0).optional(),
   antes: z.coerce.number().int().positive().optional(),
   limite: z.coerce.number().int().min(1).max(100).optional(),
 });

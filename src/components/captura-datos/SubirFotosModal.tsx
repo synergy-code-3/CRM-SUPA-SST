@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Modal } from "./Modal";
+import { ZonaArchivos } from "./ZonaArchivos";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 
 interface SubirFotosModalProps {
@@ -15,7 +16,6 @@ export function SubirFotosModal({ onCerrar, onSubir }: SubirFotosModalProps) {
   const [estatus, setEstatus] = useState<Estatus>("Completo");
   const [archivos, setArchivos] = useState<File[]>([]);
   const [subiendo, setSubiendo] = useState(false);
-  const entrada = useRef<HTMLInputElement>(null);
 
   async function subir() {
     setSubiendo(true);
@@ -40,13 +40,7 @@ export function SubirFotosModal({ onCerrar, onSubir }: SubirFotosModalProps) {
           ))}
         </fieldset>
 
-        <div>
-          <button type="button" onClick={() => entrada.current?.click()} disabled={subiendo} className="inline-flex items-center gap-2 rounded-lg border border-silver px-4 py-2 text-sm font-medium disabled:opacity-50">
-            <Upload className="h-4 w-4" /> Elegir archivos de este equipo
-          </button>
-          <input ref={entrada} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => setArchivos([...(e.target.files ?? [])])} />
-          <p className="mt-2 text-xs text-muted">{archivos.length ? `${archivos.length} archivo(s) seleccionado(s)` : "Ningún archivo seleccionado"}</p>
-        </div>
+        <ZonaArchivos archivos={archivos} onCambio={setArchivos} disabled={subiendo} />
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCerrar} disabled={subiendo} className="rounded-lg border border-silver px-4 py-2 text-sm disabled:opacity-50">Cancelar</button>
