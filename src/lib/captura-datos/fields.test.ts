@@ -100,8 +100,12 @@ describe("normalizadores", () => {
 
   it("normalizeFields descarta valores fuera de catálogo", () => {
     expect(normalizeFields({ ...completa, metodoPago: "Trueque", membresia: "7 Meses", marcaTarjeta: "visa" })).toMatchObject({
-      metodoPago: "", membresia: "", marcaTarjeta: "Visa",
+      metodoPago: "", membresia: "", marcaTarjeta: "",
     });
+  });
+
+  it("normalizeFields quita marca y últimos 4 dígitos si el método de pago no usa tarjeta", () => {
+    expect(normalizeFields({ ...completa, metodoPago: "", tarjeta: "4821", marcaTarjeta: "Visa" })).toMatchObject({ tarjeta: "", marcaTarjeta: "" });
   });
 });
 

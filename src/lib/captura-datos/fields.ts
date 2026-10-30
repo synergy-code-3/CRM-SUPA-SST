@@ -148,14 +148,16 @@ export function normalizeFields(f: SheetFields, _estatus: Estatus = "Completo"):
 }
 
 function normalizeTodo(f: SheetFields, lada: Lada): SheetFields {
+  const metodoPago = (METODOS_PAGO as readonly string[]).includes(f.metodoPago) ? f.metodoPago : "";
+  const conTarjeta = requiereTarjeta(metodoPago);
   return {
     folio: normalizeFolio(f.folio),
     nombre: f.nombre.replace(/\s+/g, " ").trim(),
     correo: f.correo.replace(/\s+/g, "").toLowerCase(),
     ...splitTelefono(lada, f.telefono),
-    tarjeta: f.tarjeta.replace(/\D/g, "").slice(-4),
-    marcaTarjeta: marcaValida(f.marcaTarjeta),
-    metodoPago: (METODOS_PAGO as readonly string[]).includes(f.metodoPago) ? f.metodoPago : "",
+    tarjeta: conTarjeta ? f.tarjeta.replace(/\D/g, "").slice(-4) : "",
+    marcaTarjeta: conTarjeta ? marcaValida(f.marcaTarjeta) : "",
+    metodoPago,
     cantidad: normalizeCantidad(f.cantidad),
     membresia: MEMBRESIAS.some((m) => m.value === f.membresia) ? f.membresia : "",
     notas: conNotaAMeses({ cantidad: normalizeCantidad(f.cantidad), notas: (f.notas ?? "").replace(/\r/g, "").trim() }).slice(0, NOTAS_MAX),

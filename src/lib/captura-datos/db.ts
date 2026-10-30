@@ -261,6 +261,12 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
   return filaAEvento(data as FilaEvento);
 }
 
+export async function eventoFueReabierto(id: string): Promise<boolean> {
+  const { count, error } = await supabase.from("cap_eventos_reaperturas").select("id", { count: "exact", head: true }).eq("evento_id", id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 export async function eliminarEvento(id: string): Promise<void> {
   const { error } = await supabase.from("cap_eventos").delete().eq("id", id);
   if (!error) return;

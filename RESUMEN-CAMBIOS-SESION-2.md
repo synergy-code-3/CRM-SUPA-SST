@@ -293,3 +293,5 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - Botón IA: "Leyendo con IA…" mientras carga y "Hoja ya leída con IA" al terminar.
 - Ventana de Drive: pasa de "Subiendo" a "Drive subido".
 - SQL pendiente: ninguno.
+
+- **Captura de Datos** (30 oct): (1) editar una hoja desde la tira de progreso ya no saca a la vista del evento (solo si se abrió desde el evento). (2) Un evento reabierto ya no se cierra solo al confirmar todas las hojas: solo con el botón "Cerrar evento" (`eventoFueReabierto` en `db.ts`). (3) "Ver" en una hoja abre una ventana con la imagen y los datos del cliente (`VerHojaModal.tsx`). (4) Si el método de pago no usa tarjeta, Marca y Últimos 4 dígitos se vacían al guardar (`normalizeTodo` en `fields.ts`), así tampoco quedan en Drive. Sin probar en el navegador. Sin SQL pendiente.

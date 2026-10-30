@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
-import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { EditorHoja } from "./EditorHoja";
@@ -12,6 +12,7 @@ import { InsigniaEstatus, ESTILO_ESTATUS } from "./InsigniaEstatus";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
+import { VerHojaModal } from "./VerHojaModal";
 import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
@@ -50,6 +51,8 @@ export function EventoDetalle({ id }: { id: string }) {
   const [borrando, setBorrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
+  const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const abiertaDesdeEvento = useRef(false);
 
   const cargar = useCallback(async (): Promise<HojaCaptura[] | null> => {
     try {
@@ -73,6 +76,7 @@ export function EventoDetalle({ id }: { id: string }) {
     setOcupado("tomar");
     setMensaje(null);
     try {
+      abiertaDesdeEvento.current = false;
       const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
       if (r.hoja) setActual(r.hoja);
       else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
@@ -88,7 +92,7 @@ export function EventoDetalle({ id }: { id: string }) {
   /** Tras confirmar una hoja nueva se pasa directo a la siguiente; al terminar la última (o al corregir una ya guardada) se vuelve al evento. */
   async function siguiente(hojaTerminada: HojaCaptura) {
     // El editor se queda en pantalla hasta tener la siguiente hoja: así no aparece un instante el listado.
-    if (hojaTerminada.estado === "confirmada") {
+    if (hojaTerminada.estado === "confirmada" && abiertaDesdeEvento.current) {
       await cargar();
       setActual(null);
       return;
@@ -100,7 +104,8 @@ export function EventoDetalle({ id }: { id: string }) {
     else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
   }
 
-  async function abrirHoja(hojaId: string) {
+  async function abrirHoja(hojaId: string, desdeEvento = true) {
+    abiertaDesdeEvento.current = desdeEvento;
     setOcupado(hojaId);
     setMensaje(null);
     try {
@@ -176,7 +181,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
@@ -247,6 +252,7 @@ export function EventoDetalle({ id }: { id: string }) {
         <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
+      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} />}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
@@ -303,9 +309,9 @@ export function EventoDetalle({ id }: { id: string }) {
                         </button>
                       )}
                       {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida") && (
-                        <a href={`/api/captura-datos/hojas/${h.id}/foto`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
-                          <ExternalLink className="h-3.5 w-3.5" /> Ver foto
-                        </a>
+                        <button onClick={() => setViendo(h)} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
+                          <Eye className="h-3.5 w-3.5" /> Ver
+                        </button>
                       )}
                     </span>
                   </li>
