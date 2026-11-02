@@ -48,7 +48,11 @@ export function ListaEventos() {
         </button>
       </div>
 
-      {!!eventos?.length && <FiltrosEventos filtros={filtros} onCambio={setFiltros} />}
+      {!!eventos?.length && (
+        <div className="rounded-2xl border border-silver bg-surface p-4">
+          <FiltrosEventos filtros={filtros} onCambio={setFiltros} />
+        </div>
+      )}
 
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
       {!eventos && !error && <p className="py-12 text-center text-sm text-muted">Cargando…</p>}
