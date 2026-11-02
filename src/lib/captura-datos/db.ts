@@ -344,17 +344,28 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
   return data ? filaAHoja(data as FilaHoja) : null;
 }
 
+const MENSAJE_EVENTO_LLENO = "Este evento ya lo están capturando dos personas. Puedes ver las hojas, pero no capturar hasta que alguna termine o libere las suyas.";
+
 /**
- * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). Con `inverso`
- * la toma desde el final, para que dos personas avancen una hacia la otra. p_inverso solo se manda si es true: así el
- * orden normal sigue funcionando aunque la base aún tenga la versión anterior de la función.
+ * Registra a la persona como capturista del evento (máximo dos: una desde el inicio y otra desde el final) y devuelve
+ * si le toca ir desde el final. Una tercera persona recibe 409. Si la base aún no tiene la función (falta correr
+ * schema.sql), no se limita a nadie y se captura como antes.
  */
-export async function tomarHojaLibre(eventoId: string, usuarioId: string, inverso = false): Promise<HojaCaptura | null> {
-  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId, ...(inverso ? { p_inverso: true } : {}) });
-  // PGRST202 = no existe la función con esos parámetros: falta correr el SQL que agrega p_inverso.
-  if (error?.code === "PGRST202") {
-    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/schema.sql en el SQL Editor de Supabase (capturar desde el final).");
-  }
+export async function registrarCapturista(eventoId: string, usuarioId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId });
+  if (error?.code === "PGRST202") return false;
+  if (error) throw error;
+  if (data === "lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
+  return data === "inverso";
+}
+
+/**
+ * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). La base decide
+ * el sentido: la primera persona va desde el inicio y la segunda desde el final; una tercera recibe 409.
+ */
+export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+  if (error?.message === "evento_lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   if (error) throw error;
   const fila = data as FilaHoja | null;
   return fila?.id ? filaAHoja(fila) : null;
@@ -404,6 +415,13 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
     .gt("bloqueada_hasta", new Date().toISOString()) // las vencidas ya están libres: así cuenta lo mismo que el botón
     .select("id");
   if (error) throw error;
+  // Quien suelta sus hojas deja el cupo de capturista: la otra persona (o una tercera) puede tomar su lugar.
+  const { error: errorCupo } = await supabase
+    .from("cap_evento_capturistas")
+    .update({ ultima_actividad: new Date(0).toISOString() })
+    .eq("evento_id", eventoId)
+    .eq("usuario_id", usuarioId);
+  if (errorCupo && errorCupo.code !== "42P01" && errorCupo.code !== "PGRST205") throw errorCupo;
   return (data as { id: string }[]).length;
 }
 

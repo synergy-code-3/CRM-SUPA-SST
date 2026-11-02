@@ -28,7 +28,7 @@ const falso = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase", () => ({ supabase: falso.cliente }));
 
-import { cerrarEventoAbierto, liberarHojasDeUsuario, nombresDeUsuarios, siguientesHojasLibres, tomarHojaLibre } from "./db";
+import { cerrarEventoAbierto, liberarHojasDeUsuario, nombresDeUsuarios, registrarCapturista, siguientesHojasLibres, tomarHojaLibre } from "./db";
 
 const filaHoja = (id: string, estatus = "Completo") => ({
   id, evento_id: "e1", estatus, origen: { nombreOriginal: `${id}.jpg` }, estado: "pendiente", bloqueada_por: null, bloqueada_hasta: null,
@@ -68,6 +68,14 @@ describe("liberarHojasDeUsuario", () => {
     expect(llamadas.find((c) => c[0] === "gt")?.[1]).toBe("bloqueada_hasta");
   });
 
+  it("deja libre su cupo de capturista en el evento", async () => {
+    falso.estado.respuestas.push({ data: [], error: null });
+    await liberarHojasDeUsuario("e1", "u1");
+    const cupo = falso.estado.llamadas[1];
+    expect(cupo[0]).toEqual(["from", "cap_evento_capturistas"]);
+    expect(cupo).toContainEqual(["eq", "usuario_id", "u1"]);
+  });
+
   it("propaga el error de la base", async () => {
     falso.estado.respuestas.push({ data: null, error: { code: "XX000" } });
     await expect(liberarHojasDeUsuario("e1", "u1")).rejects.toMatchObject({ code: "XX000" });
@@ -87,22 +95,35 @@ describe("cerrarEventoAbierto", () => {
   });
 });
 
+describe("registrarCapturista", () => {
+  it("devuelve false para el orden normal y true para el inverso", async () => {
+    falso.estado.respuestas.push({ data: "normal", error: null }, { data: "inverso", error: null });
+    expect(await registrarCapturista("e1", "u1")).toBe(false);
+    expect(await registrarCapturista("e1", "u2")).toBe(true);
+    expect(falso.estado.rpc[0]).toEqual(["registrar_capturista", { p_evento: "e1", p_usuario: "u1" }]);
+  });
+
+  it("una tercera persona recibe 409", async () => {
+    falso.estado.respuestas.push({ data: "lleno", error: null });
+    await expect(registrarCapturista("e1", "u3")).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("si la base aún no tiene la función, no limita a nadie", async () => {
+    falso.estado.respuestas.push({ data: null, error: { code: "PGRST202" } });
+    expect(await registrarCapturista("e1", "u1")).toBe(false);
+  });
+});
+
 describe("tomarHojaLibre", () => {
-  it("en el orden normal llama a la función con solo evento y usuario (compatible con la versión anterior del SQL)", async () => {
+  it("llama a la función con solo evento y usuario: la base decide el sentido", async () => {
     falso.estado.respuestas.push({ data: filaHoja("h1"), error: null });
-    await tomarHojaLibre("e1", "u1");
+    expect((await tomarHojaLibre("e1", "u1"))?.id).toBe("h1");
     expect(falso.estado.rpc[0]).toEqual(["tomar_hoja_libre", { p_evento: "e1", p_usuario: "u1" }]);
   });
 
-  it("desde el final pide p_inverso", async () => {
-    falso.estado.respuestas.push({ data: filaHoja("h9"), error: null });
-    expect((await tomarHojaLibre("e1", "u1", true))?.id).toBe("h9");
-    expect(falso.estado.rpc[0]).toEqual(["tomar_hoja_libre", { p_evento: "e1", p_usuario: "u1", p_inverso: true }]);
-  });
-
-  it("si la base aún no tiene p_inverso, explica qué SQL correr", async () => {
-    falso.estado.respuestas.push({ data: null, error: { code: "PGRST202" } });
-    await expect(tomarHojaLibre("e1", "u1", true)).rejects.toMatchObject({ status: 503, message: expect.stringContaining("schema.sql") });
+  it("una tercera persona recibe 409", async () => {
+    falso.estado.respuestas.push({ data: null, error: { code: "P0001", message: "evento_lleno" } });
+    await expect(tomarHojaLibre("e1", "u3")).rejects.toMatchObject({ status: 409 });
   });
 });
 

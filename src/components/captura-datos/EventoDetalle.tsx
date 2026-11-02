@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { BarraColaboracion } from "./BarraColaboracion";
@@ -24,8 +24,6 @@ import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const POLLING_MS = 10_000;
-/** Preferencia de este navegador por evento: capturar desde la última hoja (con otra persona empezando por la primera). */
-const claveInverso = (eventoId: string) => `captura-datos:inverso:${eventoId}`;
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
@@ -46,7 +44,6 @@ export function EventoDetalle({ id }: { id: string }) {
   const [evento, setEvento] = useState<EventoCaptura | null>(cacheado?.evento ?? null);
   const [hojas, setHojas] = useState<HojaCaptura[]>(cacheado?.hojas ?? []);
   const [nombres, setNombres] = useState<NombresUsuarios>(cacheado?.nombres ?? {});
-  const [inverso, setInverso] = useState(false);
   const [actual, setActual] = useState<HojaCaptura | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -79,24 +76,6 @@ export function EventoDetalle({ id }: { id: string }) {
 
   usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
-  // localStorage solo existe en el navegador (y puede estar bloqueado): se lee al montar para no romper el render del servidor.
-  useEffect(() => {
-    try {
-      setInverso(localStorage.getItem(claveInverso(id)) === "1");
-    } catch {
-      setInverso(false);
-    }
-  }, [id]);
-
-  function cambiarInverso(valor: boolean) {
-    setInverso(valor);
-    try {
-      localStorage.setItem(claveInverso(id), valor ? "1" : "0");
-    } catch {
-      // Sin almacenamiento la preferencia dura solo mientras la página siga abierta.
-    }
-  }
-
   async function liberarMisHojas() {
     setOcupado("liberar");
     setMensaje(null);
@@ -116,7 +95,7 @@ export function EventoDetalle({ id }: { id: string }) {
     setMensaje(null);
     try {
       abiertaDesdeEvento.current = false;
-      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja${inverso ? "?inverso=1" : ""}`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
       if (r.hoja) setActual(r.hoja);
       else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
       return !!r.hoja;
@@ -223,7 +202,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} inverso={inverso} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
@@ -299,8 +278,6 @@ export function EventoDetalle({ id }: { id: string }) {
           progreso={progresoPorPersona(hojas, usuario.id, nombres)}
           misEnEdicion={misHojasEnEdicion(hojas, usuario.id)}
           abierto={evento.estado === "abierto"}
-          inverso={inverso}
-          onInverso={cambiarInverso}
           liberando={ocupado === "liberar"}
           onLiberar={() => void liberarMisHojas()}
         />

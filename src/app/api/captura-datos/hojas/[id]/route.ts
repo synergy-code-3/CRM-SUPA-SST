@@ -3,9 +3,9 @@ import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { registrarConfirmacionDeHoja } from "@/lib/captura-datos/auditoria";
 import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
-import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, registrarCapturista } from "@/lib/captura-datos/db";
 import { adelantarLecturas } from "@/lib/captura-datos/lectura-ia";
-import { leerJson, pideInverso, respuestaError } from "@/lib/captura-datos/api";
+import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
 
 export const maxDuration = 120; // el adelanto de lecturas (after) corre dentro de este plazo
@@ -39,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const previa = await requerirHoja(permiso.usuario, id);
+    const inverso = await registrarCapturista(previa.eventoId, permiso.usuario.id);
     const b = await leerJson(req, patchHoja);
 
     if (b.confirmar) {
@@ -49,7 +50,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await registrarConfirmacionDeHoja({ usuario: permiso.usuario, previa, hoja, duplicadoForzado: forzar });
         const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario);
         // Solo si se está trabajando con IA (la hoja se leyó con IA): se mantiene el adelanto sin gastar lecturas a quien no la usa.
-        const inverso = pideInverso(req);
         if (!eventoCerrado && hoja.origen.leidaIa) after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_CONFIRMAR, inverso));
         return NextResponse.json({ hoja, eventoCerrado });
       } catch (err) {

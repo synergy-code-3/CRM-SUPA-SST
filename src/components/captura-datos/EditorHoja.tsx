@@ -35,13 +35,12 @@ interface EditorHojaProps {
   usuarioId?: string;
   nombres: NombresUsuarios;
   /** Se captura desde el final: la IA adelanta lecturas en ese mismo orden. */
-  inverso: boolean;
   onTerminar: () => void;
   onSiguiente: () => void | Promise<void>;
   onIr: (id: string) => void | Promise<void>;
 }
 
-export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, inverso, onTerminar, onSiguiente, onIr }: EditorHojaProps) {
+export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTerminar, onSiguiente, onIr }: EditorHojaProps) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +183,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, inverso, 
     try {
       if (!(await guardar())) return;
       setLeidaIa(true); // se bloquea de inmediato: el servidor ya cobra la lectura aunque se salgan
-      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract${inverso ? "?inverso=1" : ""}`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
       const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
       if (!leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
       camposRef.current = leidos;
@@ -212,7 +211,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, inverso, 
     setError(null);
     try {
       if (!(await guardar())) return;
-      const consulta = new URLSearchParams({ ...(forzar ? { force: "1" } : {}), ...(inverso ? { inverso: "1" } : {}) }).toString();
+      const consulta = new URLSearchParams(forzar ? { force: "1" } : {}).toString();
       await api(`/api/captura-datos/hojas/${inicial.id}${consulta ? `?${consulta}` : ""}`, {
         method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });

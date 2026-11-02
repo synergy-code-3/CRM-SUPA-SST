@@ -335,3 +335,10 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 
 **Búsquedas rápidas** (2 nov, 5) — índices trigram faltantes (clientes: teléfono/notas/notas_soporte; eventos_timeline: detalle/autor; otras_ofertas: teléfono; certificaciones: teléfono/telefono_busqueda/notas/nota) al final de `supabase/schema.sql`, más `analyze`. En `db.ts`, `resolverOpcionesClientes` corre en paralelo los tres resolvedores de filtros de Clientes.
 - **SQL pendiente:** ejecutar `supabase/schema.sql` completo (incluye también los índices del historial del 30 oct y `tomar_hoja_libre`).
+
+**Captura de Datos: sentido automático y máximo dos personas** (2 nov, 6) — reemplaza la casilla "Capturar desde el final".
+- SQL: tabla `cap_evento_capturistas` y función `registrar_capturista(evento, usuario)` → 'normal' | 'inverso' | 'lleno'. La primera persona activa (actividad <15 min o hoja tomada vigente) va desde el inicio, la segunda desde el final, una tercera recibe 'lleno'. `tomar_hoja_libre(evento, usuario)` ya no recibe `p_inverso` (lo decide la base) y lanza `evento_lleno`. Un evento cerrado no limita a nadie.
+- Servidor: `registrarCapturista` en `db.ts`; lo llaman abrir una hoja por id, autoguardar/confirmar (PATCH) y la lectura con IA, así una tercera persona no puede confirmar ni leer hojas (409). La lectura anticipada sigue el sentido de quien la pide. "Liberar mis hojas" también deja libre su cupo.
+- Interfaz: se quitó la casilla, el localStorage y `?inverso=1`. Se conservan los chips de avance y "Liberar mis hojas".
+- Antes de correr el SQL todo sigue como antes (sin límite ni sentido automático).
+- **SQL pendiente:** ejecutar `supabase/schema.sql` completo.

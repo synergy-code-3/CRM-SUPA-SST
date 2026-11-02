@@ -1,24 +1,25 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { actualizarCamposHoja, devolverLecturaIa, finalizarLecturaIa, reclamarLecturaIa, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, devolverLecturaIa, finalizarLecturaIa, reclamarLecturaIa, ErrorEstadoHoja, ErrorHojaOcupada, ErrorVersion, esNoValida, marcarHojaNoValida, registrarCapturista } from "@/lib/captura-datos/db";
 import { extractFromImage } from "@/lib/captura-datos/extract";
 import { adelantarLecturas, datosDeExtraccion, fotoBase64 } from "@/lib/captura-datos/lectura-ia";
 import { huellaImagen } from "@/lib/captura-datos/huella";
-import { pideInverso, respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
+import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
 
 export const maxDuration = 120;
 
 /** Al leer una hoja, el servidor deja ya leídas las siguientes hojas libres (ver lectura-ia.ts). */
 const HOJAS_POR_ADELANTADO_AL_LEER = 2;
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("verCapturaDatos");
   if (!permiso.ok) return permiso.respuesta;
 
   const { id } = await params;
   try {
     const hoja = await requerirHoja(permiso.usuario, id);
+    const inverso = await registrarCapturista(hoja.eventoId, permiso.usuario.id);
 
     if (hoja.origen.leidaIa) throw new ErrorPeticion(409, "Esta hoja ya se leyó con IA.");
     const { base64, mime } = await fotoBase64(hoja.origen);
@@ -45,7 +46,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Ya se guardó: la lectura queda gastada (si esto falla, la marca de "en curso" vence sola, ver LEASE_LECTURA_IA_MS).
     await finalizarLecturaIa(id, hoja.origen).catch((e) => console.error("extract: no se pudo cerrar la lectura de la hoja", id, e));
     // Con la respuesta ya enviada, el servidor sigue leyendo las siguientes hojas libres para que lleguen listas.
-    const inverso = pideInverso(req);
     after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_LEER, inverso));
     return NextResponse.json({ hoja: actualizada });
   } catch (err) {
