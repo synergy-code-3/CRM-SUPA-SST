@@ -307,3 +307,31 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - **Captura de Datos** (2 nov, 2): (1) El historial (general y del evento) guarda en memoria lo último visto (páginas, página actual y filtros, por usuario) y al volver lo muestra al instante sin recargar; solo hace una consulta mínima (`limite=1`) y recarga si hay un movimiento más nuevo (`HistorialModal.tsx`). (2) Lista de eventos con búsqueda por nombre/carpeta de destino (sin acentos), chips Abiertos / Confirmados / Con hojas por revisar y rango de fechas del evento, filtrado en el navegador (`FiltrosEventos.tsx`, `ListaEventos.tsx`). Sin probar en el navegador. Sin SQL pendiente.
 
 - **Captura de Datos** (2 nov, 3): la búsqueda y filtros de la lista de eventos van dentro de la misma tarjeta (`rounded-2xl border bg-surface p-4`) que usa el historial (`ListaEventos.tsx`). Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (2 nov, 4) — **capturar un evento entre dos personas (admins) en paralelo.** El bloqueo de 10 min por hoja ya
+  impedía que dos personas tomaran la misma; ahora además se ve y se coordina:
+  1. **Quién tiene cada hoja:** en la lista del evento dice "Marco · en edición" (o "Tú · en edición") y en la tira de miniaturas del
+     editor aparecen sus iniciales (con el nombre al pasar el mouse). `GET /api/captura-datos/eventos/[id]/hojas` devuelve también
+     `usuarios` (id → nombre, solo de quien bloqueó o confirmó hojas de ese evento; `nombresDeUsuarios` en `db.ts`).
+  2. **Ver sin editar:** una hoja que tiene otra persona muestra "Ver" (no "Abrir") y el cuadro de la hoja no ofrece "Editar".
+  3. **Avance por persona:** chips "Tú N · Marco N · Pendientes N" arriba de las hojas (`BarraColaboracion.tsx`,
+     `progresoPorPersona` en el nuevo `colaboracion.ts`).
+  4. **Capturar desde el final:** casilla junto al avance; quien la marca toma las hojas desde la última Interesada hacia la primera
+     Completa, así cada persona va hacia la otra en vez de pelear por las mismas. Se recuerda por evento en este navegador
+     (`localStorage`). Viaja como `?inverso=1` a `tomar-hoja`, a "Leer con IA" y al confirmar, para que la lectura adelantada de la
+     IA también siga ese orden (`tomarHojaLibre`/`siguientesHojasLibres`/`adelantarLecturas` con `inverso`).
+  5. **Botón "Liberar mis hojas (N)":** aparece solo si tienes hojas tomadas en el evento (p. ej. se te cerró la pestaña) y las
+     suelta para que la otra persona las tome sin esperar los 10 min. Solo suelta las tuyas, nunca las de otra persona
+     (`POST /api/captura-datos/eventos/[id]/liberar-mis-hojas`, `liberarHojasDeUsuario`).
+  6. **Cierre automático seguro:** si dos personas confirman la última hoja a la vez, solo una cierra el evento (`cerrarEventoAbierto`,
+     update con `estado = 'abierto'`); ya no se duplican el Excel, el renombrado de fotos ni el registro del historial.
+  7. Por pedido, **no** hay aviso cuando otra persona confirma una hoja.
+  Pruebas nuevas: `colaboracion.test.ts`, `db-colaboracion.test.ts`, `cierre-concurrencia.test.ts`, `api.test.ts` y un caso en
+  `lectura-ia.test.ts` (173 pruebas en verde, `tsc` y `next build` sin errores). Revisado por agentes de código, SQL y seguridad
+  (sin hallazgos críticos ni altos). Sin probar en el navegador.
+  **SQL pendiente:** volver a ejecutar `supabase/schema.sql` en el SQL Editor de Supabase (cambia `tomar_hoja_libre`: agrega
+  `p_inverso`, borra la versión de 2 parámetros y recarga PostgREST). Mientras no se ejecute, todo funciona igual que antes salvo
+  "Capturar desde el final", que responde "Falta actualizar la base de datos…".
+
+**Búsquedas rápidas** (2 nov, 5) — índices trigram faltantes (clientes: teléfono/notas/notas_soporte; eventos_timeline: detalle/autor; otras_ofertas: teléfono; certificaciones: teléfono/telefono_busqueda/notas/nota) al final de `supabase/schema.sql`, más `analyze`. En `db.ts`, `resolverOpcionesClientes` corre en paralelo los tres resolvedores de filtros de Clientes.
+- **SQL pendiente:** ejecutar `supabase/schema.sql` completo (incluye también los índices del historial del 30 oct y `tomar_hoja_libre`).

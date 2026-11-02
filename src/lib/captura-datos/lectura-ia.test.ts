@@ -50,9 +50,15 @@ describe("adelantarLecturas", () => {
       hoja("c", { estado: "leida" }),
     ]);
     await adelantarLecturas("e1", 3);
-    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 3);
+    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 3, false);
     expect(extract.extractFromImage).toHaveBeenCalledTimes(1);
     expect(db.guardarLecturaAdelantada).toHaveBeenCalledWith("a", expect.any(Object), null, expect.any(Object));
+  });
+
+  it("quien captura desde el final adelanta en ese mismo orden", async () => {
+    db.siguientesHojasLibres.mockResolvedValue([]);
+    await adelantarLecturas("e1", 2, true);
+    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 2, true);
   });
 
   it("completa la membresía por el monto cuando la IA no la marcó", async () => {

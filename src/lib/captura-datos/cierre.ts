@@ -1,5 +1,5 @@
 import { registrarAuditoria } from "./auditoria";
-import { confirmarEvento, eventoFueReabierto, listarHojasDeEvento, obtenerEvento } from "./db";
+import { cerrarEventoAbierto, eventoFueReabierto, listarHojasDeEvento, obtenerEvento } from "./db";
 import { generarExcelEvento } from "./excel";
 import { renombrarFotosDeEvento } from "./google";
 import type { Usuario } from "./sesion";
@@ -15,7 +15,8 @@ export async function cerrarEventoSiCompleto(eventoId: string, usuario: Usuario)
   const [evento, hojas] = await Promise.all([obtenerEvento(eventoId), listarHojasDeEvento(eventoId)]);
   if (!evento || evento.estado !== "abierto" || !estaCompleto(hojas.map((h) => h.estado))) return false;
   if (await eventoFueReabierto(eventoId)) return false;
-  await confirmarEvento(eventoId, usuario.id, evento.drive);
+  // Dos personas pueden confirmar la última hoja a la vez: solo quien realmente lo cierra sigue (Excel, fotos, historial).
+  if (!(await cerrarEventoAbierto(eventoId, usuario.id, evento.drive))) return false;
   await registrarAuditoria({ usuario, accion: "evento_cerrado_auto", eventoId, eventoNombre: evento.nombre });
   try {
     await subirExcelEvento(eventoId, await generarExcelEvento(hojas));

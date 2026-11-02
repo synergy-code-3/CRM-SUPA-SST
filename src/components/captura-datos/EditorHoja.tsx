@@ -16,6 +16,7 @@ import {
   type Box, type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
+import type { NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 
 const AUTOGUARDADO_MS = 1500;
 const AVISO_BLOQUEO_MS = 8 * 60 * 1000; // el bloqueo dura 10 min y se renueva con cada guardado
@@ -28,7 +29,19 @@ const CAMPOS_COMPARABLES_ETIQUETA: { k: CampoComparable; texto: string }[] = [{ 
 
 type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
-export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr }: { hoja: HojaCaptura; hojas: HojaCaptura[]; onTerminar: () => void; onSiguiente: () => void | Promise<void>; onIr: (id: string) => void | Promise<void> }) {
+interface EditorHojaProps {
+  hoja: HojaCaptura;
+  hojas: HojaCaptura[];
+  usuarioId?: string;
+  nombres: NombresUsuarios;
+  /** Se captura desde el final: la IA adelanta lecturas en ese mismo orden. */
+  inverso: boolean;
+  onTerminar: () => void;
+  onSiguiente: () => void | Promise<void>;
+  onIr: (id: string) => void | Promise<void>;
+}
+
+export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, inverso, onTerminar, onSiguiente, onIr }: EditorHojaProps) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +184,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
     try {
       if (!(await guardar())) return;
       setLeidaIa(true); // se bloquea de inmediato: el servidor ya cobra la lectura aunque se salgan
-      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${inicial.id}/extract${inverso ? "?inverso=1" : ""}`, { method: "POST" });
       const leidos = { ...EMPTY_FIELDS, ...(r.hoja.campos ?? {}) };
       if (!leidos.membresia) leidos.membresia = membresiaPorCantidad(leidos.cantidad);
       camposRef.current = leidos;
@@ -199,7 +212,8 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
     setError(null);
     try {
       if (!(await guardar())) return;
-      await api(`/api/captura-datos/hojas/${inicial.id}${forzar ? "?force=1" : ""}`, {
+      const consulta = new URLSearchParams({ ...(forzar ? { force: "1" } : {}), ...(inverso ? { inverso: "1" } : {}) }).toString();
+      await api(`/api/captura-datos/hojas/${inicial.id}${consulta ? `?${consulta}` : ""}`, {
         method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });
       await onSiguiente(); // se queda en esta hoja (con el aviso de trabajando) hasta que llegue la siguiente
@@ -265,7 +279,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
-        <TiraHojas hojas={hojas} actualId={inicial.id} onElegir={irA} />
+        <TiraHojas hojas={hojas} actualId={inicial.id} usuarioId={usuarioId} nombres={nombres} onElegir={irA} />
       </div>
 
       <div className="space-y-2.5">

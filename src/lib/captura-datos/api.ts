@@ -24,6 +24,11 @@ export async function leerJson<T extends z.ZodType>(req: Request, esquema: T, ma
   return r.data;
 }
 
+/** `?inverso=1`: quien llama captura el evento desde el final (ver tomar_hoja_libre). */
+export function pideInverso(req: Request): boolean {
+  return new URL(req.url).searchParams.get("inverso") === "1";
+}
+
 /** Respuesta de error: solo los `ErrorPeticion` muestran su mensaje; de cualquier otro error el detalle va a la consola del servidor y al navegador solo llega un mensaje genérico. */
 export function respuestaError(err: unknown, contexto: string) {
   if (err instanceof ErrorPeticion) return NextResponse.json({ error: err.message }, { status: err.status });

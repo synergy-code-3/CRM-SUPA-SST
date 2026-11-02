@@ -240,6 +240,28 @@ export async function confirmarEvento(
   return filaAEvento(data as FilaEvento);
 }
 
+/** Como confirmarEvento, pero solo si sigue abierto: con dos personas confirmando la última hoja a la vez, solo una lo cierra (la otra recibe null). */
+export async function cerrarEventoAbierto(id: string, usuarioId: string, drive: EventoCaptura["drive"]): Promise<EventoCaptura | null> {
+  const { data, error } = await supabase
+    .from("cap_eventos")
+    .update({ estado: "confirmado", confirmado_por: usuarioId, confirmado_en: new Date().toISOString(), drive })
+    .eq("id", id)
+    .eq("estado", "abierto")
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? filaAEvento(data as FilaEvento) : null;
+}
+
+/** Nombre de cada persona por id, para mostrar quién tiene o confirmó cada hoja. */
+export async function nombresDeUsuarios(ids: readonly string[]): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids)];
+  if (unicos.length === 0) return {};
+  const { data, error } = await supabase.from("usuarios").select("id, nombre").in("id", unicos);
+  if (error) throw error;
+  return Object.fromEntries((data as { id: string; nombre: string }[]).map((u) => [u.id, u.nombre]));
+}
+
 /** Guarda los datos de Drive sin cerrar el evento: sigue abierto para seguir capturando. */
 export async function actualizarDriveEvento(id: string, drive: EventoCaptura["drive"]): Promise<void> {
   const { error } = await supabase.from("cap_eventos").update({ drive }).eq("id", id);
@@ -322,9 +344,17 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
   return data ? filaAHoja(data as FilaHoja) : null;
 }
 
-/** Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). */
-export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
-  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+/**
+ * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). Con `inverso`
+ * la toma desde el final, para que dos personas avancen una hacia la otra. p_inverso solo se manda si es true: así el
+ * orden normal sigue funcionando aunque la base aún tenga la versión anterior de la función.
+ */
+export async function tomarHojaLibre(eventoId: string, usuarioId: string, inverso = false): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId, ...(inverso ? { p_inverso: true } : {}) });
+  // PGRST202 = no existe la función con esos parámetros: falta correr el SQL que agrega p_inverso.
+  if (error?.code === "PGRST202") {
+    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/schema.sql en el SQL Editor de Supabase (capturar desde el final).");
+  }
   if (error) throw error;
   const fila = data as FilaHoja | null;
   return fila?.id ? filaAHoja(fila) : null;
@@ -361,6 +391,20 @@ export async function liberarHoja(id: string, usuarioId: string): Promise<void> 
     .eq("id", id)
     .eq("bloqueada_por", usuarioId);
   if (error) throw error;
+}
+
+/** Suelta todas las hojas que la persona tiene tomadas en el evento (sin terminar). Devuelve cuántas soltó. */
+export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("evento_id", eventoId)
+    .eq("bloqueada_por", usuarioId)
+    .in("estado", ["pendiente", "leida"])
+    .gt("bloqueada_hasta", new Date().toISOString()) // las vencidas ya están libres: así cuenta lo mismo que el botón
+    .select("id");
+  if (error) throw error;
+  return (data as { id: string }[]).length;
 }
 
 export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
@@ -594,10 +638,10 @@ export async function guardarLecturaAdelantada(id: string, campos: SheetFields, 
 const ORDEN_ESTATUS: Estatus[] = ["Completo", "Apartado", "Interesado"];
 
 /** Las próximas `cantidad` hojas libres del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
-export async function siguientesHojasLibres(eventoId: string, cantidad: number): Promise<HojaCaptura[]> {
+export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso = false): Promise<HojaCaptura[]> {
   const ahora = new Date().toISOString();
   const hojas: HojaCaptura[] = [];
-  for (const estatus of ORDEN_ESTATUS) {
+  for (const estatus of inverso ? [...ORDEN_ESTATUS].reverse() : ORDEN_ESTATUS) {
     if (hojas.length >= cantidad) break;
     const { data, error } = await supabase
       .from("cap_hojas")
@@ -606,7 +650,7 @@ export async function siguientesHojasLibres(eventoId: string, cantidad: number):
       .eq("estatus", estatus)
       .in("estado", ["pendiente", "leida"])
       .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${ahora}`)
-      .order("id")
+      .order("id", { ascending: !inverso })
       .limit(cantidad - hojas.length);
     if (error) throw error;
     hojas.push(...(data as FilaHoja[]).map(filaAHoja));

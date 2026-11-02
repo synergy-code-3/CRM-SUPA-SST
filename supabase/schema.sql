@@ -1119,8 +1119,13 @@ alter table certificaciones_clientes add column if not exists motivo_revocacion 
 -- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
 -- Si la persona ya tiene una hoja vigente en el evento, se la devuelve (renovando el bloqueo) en vez de bloquear otra.
 -- Orden = el de la pantalla (Completos, Apartados, Interesados; dentro de cada uno, por id); la lectura adelantada
--- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden.
-create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
+-- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. Con p_inverso = true el orden es el contrario
+-- (desde la última Interesada hacia la primera Completa): dos personas capturando el mismo evento avanzan una hacia la otra.
+-- La versión de 2 parámetros se borra: si conviviera con esta, PostgREST no sabría cuál llamar con solo evento y usuario.
+-- En una transacción: la función nueva nunca queda visible con el EXECUTE por defecto (antes del revoke) ni a medio crear.
+begin;
+drop function if exists tomar_hoja_libre(uuid, uuid);
+create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid, p_inverso boolean default false)
 returns cap_hojas
 language plpgsql
 as $$
@@ -1132,7 +1137,12 @@ begin
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')
       and bloqueada_por = p_usuario and bloqueada_hasta > now()
-    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
+    order by
+      case when not p_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
+      case when not p_inverso then id end,
+      case when p_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
+      case when p_inverso then id end desc
+    limit 1
     for update skip locked
   )
   returning * into fila;
@@ -1145,7 +1155,12 @@ begin
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')
       and (bloqueada_hasta is null or bloqueada_hasta < now())
-    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
+    order by
+      case when not p_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
+      case when not p_inverso then id end,
+      case when p_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
+      case when p_inverso then id end desc
+    limit 1
     for update skip locked
   )
   returning * into fila;
@@ -1154,8 +1169,11 @@ end;
 $$;
 
 -- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarla.
-revoke execute on function tomar_hoja_libre(uuid, uuid) from public, anon, authenticated;
-grant execute on function tomar_hoja_libre(uuid, uuid) to service_role;
+revoke execute on function tomar_hoja_libre(uuid, uuid, boolean) from public, anon, authenticated;
+grant execute on function tomar_hoja_libre(uuid, uuid, boolean) to service_role;
+commit;
+-- PostgREST guarda en caché las firmas de las funciones: se recarga para que vea p_inverso sin esperar.
+notify pgrst, 'reload schema';
 
 -- Bases creadas antes de existir la fecha del evento (no hace nada si la columna ya está).
 alter table cap_eventos add column if not exists fecha date;
@@ -1216,3 +1234,18 @@ create index if not exists idx_clientes_acceso_revocado_manual_en on clientes (a
 -- El filtro de Etiquetas (resolverEtiquetasExtra en db.ts) usa .overlaps()
 -- sobre esta columna de arreglo sin índice.
 create index if not exists idx_clientes_etiquetas_extra on clientes using gin (etiquetas_extra);
+
+-- Búsquedas rápidas (2026-11-02): ilike '%texto%' solo usa índice si la columna tiene trigram, y un OR entre
+-- columnas solo usa índices si TODAS las columnas del OR lo tienen (antes faltaban teléfono, notas y la línea de tiempo).
+create index if not exists idx_clientes_telefono_trgm on clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_clientes_notas_trgm on clientes using gin (notas gin_trgm_ops);
+create index if not exists idx_clientes_notas_soporte_trgm on clientes using gin (notas_soporte gin_trgm_ops);
+create index if not exists idx_eventos_detalle_trgm on eventos_timeline using gin (detalle gin_trgm_ops);
+create index if not exists idx_eventos_autor_trgm on eventos_timeline using gin (autor gin_trgm_ops);
+create index if not exists idx_otras_ofertas_clientes_telefono_trgm on otras_ofertas_clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_telefono_trgm on certificaciones_clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_telefono_busqueda_trgm on certificaciones_clientes using gin (telefono_busqueda gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_notas_trgm on certificaciones_clientes using gin (notas gin_trgm_ops);
+create index if not exists idx_certificaciones_eventos_nota_trgm on certificaciones_eventos using gin (nota gin_trgm_ops);
+analyze clientes;
+analyze eventos_timeline;

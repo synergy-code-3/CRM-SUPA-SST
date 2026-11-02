@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
+import { BarraColaboracion } from "./BarraColaboracion";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { EditorHoja } from "./EditorHoja";
 import { HistorialModal } from "./HistorialModal";
@@ -18,10 +19,13 @@ import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
+import { bloqueoVigente, misHojasEnEdicion, progresoPorPersona, type NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const POLLING_MS = 10_000;
+/** Preferencia de este navegador por evento: capturar desde la última hoja (con otra persona empezando por la primera). */
+const claveInverso = (eventoId: string) => `captura-datos:inverso:${eventoId}`;
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
@@ -38,9 +42,11 @@ interface Dialogo {
 export function EventoDetalle({ id }: { id: string }) {
   const { usuario } = useSesion();
   const router = useRouter();
-  const cacheado = leerCache<{ evento: EventoCaptura; hojas: HojaCaptura[] }>(usuario?.id, `evento:${id}`);
+  const cacheado = leerCache<{ evento: EventoCaptura; hojas: HojaCaptura[]; nombres?: NombresUsuarios }>(usuario?.id, `evento:${id}`);
   const [evento, setEvento] = useState<EventoCaptura | null>(cacheado?.evento ?? null);
   const [hojas, setHojas] = useState<HojaCaptura[]>(cacheado?.hojas ?? []);
+  const [nombres, setNombres] = useState<NombresUsuarios>(cacheado?.nombres ?? {});
+  const [inverso, setInverso] = useState(false);
   const [actual, setActual] = useState<HojaCaptura | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -58,11 +64,12 @@ export function EventoDetalle({ id }: { id: string }) {
     try {
       const [e, h] = await Promise.all([
         api<{ evento: EventoCaptura }>(`/api/captura-datos/eventos/${id}`),
-        api<{ hojas: HojaCaptura[] }>(`/api/captura-datos/eventos/${id}/hojas`),
+        api<{ hojas: HojaCaptura[]; usuarios?: NombresUsuarios }>(`/api/captura-datos/eventos/${id}/hojas`),
       ]);
       setEvento(e.evento);
       setHojas(h.hojas);
-      guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas });
+      setNombres(h.usuarios ?? {});
+      guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas, nombres: h.usuarios ?? {} });
       return h.hojas;
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
@@ -72,12 +79,44 @@ export function EventoDetalle({ id }: { id: string }) {
 
   usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
+  // localStorage solo existe en el navegador (y puede estar bloqueado): se lee al montar para no romper el render del servidor.
+  useEffect(() => {
+    try {
+      setInverso(localStorage.getItem(claveInverso(id)) === "1");
+    } catch {
+      setInverso(false);
+    }
+  }, [id]);
+
+  function cambiarInverso(valor: boolean) {
+    setInverso(valor);
+    try {
+      localStorage.setItem(claveInverso(id), valor ? "1" : "0");
+    } catch {
+      // Sin almacenamiento la preferencia dura solo mientras la página siga abierta.
+    }
+  }
+
+  async function liberarMisHojas() {
+    setOcupado("liberar");
+    setMensaje(null);
+    try {
+      const r = await api<{ liberadas: number }>(`/api/captura-datos/eventos/${id}/liberar-mis-hojas`, { method: "POST" });
+      setExito(r.liberadas === 1 ? "Se liberó 1 hoja: ya la puede tomar otra persona." : `Se liberaron ${r.liberadas} hojas: ya las puede tomar otra persona.`);
+      await cargar();
+    } catch (err) {
+      setMensaje(err instanceof Error ? err.message : "No se pudieron liberar tus hojas.");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
   async function tomarSiguiente(silencioso = false): Promise<boolean> {
     setOcupado("tomar");
     setMensaje(null);
     try {
       abiertaDesdeEvento.current = false;
-      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja${inverso ? "?inverso=1" : ""}`, { method: "POST" });
       if (r.hoja) setActual(r.hoja);
       else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
       return !!r.hoja;
@@ -177,11 +216,14 @@ export function EventoDetalle({ id }: { id: string }) {
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
   const hayCaptura = conteo("confirmada") > 0;
+  /** La tiene otra persona ahora mismo: se puede ver, no editar. */
+  const deOtra = (h: HojaCaptura) => bloqueoVigente(h) && h.bloqueadaPorId !== usuario?.id;
+  const quienEdita = (h: HojaCaptura) => (h.bloqueadaPorId === usuario?.id ? "Tú" : nombres[h.bloqueadaPorId ?? ""] ?? "Otra persona");
 
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} inverso={inverso} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
@@ -252,7 +294,18 @@ export function EventoDetalle({ id }: { id: string }) {
         <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
-      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" ? () => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
+      {hojas.length > 0 && usuario && (
+        <BarraColaboracion
+          progreso={progresoPorPersona(hojas, usuario.id, nombres)}
+          misEnEdicion={misHojasEnEdicion(hojas, usuario.id)}
+          abierto={evento.estado === "abierto"}
+          inverso={inverso}
+          onInverso={cambiarInverso}
+          liberando={ocupado === "liberar"}
+          onLiberar={() => void liberarMisHojas()}
+        />
+      )}
+      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" && !deOtra(viendo) ?() => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
@@ -299,16 +352,16 @@ export function EventoDetalle({ id }: { id: string }) {
                       <span className="block truncate text-sm font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.estado.replace("_", " ")}</span>
-                        {h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() && <span className="text-muted">en edición</span>}
+                        {bloqueoVigente(h) && <span className="text-muted">{quienEdita(h)} · en edición</span>}
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      {evento.estado === "abierto" && h.estado !== "no_valida" && (
+                      {evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) && (
                         <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50">
                           {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
                         </button>
                       )}
-                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida") && (
+                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida" || deOtra(h)) && (
                         <button onClick={() => setViendo(h)} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
                           <Eye className="h-3.5 w-3.5" /> Ver
                         </button>

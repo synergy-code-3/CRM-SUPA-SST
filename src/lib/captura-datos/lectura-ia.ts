@@ -67,10 +67,10 @@ async function leerHojaAdelantada(hoja: HojaCaptura): Promise<void> {
  * Se asegura de que las próximas `cuantas` hojas libres del evento (en el orden en que se entregan) ya estén leídas con IA.
  * Solo toca hojas pendientes y sin datos; si la IA falla se detiene (no insiste con las demás). Nunca lanza.
  */
-export async function adelantarLecturas(eventoId: string, cuantas: number): Promise<void> {
+export async function adelantarLecturas(eventoId: string, cuantas: number, inverso = false): Promise<void> {
   const inicio = Date.now();
   try {
-    for (const hoja of await siguientesHojasLibres(eventoId, cuantas)) {
+    for (const hoja of await siguientesHojasLibres(eventoId, cuantas, inverso)) {
       if (hoja.estado !== "pendiente" || hoja.origen.leidaIa) continue;
       if (Date.now() - inicio > PRESUPUESTO_ADELANTO_MS) return;
       await leerHojaAdelantada(hoja);
