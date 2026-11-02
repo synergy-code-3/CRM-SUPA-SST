@@ -52,6 +52,7 @@ import { ESTADOS_MENSAJE_BIENVENIDA_WA } from "@/lib/types";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { AccesosSynergy } from "./AccesosSynergy";
+import { HojaClienteAcciones } from "./HojaClienteAcciones";
 import { Timeline } from "./Timeline";
 import { ComboboxBuscador, type OpcionCombobox } from "./ComboboxBuscador";
 import type { PerfilKajabi } from "@/lib/kajabi";
@@ -2561,7 +2562,7 @@ export function ClientePanel({
               )}
 
               {tab === "seguimiento" && (
-                <Tarjeta titulo="Seguimiento y soporte">
+                <Tarjeta titulo="Seguimiento y soporte" acciones={<HojaClienteAcciones clienteId={clienteId} />}>
                   {!editando ? (
                     <dl className="space-y-2.5 text-sm">
                       <DatoFila icon={PartyPopper} label="Evento" valor={cliente.evento} />
@@ -3236,11 +3237,14 @@ function SolicitarUpgradeModal({
   );
 }
 
-function Tarjeta({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Tarjeta({ titulo, acciones, children }: { titulo: string; acciones?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="shell rounded-2xl p-2 diffused">
       <div className="core rounded-[calc(1rem-0.25rem)] p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted">{titulo}</h3>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">{titulo}</h3>
+          {acciones}
+        </div>
         {children}
       </div>
     </section>

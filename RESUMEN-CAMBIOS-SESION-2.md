@@ -342,3 +342,11 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - Interfaz: se quitó la casilla, el localStorage y `?inverso=1`. Se conservan los chips de avance y "Liberar mis hojas".
 - Antes de correr el SQL todo sigue como antes (sin límite ni sentido automático).
 - **SQL pendiente:** ejecutar `supabase/schema.sql` completo.
+
+**Hoja del cliente en su perfil** (2 nov, 7) — en Clientes > perfil > "Seguimiento y soporte", junto al título: ícono para ver la hoja escaneada (cajón a la izquierda con la imagen/PDF y botón "Descargar") e ícono para descargarla. Solo se muestran si el cliente tiene hojas **confirmadas**; la ven todos los roles que ven Clientes (`verClientes`).
+- Cruce cliente → hoja: por correo (actual y original) o últimos 10 dígitos del teléfono (`cliente-hojas.ts`, `listarHojasDeCliente` en `db.ts`).
+- Endpoints nuevos: `GET /api/clientes/[id]/hojas` (lista) y `GET /api/clientes/[id]/hojas/[hojaId]/archivo[?descargar=1]` (verifica que la hoja sea del cliente; 404 si no). El servido del archivo vive en `archivo-hoja.ts`; los endpoints de `captura-datos` no se tocaron.
+- UI: `HojaClienteAcciones.tsx`; `Tarjeta` en `ClientePanel.tsx` acepta `acciones`. Con varias hojas, el ícono de descargar abre el cajón para elegir.
+- Pruebas nuevas: `cliente-hojas`, `db-cliente-hojas`, `archivo-hoja` (194 en verde, `tsc` y `next build` sin errores). Sin probar en el navegador.
+- **SQL pendiente:** ejecutar `supabase/indices-hojas-cliente.sql` (dos índices parciales sobre `cap_hojas` y `analyze`). Sin él todo funciona, solo más lento al crecer la tabla.
+- Revisión (código y seguridad) aplicada: correos con coma/comillas/paréntesis se descartan del filtro `in` y la lista se revalida contra el cliente; respuestas con `Cache-Control: private, no-store`; `%` mal formado en la URL da 404; `.PDF` en mayúsculas; un PDF de varias hojas (`paginas > 1`) no se entrega (403) porque traería hojas de otras personas. **Decisión del dueño:** las hojas las ve cualquier rol con `verClientes` (antes solo admin); no se limitan por evento ni hay registro de descargas. 200 pruebas en verde.

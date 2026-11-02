@@ -9,6 +9,7 @@ import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
 import { ErrorPeticion } from "./errores";
+import { correosDeCliente, hojaPerteneceACliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
 
 type FilaEvento = {
   id: string;
@@ -318,6 +319,52 @@ export async function crearHojas(
     .select("*");
   if (error) throw error;
   return (data as FilaHoja[]).map(filaAHoja);
+}
+
+export interface HojaDeCliente {
+  id: string;
+  folio: string | null;
+  eventoNombre: string;
+  eventoFecha: string | null;
+  esPdf: boolean;
+  confirmadaEn: string | null;
+}
+
+type FilaHojaDeCliente = {
+  id: string;
+  folio: string | null;
+  origen: FotoRef;
+  campos: SheetFields | null;
+  confirmada_en: string | null;
+  cap_eventos: { nombre: string; fecha: string | null } | null;
+};
+
+const COLUMNAS_HOJA_DE_CLIENTE = "id, folio, origen, campos, confirmada_en, cap_eventos(nombre, fecha)";
+
+/** Hojas confirmadas cuyo correo o teléfono es el del cliente (no hay llave directa), la más reciente primero. */
+export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCliente[]> {
+  const base = () => supabase.from("cap_hojas").select(COLUMNAS_HOJA_DE_CLIENTE).eq("estado", "confirmada");
+  const correos = correosDeCliente(c);
+  const tel = telefonoDe10(c.telefono);
+  const [porCorreo, porTelefono] = await Promise.all([
+    correos.length ? base().in("campos->>correo", correos) : Promise.resolve({ data: [], error: null }),
+    tel ? base().eq("campos->>telefono", tel) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (porCorreo.error) throw porCorreo.error;
+  if (porTelefono.error) throw porTelefono.error;
+  const unicas = new Map<string, FilaHojaDeCliente>();
+  for (const f of [...(porCorreo.data ?? []), ...(porTelefono.data ?? [])] as unknown as FilaHojaDeCliente[]) unicas.set(f.id, f);
+  return [...unicas.values()]
+    .filter((f) => hojaPerteneceACliente({ estado: "confirmada", campos: f.campos }, c))
+    .sort((a, b) => (b.confirmada_en ?? "").localeCompare(a.confirmada_en ?? ""))
+    .map((f) => ({
+      id: f.id,
+      folio: f.folio,
+      eventoNombre: f.cap_eventos?.nombre ?? "Evento",
+      eventoFecha: f.cap_eventos?.fecha ?? null,
+      esPdf: /\.pdf$/i.test(f.origen.rutaStorage ?? "") || /\.pdf$/i.test(f.origen.nombreOriginal),
+      confirmadaEn: f.confirmada_en,
+    }));
 }
 
 const TAMANO_PAGINA = 1000; // PostgREST corta en 1000 filas por consulta sin avisar: se pagina para no truncar
