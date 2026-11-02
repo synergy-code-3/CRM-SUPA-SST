@@ -17,8 +17,8 @@ interface HistorialModalProps {
 /** Cuando el historial vive en un modal, el título y el cierre los pone el modal. */
 export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: HistorialModalProps) {
   return (
-    <Modal titulo={titulo} onCerrar={onCerrar}>
-      <HistorialLista eventoId={eventoId} />
+    <Modal titulo={titulo} onCerrar={onCerrar} tamano="max-h-[85vh] sm:max-w-3xl">
+      <HistorialLista eventoId={eventoId} conFiltros />
     </Modal>
   );
 }
@@ -99,7 +99,7 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
 
   return (
     <div className="space-y-3">
-      {conFiltros && <FiltrosHistorial filtros={filtros} onCambio={setFiltros} />}
+      {conFiltros && <FiltrosHistorial filtros={filtros} onCambio={setFiltros} sinLugar={!!eventoId} />}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!actual && cargando && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
       {actual?.registros.length === 0 && <p className="py-6 text-center text-sm text-muted">{filtrando ? "Ningún movimiento coincide con los filtros." : "Todavía no hay movimientos registrados."}</p>}

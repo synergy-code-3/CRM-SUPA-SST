@@ -25,6 +25,8 @@ export interface RegistroAuditoria {
   hojaId: string | null;
   accion: AccionAuditoria;
   detalle: Record<string, unknown> | null;
+  /** Solo al buscar por nombre: el cliente de una hoja confirmada. */
+  clienteNombre?: string;
 }
 
 export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
@@ -102,6 +104,7 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       break;
     case "hoja_confirmada":
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
+      if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
       break;
     case "hoja_corregida": {

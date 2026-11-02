@@ -7,7 +7,7 @@ import type { HojaCaptura } from "./modelo";
 
 export { RETENCION_AUDITORIA_DIAS };
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
-const LIMITE_POR_DEFECTO = 50;
+const LIMITE_POR_DEFECTO = 25;
 const LIMITE_MAXIMO = 100;
 
 type FilaAuditoria = {
@@ -113,11 +113,11 @@ export interface ConsultaAuditoria {
 const limpiarBusqueda = (t: string) => t.replace(/[,()"\\%*]/g, " ").trim();
 const MAX_HOJAS_POR_NOMBRE = 200;
 
-/** Ids de las hojas cuyo cliente se llama así: el movimiento de confirmar no guarda el nombre, solo el folio. */
-async function hojasConNombre(texto: string): Promise<string[]> {
-  const { data, error } = await supabase.from("cap_hojas").select("id").ilike("campos->>nombre", `%${texto}%`).limit(MAX_HOJAS_POR_NOMBRE);
+/** Hojas cuyo cliente se llama así (id → nombre): el movimiento de confirmar no guarda el nombre, solo el folio. */
+async function hojasConNombre(texto: string): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from("cap_hojas").select("id, nombre:campos->>nombre").ilike("campos->>nombre", `%${texto}%`).limit(MAX_HOJAS_POR_NOMBRE);
   if (error) throw error;
-  return (data as { id: string }[]).map((h) => h.id);
+  return new Map((data as unknown as { id: string; nombre: string | null }[]).map((h) => [h.id, h.nombre ?? ""]));
 }
 
 /** Los movimientos más recientes primero; `hayMas` indica si queda más historial para pedir con `antes`. */
@@ -133,17 +133,22 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
   const lugar = limpiarBusqueda(consulta.lugar ?? "");
   if (lugar) q = q.ilike("evento_nombre", `%${lugar}%`);
   const texto = limpiarBusqueda(consulta.q ?? "");
+  let nombres = new Map<string, string>();
   if (texto) {
     const campos = ["evento_nombre", "usuario_nombre", "detalle->>folio", "detalle->>motivo", "detalle->cambios->nombre->>antes", "detalle->cambios->nombre->>despues"];
     const condiciones = campos.map((c) => `${c}.ilike.%${texto}%`);
-    const hojas = await hojasConNombre(texto);
-    if (hojas.length) condiciones.push(`hoja_id.in.(${hojas.join(",")})`);
+    nombres = await hojasConNombre(texto);
+    if (nombres.size) condiciones.push(`hoja_id.in.(${[...nombres.keys()].join(",")})`);
     q = q.or(condiciones.join(","));
   }
   const { data, error } = await q;
   if (error) throw error;
   const filas = data as FilaAuditoria[];
-  return { registros: filas.slice(0, limite).map(filaARegistro), hayMas: filas.length > limite };
+  const registros = filas.slice(0, limite).map((f) => {
+    const clienteNombre = f.accion === "hoja_confirmada" && f.hoja_id ? nombres.get(f.hoja_id) : undefined;
+    return clienteNombre ? { ...filaARegistro(f), clienteNombre } : filaARegistro(f);
+  });
+  return { registros, hayMas: filas.length > limite };
 }
 
 /** Borra los movimientos con más de `dias` días. Devuelve cuántos borró. */

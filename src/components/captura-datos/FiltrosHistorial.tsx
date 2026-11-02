@@ -28,7 +28,7 @@ export function paramsDeFiltros(f: Filtros): URLSearchParams {
 
 const CAMPO = "rounded-lg border border-silver bg-surface px-3 py-1.5 text-sm";
 
-export function FiltrosHistorial({ filtros, onCambio }: { filtros: Filtros; onCambio: (f: Filtros) => void }) {
+export function FiltrosHistorial({ filtros, onCambio, sinLugar = false }: { filtros: Filtros; onCambio: (f: Filtros) => void; sinLugar?: boolean }) {
   const cambiar = (parcial: Partial<Filtros>) => onCambio({ ...filtros, ...parcial });
   const alternar = (a: AccionAuditoria) => cambiar({ acciones: filtros.acciones.includes(a) ? filtros.acciones.filter((x) => x !== a) : [...filtros.acciones, a] });
 
@@ -37,9 +37,9 @@ export function FiltrosHistorial({ filtros, onCambio }: { filtros: Filtros; onCa
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted" />
-          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder="Buscar evento, admin, folio, cliente…" aria-label="Buscar en el historial" className={`${CAMPO} w-full pl-8`} />
+          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder={sinLugar ? "Buscar admin, folio, cliente…" : "Buscar evento, admin, folio, cliente…"} aria-label="Buscar en el historial" className={`${CAMPO} w-full pl-8`} />
         </label>
-        <input value={filtros.lugar} onChange={(e) => cambiar({ lugar: e.target.value })} placeholder="Lugar" aria-label="Lugar" className={`${CAMPO} w-36`} />
+        {!sinLugar && <input value={filtros.lugar} onChange={(e) => cambiar({ lugar: e.target.value })} placeholder="Lugar" aria-label="Lugar" className={`${CAMPO} w-36`} />}
         <label className="flex items-center gap-1 text-xs text-muted">
           Desde <input type="date" value={filtros.desde} max={filtros.hasta || undefined} onChange={(e) => cambiar({ desde: e.target.value })} className={CAMPO} />
         </label>
