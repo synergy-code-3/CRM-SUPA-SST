@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ClipboardList, Plus } from "lucide-react";
+import { FiltrosEventos, filtrarEventos, hayFiltrosEventos, SIN_FILTROS_EVENTOS, type FiltrosEventosValor } from "./FiltrosEventos";
 import { MenuEvento } from "./MenuEvento";
 import { NuevoEventoModal } from "./NuevoEventoModal";
 import { api, formatearFecha } from "@/lib/captura-datos/cliente";
@@ -21,7 +22,9 @@ export function ListaEventos() {
   const [eventos, setEventos] = useState<EventoConAvance[] | null>(() => leerCache<EventoConAvance[]>(usuario?.id, "eventos"));
   const [error, setError] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
+  const [filtros, setFiltros] = useState<FiltrosEventosValor>(SIN_FILTROS_EVENTOS);
   const router = useRouter();
+  const visibles = useMemo(() => (eventos ? filtrarEventos(eventos, filtros) : null), [eventos, filtros]);
 
   const cargar = useCallback(() => {
     api<{ eventos: EventoConAvance[] }>("/api/captura-datos/eventos")
@@ -45,12 +48,18 @@ export function ListaEventos() {
         </button>
       </div>
 
+      {!!eventos?.length && <FiltrosEventos filtros={filtros} onCambio={setFiltros} />}
+
       {error && <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
       {!eventos && !error && <p className="py-12 text-center text-sm text-muted">Cargando…</p>}
       {eventos?.length === 0 && <p className="py-12 text-center text-sm text-muted">Todavía no hay eventos. Crea el primero.</p>}
 
+      {eventos && eventos.length > 0 && visibles?.length === 0 && hayFiltrosEventos(filtros) && (
+        <p className="py-12 text-center text-sm text-muted">Ningún evento coincide con la búsqueda.</p>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
-        {eventos?.map((e) => <TarjetaEvento key={e.id} evento={e} onCambio={cargar} />)}
+        {visibles?.map((e) => <TarjetaEvento key={e.id} evento={e} onCambio={cargar} />)}
       </div>
 
       {creando && (

@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Modal } from "./Modal";
 import { FiltrosHistorial, hayFiltros, paramsDeFiltros, SIN_FILTROS, type Filtros } from "./FiltrosHistorial";
 import { api } from "@/lib/captura-datos/cliente";
+import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
+import { useSesion } from "@/lib/session-context";
 import { ETIQUETA_ACCION, ETIQUETA_FILTRO_ACCION, lineasDeDetalle, type AccionAuditoria, type RegistroAuditoria } from "@/lib/captura-datos/historial";
 
 interface HistorialModalProps {
@@ -44,14 +46,25 @@ interface Pagina {
 const FECHA = new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeStyle: "short" });
 const PAUSA_BUSQUEDA_MS = 250;
 
+interface HistorialGuardado {
+  paginas: Pagina[];
+  indice: number;
+  filtros: Filtros;
+}
+
 /** Lista de movimientos importantes de Captura de Datos (solo admin), por páginas: cada una se pide solo al navegar a ella. */
 export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: string; conFiltros?: boolean }) {
-  const [paginas, setPaginas] = useState<Pagina[]>([]);
-  const [indice, setIndice] = useState(0);
-  const [cargando, setCargando] = useState(true);
+  const { usuario } = useSesion();
+  const claveCache = `historial:${eventoId ?? "todos"}`;
+  // Al volver a la pantalla se muestra lo último visto sin recargar; solo se pide de nuevo si hay un movimiento nuevo.
+  const [guardado] = useState(() => leerCache<HistorialGuardado>(usuario?.id, claveCache));
+  const [paginas, setPaginas] = useState<Pagina[]>(guardado?.paginas ?? []);
+  const [indice, setIndice] = useState(guardado?.indice ?? 0);
+  const [cargando, setCargando] = useState(!guardado);
   const [error, setError] = useState<string | null>(null);
-  const [filtros, setFiltros] = useState<Filtros>(SIN_FILTROS);
-  const [aplicados, setAplicados] = useState<Filtros>(SIN_FILTROS);
+  const [filtros, setFiltros] = useState<Filtros>(guardado?.filtros ?? SIN_FILTROS);
+  const [aplicados, setAplicados] = useState<Filtros>(guardado?.filtros ?? SIN_FILTROS);
+  const restaurando = useRef(!!guardado);
   const filtrando = conFiltros && hayFiltros(aplicados);
   const peticion = useRef(0);
 
@@ -61,8 +74,12 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
     return () => clearTimeout(t);
   }, [filtros]);
 
+  useEffect(() => {
+    if (paginas.length > 0) guardarCache<HistorialGuardado>(usuario?.id, claveCache, { paginas, indice, filtros: aplicados });
+  }, [usuario?.id, claveCache, paginas, indice, aplicados]);
+
   const pedir = useCallback(
-    async (antes: number | undefined, previas: Pagina[]) => {
+    async (antes: number | undefined, previas: Pagina[], soloUno = false) => {
       const esta = ++peticion.current;
       setCargando(true);
       setError(null);
@@ -70,8 +87,17 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
         const params = filtrando ? paramsDeFiltros(aplicados) : new URLSearchParams();
         if (eventoId) params.set("eventoId", eventoId);
         if (antes !== undefined) params.set("antes", String(antes));
+        if (soloUno) params.set("limite", "1");
         const pagina = await api<Pagina>(`/api/captura-datos/historial?${params}`);
         if (esta !== peticion.current) return; // llegó tarde: ya hay otra búsqueda en curso
+        if (soloUno) {
+          setCargando(false);
+          if (pagina.registros[0]?.id !== guardado?.paginas[0]?.registros[0]?.id) {
+            setPaginas([]);
+            void pedir(undefined, []);
+          }
+          return;
+        }
         const todas = [...previas, pagina];
         setPaginas(todas);
         setIndice(todas.length - 1);
@@ -81,11 +107,16 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
         if (esta === peticion.current) setCargando(false);
       }
     },
-    [eventoId, filtrando, aplicados]
+    [eventoId, filtrando, aplicados, guardado]
   );
 
-  // Al cambiar el evento o los filtros se vuelve a la primera página.
+  // Al cambiar el evento o los filtros se vuelve a la primera página; al restaurar solo se comprueba si hay algo nuevo.
   useEffect(() => {
+    if (restaurando.current) {
+      restaurando.current = false;
+      void pedir(undefined, [], true);
+      return;
+    }
     setPaginas([]);
     void pedir(undefined, []);
   }, [pedir]);
