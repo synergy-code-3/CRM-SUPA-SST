@@ -21,6 +21,7 @@ import { detectarEventoEnAxis, detectarMembresiaEnComprasAxis, obtenerHistorialA
 import { detectarProductoClubSinergetico, mayorMembresia } from "./hotmart";
 import {
   actualizarCorreoContacto,
+  altaEnKajabi,
   buscarContactoPorCorreo,
   estadoOfertaContacto,
   KAJABI_OFFER_ID_CLUB_SINERGETICO,
@@ -2532,6 +2533,84 @@ export async function reconciliarOfertasVencidas(): Promise<ResultadoReconciliac
       await registrarEvento(c.id, "EDICION_DATOS", detalle, "Kajabi");
       await recalcularAccesos(c.id);
       reactivados.push({ id: c.id, nombre: c.nombre, email: c.email, finAcceso: finTexto });
+    } catch {
+      // Best-effort: un fallo con un candidato no debe tronar el resto — no
+      // se le actualiza revisado_oferta_en, así que vuelve a quedar
+      // primero en la cola la próxima corrida.
+    }
+  }
+
+  return { revisados: candidatos.length, reactivados };
+}
+
+const TOPE_RECONCILIACION_MASPLUS = 30;
+
+export type ResultadoReconciliacionMasPlus = {
+  revisados: number;
+  reactivados: { id: string; nombre: string; email: string }[];
+};
+
+// Por ahora SOLO etiqueta "MÁS+" (ni "MÁS+ USA" ni Black Access todavía) —
+// clientes con acceso vitalicio en este CRM, pero la oferta que les
+// otorgó Kajabi trae su propio timer de acceso (365 días, ver comentario
+// de estadoOfertaContacto) que nunca se corrigió ahí porque en el CRM
+// nunca tuvieron una fecha de vencimiento real que avisara. Mismo patrón
+// que reconciliarOfertasVencidas, en sentido contrario: aquí el CRM SÍ
+// cree que deben tener acceso y se corrige Kajabi, no al revés. Comparte
+// el cursor revisado_oferta_en — no compite de verdad con esa otra
+// reconciliación porque los candidatos de allá están vencidos y los de
+// aquí, activos.
+export async function reconciliarMasPlusRevocados(): Promise<ResultadoReconciliacionMasPlus> {
+  // Función (no variable) a propósito: los builders de supabase-js mutan el
+  // objeto al encadenar filtros, así que reusar la misma instancia entre
+  // las dos consultas de abajo las mezclaría en una sola (AND de ambas) en
+  // vez de dos independientes.
+  const construir = () =>
+    supabase
+      .from("clientes")
+      .select("id,nombre,email,revisado_oferta_en")
+      .is("eliminado_en", null)
+      .is("pausado_en", null)
+      // Si un admin revocó el acceso a propósito (reembolso), no se le debe
+      // volver a otorgar la oferta solo porque tiene la etiqueta MÁS+.
+      // `is.null` aparte porque en SQL "NULL NOT ILIKE 'x'" da NULL (ni
+      // verdadero ni falso) — un solo .not(ilike) excluiría también a los
+      // que nunca han tenido nada en acceso_plataforma.
+      .or("acceso_plataforma.is.null,acceso_plataforma.not.ilike.revocado");
+
+  const [{ data: porEtiqueta, error: e1 }, { data: porExtra, error: e2 }] = await Promise.all([
+    construir().eq("etiqueta", "MÁS+"),
+    construir().overlaps("etiquetas_extra", ["MÁS+"]),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+
+  const porId = new Map<string, { id: string; nombre: string; email: string; revisado_oferta_en: string | null }>();
+  for (const c of [...(porEtiqueta ?? []), ...(porExtra ?? [])]) porId.set(c.id, c);
+  const candidatos = Array.from(porId.values())
+    .sort((a, b) => (a.revisado_oferta_en ?? "").localeCompare(b.revisado_oferta_en ?? ""))
+    .slice(0, TOPE_RECONCILIACION_MASPLUS);
+  if (candidatos.length === 0) return { revisados: 0, reactivados: [] };
+
+  const reactivados: ResultadoReconciliacionMasPlus["reactivados"] = [];
+  for (const c of candidatos) {
+    const ahora = new Date().toISOString();
+    try {
+      const estado = await estadoOfertaContacto(c.email, KAJABI_OFFER_ID_CLUB_SINERGETICO);
+      if (estado === "activa") {
+        await supabase.from("clientes").update({ revisado_oferta_en: ahora }).eq("id", c.id);
+        continue;
+      }
+      // "revocada" o "sin_contacto" (altaEnKajabi crea el contacto si hiciera falta).
+      await altaEnKajabi(c.nombre, c.email);
+      await supabase.from("clientes").update({ revisado_oferta_en: ahora }).eq("id", c.id);
+      await registrarEvento(
+        c.id,
+        "EDICION_DATOS",
+        "Se le volvió a otorgar la Oferta Club Sinergético en Kajabi — tiene etiqueta MÁS+ (acceso vitalicio) y Kajabi se la había revocado sola por su timer de acceso.",
+        "Kajabi"
+      );
+      reactivados.push({ id: c.id, nombre: c.nombre, email: c.email });
     } catch {
       // Best-effort: un fallo con un candidato no debe tronar el resto — no
       // se le actualiza revisado_oferta_en, así que vuelve a quedar

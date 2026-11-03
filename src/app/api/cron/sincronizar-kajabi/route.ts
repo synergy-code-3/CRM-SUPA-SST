@@ -8,6 +8,7 @@ import {
   marcarMensajeBienvenidaWa,
   normalizarEmail,
   obtenerCursorSyncKajabi,
+  reconciliarMasPlusRevocados,
   reconciliarOfertasVencidas,
   registrarTagKajabi,
   reintentarCompletadoAxis,
@@ -151,6 +152,26 @@ async function manejar(req: NextRequest) {
     console.error("Reconciliación de ofertas vencidas falló, se reintenta en la siguiente corrida:", err);
   }
 
+  // Reconciliación best-effort (sentido contrario a la de arriba): clientes
+  // con etiqueta MÁS+ (acceso vitalicio en este CRM) a los que Kajabi les
+  // revocó la oferta sola por su propio timer de acceso — ver
+  // reconciliarMasPlusRevocados(). Por ahora solo etiqueta "MÁS+".
+  let reconciliacionMasPlus: { revisados: number; reactivados: number } | null = null;
+  try {
+    const resultado = await reconciliarMasPlusRevocados();
+    reconciliacionMasPlus = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
+    if (resultado.reactivados.length > 0) {
+      const lista = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email})`).join("\n");
+      await crearAvisoAutomatico(
+        "Reactivaciones automáticas de Kajabi (MÁS+)",
+        `Kajabi había revocado sola la oferta del Club a estos clientes con etiqueta MÁS+ (acceso vitalicio) — se les volvió a otorgar automáticamente:\n\n${lista}`,
+        true
+      );
+    }
+  } catch (err) {
+    console.error("Reconciliación de MÁS+ revocados falló, se reintenta en la siguiente corrida:", err);
+  }
+
   // Barrido de seguridad best-effort: el cursor de arriba avanza según la
   // fecha de CREACIÓN del contacto en Kajabi, pero la oferta a veces se le
   // otorga horas o días después de creado (confirmado con
@@ -206,7 +227,7 @@ async function manejar(req: NextRequest) {
     console.error("Tags del Club en Certificaciones fallaron, se reintenta en la siguiente corrida:", err);
   }
 
-  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion, barrido, tagsClub });
+  return NextResponse.json({ ok: true, procesados, detectados: nuevos.length, axis, reconciliacion, reconciliacionMasPlus, barrido, tagsClub });
 }
 
 export const GET = manejar;
