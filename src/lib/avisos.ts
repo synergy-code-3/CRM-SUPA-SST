@@ -123,47 +123,83 @@ export async function crearAvisoAutomatico(titulo: string, mensaje: string, solo
   return filaAAviso(data as AvisoRow, []);
 }
 
-// Mismo caso que crearAvisoAutomatico, pero para procesos que corren varias
-// veces al día (ej. el cron de Kajabi, cada ~15 min): si ya existe un aviso
-// automático con ese mismo título creado hoy, le agrega las líneas nuevas en
-// vez de publicar uno aparte — antes cada corrida del día que encontraba
-// algo generaba su propio aviso, saturando "solo admin" con varios avisos
-// idénticos en el mismo día. `lineasNuevas` son renglones ya formateados
-// (ej. "• Nombre (correo)"); se deduplican contra los que ya traía el aviso
-// de hoy por si algún proceso procesa al mismo cliente dos veces en el día.
-export async function agregarOCrearAvisoAutomaticoDiario(
+// CDMX es UTC-6 todo el año (sin horario de verano desde la reforma de
+// 2022 — ver el mismo criterio ya usado para los horarios de mentorías en
+// coordinacion-modelo.ts), así que no hace falta una librería de zonas
+// horarias: basta restarle 6 horas al UTC.
+function fechaCdmx(d: Date): Date {
+  return new Date(d.getTime() - 6 * 60 * 60 * 1000);
+}
+function diaCdmx(d: Date): string {
+  return fechaCdmx(d).toISOString().slice(0, 10);
+}
+function horaCdmx(d: Date): number {
+  return fechaCdmx(d).getUTCHours();
+}
+
+type EstadoAvisoDiario = { pendientes: string[]; ultimoPublicadoDia: string | null };
+
+async function leerEstadoAvisoDiario(clave: string): Promise<EstadoAvisoDiario> {
+  const { data, error } = await supabase.from("kajabi_sync_estado").select("valor").eq("clave", clave).maybeSingle();
+  if (error) throw error;
+  if (!data?.valor) return { pendientes: [], ultimoPublicadoDia: null };
+  try {
+    const parsed = JSON.parse(data.valor) as Partial<EstadoAvisoDiario>;
+    return { pendientes: parsed.pendientes ?? [], ultimoPublicadoDia: parsed.ultimoPublicadoDia ?? null };
+  } catch {
+    return { pendientes: [], ultimoPublicadoDia: null };
+  }
+}
+
+async function guardarEstadoAvisoDiario(clave: string, estado: EstadoAvisoDiario): Promise<void> {
+  const { error } = await supabase
+    .from("kajabi_sync_estado")
+    .upsert({ clave, valor: JSON.stringify(estado), actualizado_en: new Date().toISOString() });
+  if (error) throw error;
+}
+
+// El cron que detecta reactivaciones de Kajabi corre cada ~15 min — en vez
+// de publicar un aviso por corrida (ruido) o uno por día en el momento en
+// que se dispara (hora impredecible), esto solo ACUMULA las líneas nuevas
+// en un estado silencioso (reutilizando kajabi_sync_estado como key-value
+// genérico) — nada se publica todavía. Ver publicarAvisoDiarioSiToca, que es
+// quien de verdad crea el aviso una vez al día.
+export async function agregarPendienteAvisoDiario(clave: string, lineasNuevas: string[]): Promise<void> {
+  if (!lineasNuevas.length) return;
+  const estado = await leerEstadoAvisoDiario(clave);
+  const pendientes = Array.from(new Set([...estado.pendientes, ...lineasNuevas]));
+  await guardarEstadoAvisoDiario(clave, { ...estado, pendientes });
+}
+
+// Publica el aviso acumulado del día, pero solo la primera vez que el cron
+// corre en o después de `horaLocalCdmx` en el día de hoy (hora de CDMX) — las
+// corridas siguientes del mismo día no vuelven a publicar aunque sigan
+// encontrando reactivaciones; esas se acumulan calladas para el aviso de
+// mañana. Si no hay nada pendiente ese día, no publica nada.
+export async function publicarAvisoDiarioSiToca(
+  clave: string,
   titulo: string,
   introMensaje: string,
-  lineasNuevas: string[],
   soloAdmin: boolean,
-  autorNombre = "Kajabi"
-): Promise<Aviso> {
-  const inicioDeHoy = new Date();
-  inicioDeHoy.setHours(0, 0, 0, 0);
+  horaLocalCdmx: number
+): Promise<Aviso | null> {
+  const ahora = new Date();
+  if (horaCdmx(ahora) < horaLocalCdmx) return null;
 
-  const { data: existente, error: errBuscar } = await supabase
-    .from("avisos")
-    .select("*")
-    .eq("titulo", titulo.trim())
-    .is("autor_id", null)
-    .gte("creado_en", inicioDeHoy.toISOString())
-    .order("creado_en", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (errBuscar) throw errBuscar;
-
-  if (existente) {
-    const lineasPrevias = (existente.mensaje as string)
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.startsWith("•"));
-    const todas = Array.from(new Set([...lineasPrevias, ...lineasNuevas]));
-    const mensaje = `${introMensaje}\n\n${todas.join("\n")}`;
-    return editarAviso(existente.id as string, titulo, mensaje);
+  const estado = await leerEstadoAvisoDiario(clave);
+  const hoy = diaCdmx(ahora);
+  if (estado.ultimoPublicadoDia === hoy) return null;
+  if (estado.pendientes.length === 0) {
+    // Nada que avisar hoy — igual se marca el día como "revisado" para no
+    // volver a entrar aquí en cada corrida del resto del día.
+    await guardarEstadoAvisoDiario(clave, { pendientes: [], ultimoPublicadoDia: hoy });
+    return null;
   }
 
-  const mensaje = `${introMensaje}\n\n${lineasNuevas.join("\n")}`;
-  return crearAvisoAutomatico(titulo, mensaje, soloAdmin, autorNombre);
+  const mensaje = `${introMensaje}\n\n${estado.pendientes.join("\n")}`;
+  const aviso = await crearAvisoAutomatico(titulo, mensaje, soloAdmin);
+  await guardarEstadoAvisoDiario(clave, { pendientes: [], ultimoPublicadoDia: hoy });
+  return aviso;
 }
 
 // Editar NO toca avisos_confirmaciones a propósito — corregir un error de

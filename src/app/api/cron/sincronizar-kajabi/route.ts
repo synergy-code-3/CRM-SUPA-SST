@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { agregarOCrearAvisoAutomaticoDiario } from "@/lib/avisos";
+import { agregarPendienteAvisoDiario, publicarAvisoDiarioSiToca } from "@/lib/avisos";
 import { autorizadoParaCron } from "@/lib/cron-auth";
 import {
   correosSinClienteAun,
@@ -129,24 +129,31 @@ async function manejar(req: NextRequest) {
     console.error("Reintento de Axis falló, se reintenta en la siguiente corrida:", err);
   }
 
+  // Hora (CDMX) en la que se publica el aviso diario de reactivaciones —
+  // ver publicarAvisoDiarioSiToca: las reactivaciones en sí se siguen
+  // reintentando cada ~15 min (eso no cambia, solo el aviso), pero el aviso
+  // que las resume se acumula todo el día y se publica una sola vez, en la
+  // primera corrida del cron a esta hora o después.
+  const HORA_AVISO_REACTIVACIONES_CDMX = 9;
+
   // Reconciliación best-effort: clientes vencidos que Kajabi ya muestra con
   // la oferta otra vez (renovaron por un canal que no dispara el webhook de
-  // Hotmart) — ver reconciliarOfertasVencidas(). Si encontró alguno, se
-  // publica un solo aviso agrupando todos (no uno por cliente, para no
-  // saturar Avisos con la ventana emergente si un día se reactivan varios).
+  // Hotmart) — ver reconciliarOfertasVencidas(). Las líneas se acumulan en
+  // un aviso diario (ver HORA_AVISO_REACTIVACIONES_CDMX arriba) en vez de
+  // publicarse al momento.
   let reconciliacion: { revisados: number; reactivados: number } | null = null;
   try {
     const resultado = await reconciliarOfertasVencidas();
     reconciliacion = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
-    if (resultado.reactivados.length > 0) {
-      const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email}) — Fin de acceso: ${r.finAcceso}`);
-      await agregarOCrearAvisoAutomaticoDiario(
-        "Reactivaciones automáticas de Kajabi",
-        "Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:",
-        lineas,
-        true
-      );
-    }
+    const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email}) — Fin de acceso: ${r.finAcceso}`);
+    await agregarPendienteAvisoDiario("aviso_reactivaciones_kajabi", lineas);
+    await publicarAvisoDiarioSiToca(
+      "aviso_reactivaciones_kajabi",
+      "Reactivaciones automáticas de Kajabi",
+      "Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:",
+      true,
+      HORA_AVISO_REACTIVACIONES_CDMX
+    );
   } catch (err) {
     console.error("Reconciliación de ofertas vencidas falló, se reintenta en la siguiente corrida:", err);
   }
@@ -154,20 +161,21 @@ async function manejar(req: NextRequest) {
   // Reconciliación best-effort (sentido contrario a la de arriba): clientes
   // con etiqueta MÁS+ (acceso vitalicio en este CRM) a los que Kajabi les
   // revocó la oferta sola por su propio timer de acceso — ver
-  // reconciliarMasPlusRevocados(). Por ahora solo etiqueta "MÁS+".
+  // reconciliarMasPlusRevocados(). Por ahora solo etiqueta "MÁS+". Mismo
+  // criterio de aviso diario que arriba.
   let reconciliacionMasPlus: { revisados: number; reactivados: number } | null = null;
   try {
     const resultado = await reconciliarMasPlusRevocados();
     reconciliacionMasPlus = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
-    if (resultado.reactivados.length > 0) {
-      const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email})`);
-      await agregarOCrearAvisoAutomaticoDiario(
-        "Reactivaciones automáticas de Kajabi (MÁS+)",
-        "Kajabi había revocado sola la oferta del Club a estos clientes con etiqueta MÁS+ (acceso vitalicio) — se les volvió a otorgar automáticamente:",
-        lineas,
-        true
-      );
-    }
+    const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email})`);
+    await agregarPendienteAvisoDiario("aviso_reactivaciones_kajabi_masplus", lineas);
+    await publicarAvisoDiarioSiToca(
+      "aviso_reactivaciones_kajabi_masplus",
+      "Reactivaciones automáticas de Kajabi (MÁS+)",
+      "Kajabi había revocado sola la oferta del Club a estos clientes con etiqueta MÁS+ (acceso vitalicio) — se les volvió a otorgar automáticamente:",
+      true,
+      HORA_AVISO_REACTIVACIONES_CDMX
+    );
   } catch (err) {
     console.error("Reconciliación de MÁS+ revocados falló, se reintenta en la siguiente corrida:", err);
   }
