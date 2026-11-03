@@ -123,6 +123,49 @@ export async function crearAvisoAutomatico(titulo: string, mensaje: string, solo
   return filaAAviso(data as AvisoRow, []);
 }
 
+// Mismo caso que crearAvisoAutomatico, pero para procesos que corren varias
+// veces al día (ej. el cron de Kajabi, cada ~15 min): si ya existe un aviso
+// automático con ese mismo título creado hoy, le agrega las líneas nuevas en
+// vez de publicar uno aparte — antes cada corrida del día que encontraba
+// algo generaba su propio aviso, saturando "solo admin" con varios avisos
+// idénticos en el mismo día. `lineasNuevas` son renglones ya formateados
+// (ej. "• Nombre (correo)"); se deduplican contra los que ya traía el aviso
+// de hoy por si algún proceso procesa al mismo cliente dos veces en el día.
+export async function agregarOCrearAvisoAutomaticoDiario(
+  titulo: string,
+  introMensaje: string,
+  lineasNuevas: string[],
+  soloAdmin: boolean,
+  autorNombre = "Kajabi"
+): Promise<Aviso> {
+  const inicioDeHoy = new Date();
+  inicioDeHoy.setHours(0, 0, 0, 0);
+
+  const { data: existente, error: errBuscar } = await supabase
+    .from("avisos")
+    .select("*")
+    .eq("titulo", titulo.trim())
+    .is("autor_id", null)
+    .gte("creado_en", inicioDeHoy.toISOString())
+    .order("creado_en", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (errBuscar) throw errBuscar;
+
+  if (existente) {
+    const lineasPrevias = (existente.mensaje as string)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("•"));
+    const todas = Array.from(new Set([...lineasPrevias, ...lineasNuevas]));
+    const mensaje = `${introMensaje}\n\n${todas.join("\n")}`;
+    return editarAviso(existente.id as string, titulo, mensaje);
+  }
+
+  const mensaje = `${introMensaje}\n\n${lineasNuevas.join("\n")}`;
+  return crearAvisoAutomatico(titulo, mensaje, soloAdmin, autorNombre);
+}
+
 // Editar NO toca avisos_confirmaciones a propósito — corregir un error de
 // texto no debe volver a molestar a quien ya había confirmado que se
 // enteró. imagenUrl: undefined = no cambiar, null = quitar la imagen.

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { crearAvisoAutomatico } from "@/lib/avisos";
+import { agregarOCrearAvisoAutomaticoDiario } from "@/lib/avisos";
 import { autorizadoParaCron } from "@/lib/cron-auth";
 import {
   correosSinClienteAun,
@@ -139,12 +139,11 @@ async function manejar(req: NextRequest) {
     const resultado = await reconciliarOfertasVencidas();
     reconciliacion = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
     if (resultado.reactivados.length > 0) {
-      const lista = resultado.reactivados
-        .map((r) => `• ${r.nombre} (${r.email}) — Fin de acceso: ${r.finAcceso}`)
-        .join("\n");
-      await crearAvisoAutomatico(
+      const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email}) — Fin de acceso: ${r.finAcceso}`);
+      await agregarOCrearAvisoAutomaticoDiario(
         "Reactivaciones automáticas de Kajabi",
-        `Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:\n\n${lista}`,
+        "Kajabi ya muestra la oferta del Club otorgada otra vez a estos clientes vencidos (renovaron por fuera del CRM) — se les reactivó el acceso automáticamente:",
+        lineas,
         true
       );
     }
@@ -161,10 +160,11 @@ async function manejar(req: NextRequest) {
     const resultado = await reconciliarMasPlusRevocados();
     reconciliacionMasPlus = { revisados: resultado.revisados, reactivados: resultado.reactivados.length };
     if (resultado.reactivados.length > 0) {
-      const lista = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email})`).join("\n");
-      await crearAvisoAutomatico(
+      const lineas = resultado.reactivados.map((r) => `• ${r.nombre} (${r.email})`);
+      await agregarOCrearAvisoAutomaticoDiario(
         "Reactivaciones automáticas de Kajabi (MÁS+)",
-        `Kajabi había revocado sola la oferta del Club a estos clientes con etiqueta MÁS+ (acceso vitalicio) — se les volvió a otorgar automáticamente:\n\n${lista}`,
+        "Kajabi había revocado sola la oferta del Club a estos clientes con etiqueta MÁS+ (acceso vitalicio) — se les volvió a otorgar automáticamente:",
+        lineas,
         true
       );
     }
