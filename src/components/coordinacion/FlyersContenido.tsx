@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Oswald } from "next/font/google";
 import { ImagePlus, Download, RotateCcw, Trash2, Wand2, ExternalLink, Save, ChevronDown } from "lucide-react";
-import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion";
+import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type TipoMentoria } from "@/lib/coordinacion-modelo";
 
 // Fuente propia solo para el flyer de Lunes Sinergético — su fondo ya trae
 // la cinta roja "LUNES SINERGÉTICO" con una tipografía condensada/bold

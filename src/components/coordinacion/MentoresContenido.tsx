@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { GraduationCap, Plus, X } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
-import { RANGOS_MENTOR, type Mentor, type RangoMentor } from "@/lib/coordinacion";
+import { RANGOS_MENTOR, type Mentor, type RangoMentor } from "@/lib/coordinacion-modelo";
 
 const OPCIONES_RANGO = RANGOS_MENTOR.map((r) => ({ valor: r, etiqueta: r }));
 

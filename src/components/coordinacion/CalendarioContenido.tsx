@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, GraduationCap, CalendarPlus, MapPin, TrendingUp, Trophy, CalendarCheck } from "lucide-react";
-import { TIPOS_MENTORIA, mentoriaVacia, type Mentor, type Mentoria, type EventoInterno } from "@/lib/coordinacion";
+import { TIPOS_MENTORIA, mentoriaVacia, type Mentor, type Mentoria, type EventoInterno } from "@/lib/coordinacion-modelo";
 import type { Gira } from "@/lib/coordinacion-sheets";
 import { PanelMentoria } from "./PanelMentoria";
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Check, Copy, Download, ImagePlus, Send } from "lucide-react";
 import { ComboboxBuscador } from "@/components/ComboboxBuscador";
-import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion";
+import { TIPOS_MENTORIA, TIPOS_MENTORIA_VALIDOS, type Mentoria, type TipoMentoria, type DifusionChecklist } from "@/lib/coordinacion-modelo";
 
 const OPCIONES_TIPO = TIPOS_MENTORIA_VALIDOS.map((t) => ({ valor: t, etiqueta: `${TIPOS_MENTORIA[t].label} (${TIPOS_MENTORIA[t].horario})` }));
 const PRESETS_HORA = [
@@ -162,7 +162,7 @@ export function PanelMentoria({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Flyer-${mentoria.tipoMentoria}-${mentoria.fecha}.png`;
+      a.download = `Flyer-${tipoMentoria}-${fecha}.png`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {

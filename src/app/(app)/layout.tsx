@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { AccesoPendiente } from "@/components/AccesoPendiente";
 import { PerfilObligatorio } from "@/components/PerfilObligatorio";
 import { AsistenteAbeja } from "@/components/AsistenteAbeja";
+import { Loader2 } from "lucide-react";
 import { CertificacionesShell } from "@/components/certificaciones/CertificacionesShell";
 import { FiltrosMovilProvider } from "@/lib/filtros-movil-context";
 import { useSesion } from "@/lib/session-context";
@@ -29,8 +30,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Mientras se resuelve la sesión (o mientras el redirect de arriba
   // termina de disparar) no se monta nada del CRM, para no llamar a la API
-  // de cada página con una sesión que ya sabemos que no sirve.
-  if (cargando || !usuario) return null;
+  // de cada página con una sesión que ya sabemos que no sirve — pero sí se
+  // pinta algo (en vez de null) para no dejar la pantalla en blanco en cada
+  // carga fresca, que es lo que hacía "sentir lento" el arranque.
+  if (cargando || !usuario) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background bg-mesh">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Cuenta pendiente de aprobación: ni Sidebar ni el contenido de la
   // página se montan — solo la pantalla de "acceso pendiente".

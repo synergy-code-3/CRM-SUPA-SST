@@ -10,7 +10,7 @@ import {
   type Mentor,
   type Mentoria,
   type TipoMentoria,
-} from "@/lib/coordinacion";
+} from "@/lib/coordinacion-modelo";
 import { descargarCsv } from "@/lib/csv";
 import { PanelMentoria } from "./PanelMentoria";
 

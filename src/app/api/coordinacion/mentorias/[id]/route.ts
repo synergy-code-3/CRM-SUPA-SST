@@ -10,6 +10,7 @@ import {
   construirCopyPrevia,
   construirCopyPlataforma,
   TIPOS_MENTORIA,
+  TIPOS_MENTORIA_VALIDOS,
   type TipoMentoria,
 } from "@/lib/coordinacion";
 
@@ -42,7 +43,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body?.seccion === "info") {
       const tipoMentoria = body?.tipoMentoria as TipoMentoria;
       const fecha = String(body?.fecha ?? "");
-      if (!fecha) return NextResponse.json({ error: "Falta la fecha" }, { status: 400 });
+      if (!TIPOS_MENTORIA_VALIDOS.includes(tipoMentoria) || !fecha) {
+        return NextResponse.json({ error: "Faltan datos obligatorios" }, { status: 400 });
+      }
       await actualizarInfoMentoria(id, {
         mentorId: body?.mentorId || null,
         tipoMentoria,
