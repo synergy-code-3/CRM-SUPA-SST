@@ -60,13 +60,14 @@ export function anclaAlRenovar(fechaInscripcionActual: string | null, fechaRenov
 //  - Cualquier otra etiqueta (o ninguna): la fecha calculada normal, sin
 //    ajuste.
 //
-// SOLO aplica cuando `etiquetaAsignadaEn` no es null — es decir, cuando la
-// etiqueta se asignó por el flujo normal del CRM (crearCliente/
-// actualizarDatosCliente) de aquí en adelante. Los clientes migrados desde
-// el CSV (evento MÁS+/BLACK ACCESS movido a etiqueta el 2026-09-02) se
-// quedan con etiquetaAsignadaEn en null a propósito: su fecha de
-// inscripción ya venía ajustada a mano en la hoja de origen, así que no se
-// les debe sumar el ajuste otra vez encima.
+// El filtro por `etiquetaAsignadaEn` (null en los clientes migrados desde el
+// CSV, evento MÁS+/BLACK ACCESS movido a etiqueta el 2026-09-02, cuya fecha
+// de inscripción ya venía ajustada a mano en la hoja de origen) SOLO aplica
+// al ajuste de fecha de BLACK ACCESS (+1 año) — ahí sí hay riesgo real de
+// sumarlo dos veces. El vitalicio de MÁS+ es un flag binario, no una fecha:
+// no hay forma de "duplicarlo", así que aplica siempre que la etiqueta
+// principal sea MÁS+, migrado o no (antes este mismo filtro apagaba por
+// error el vitalicio también en los migrados, mostrándolos como vencidos).
 export type FinAccesoInfo = { vitalicio: true } | { vitalicio: false; fecha: Date | null };
 
 export function finAccesoConEtiqueta(
@@ -80,15 +81,18 @@ export function finAccesoConEtiqueta(
   etiquetasExtra: string[] = []
 ): FinAccesoInfo {
   const fin = finAccesoCalculado(fechaInscripcion, fechaRenovacion);
-  const etiquetaKey = etiquetaAsignadaEn ? (etiqueta?.trim().toLowerCase() ?? "") : "";
-  const etiquetasConBono = [etiquetaKey, ...etiquetasExtra.map((e) => e.trim().toLowerCase())].filter(Boolean);
+  const etiquetaPrincipal = etiqueta?.trim().toLowerCase() ?? "";
+  const etiquetasExtraNorm = etiquetasExtra.map((e) => e.trim().toLowerCase());
 
-  if (etiquetasConBono.some((e) => e === "más+" || e === "más+ usa" || e === "mas")) {
+  const etiquetasVitalicio = [etiquetaPrincipal, ...etiquetasExtraNorm].filter(Boolean);
+  if (etiquetasVitalicio.some((e) => e === "más+" || e === "más+ usa" || e === "mas")) {
     return { vitalicio: true };
   }
 
   if (!fin) return { vitalicio: false, fecha: null };
 
+  const etiquetaKeyConBono = etiquetaAsignadaEn ? etiquetaPrincipal : "";
+  const etiquetasConBono = [etiquetaKeyConBono, ...etiquetasExtraNorm].filter(Boolean);
   if (etiquetasConBono.includes("black access")) {
     const finExtendido = new Date(fin);
     finExtendido.setFullYear(finExtendido.getFullYear() + 1);
