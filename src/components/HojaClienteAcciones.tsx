@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, FileImage, Loader2, X } from "lucide-react";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import { Download, FileImage, Loader2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { HojaDeCliente } from "@/lib/captura-datos/db";
 
 const urlArchivo = (clienteId: string, hojaId: string, descargar = false) =>
@@ -11,31 +12,45 @@ const etiquetaHoja = (h: HojaDeCliente) => `${h.folio ? `Folio ${h.folio} · ` :
 
 const CLASE_ICONO = "ease-spring rounded-lg p-1 text-muted transition hover:bg-black/5 hover:text-foreground";
 
+const VIGENCIA_CACHE_MS = 60_000;
+const cacheHojas = new Map<string, { hojas: HojaDeCliente[]; en: number }>();
+
 /** Íconos "ver hoja" y "descargar" junto al título de la tarjeta; no se muestran si el cliente no tiene hojas confirmadas. */
 export function HojaClienteAcciones({ clienteId }: { clienteId: string }) {
-  const [hojas, setHojas] = useState<HojaDeCliente[]>([]);
+  const [hojas, setHojas] = useState<HojaDeCliente[]>(() => cacheHojas.get(clienteId)?.hojas ?? []);
+  const [cargando, setCargando] = useState(() => !cacheHojas.has(clienteId));
   const [abierto, setAbierto] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
-    setHojas([]);
+    const previo = cacheHojas.get(clienteId);
+    setHojas(previo?.hojas ?? []);
+    setCargando(!previo);
+    if (previo && Date.now() - previo.en < VIGENCIA_CACHE_MS) return;
     fetch(`/api/clientes/${encodeURIComponent(clienteId)}/hojas`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!cancelado) setHojas(data?.hojas ?? []);
+        if (cancelado) return;
+        const lista: HojaDeCliente[] = data?.hojas ?? [];
+        if (data) cacheHojas.set(clienteId, { hojas: lista, en: Date.now() });
+        setHojas(lista);
       })
       .catch(() => {
         if (!cancelado) setHojas([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCargando(false);
       });
     return () => {
       cancelado = true;
     };
   }, [clienteId]);
 
-  if (hojas.length === 0) return null;
   return (
     <>
-      <span className="flex items-center gap-0.5">
+      <span className="flex h-6 w-14 items-center justify-end gap-0.5" aria-busy={cargando}>
+        {cargando && <Search role="status" aria-label="Buscando hoja del cliente" className="h-4 w-4 animate-pulse text-muted" strokeWidth={1.75} />}
+        {!cargando && hojas.length > 0 && <>
         <button type="button" onClick={() => setAbierto(true)} title="Ver hoja del cliente" aria-label="Ver hoja del cliente" className={CLASE_ICONO}>
           <FileImage className="h-4 w-4" strokeWidth={1.75} />
         </button>
@@ -48,6 +63,7 @@ export function HojaClienteAcciones({ clienteId }: { clienteId: string }) {
             <Download className="h-4 w-4" strokeWidth={1.75} />
           </button>
         )}
+        </>}
       </span>
       {abierto && <HojaClienteCajon clienteId={clienteId} hojas={hojas} onCerrar={() => setAbierto(false)} />}
     </>
@@ -69,9 +85,8 @@ function HojaClienteCajon({ clienteId, hojas, onCerrar }: { clienteId: string; h
   }, [onCerrar]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-start">
-      <button aria-label="Cerrar hoja" onClick={onCerrar} className="animate-fade-in-fast absolute inset-0 bg-foreground/30 backdrop-blur-[2px]" />
-      <div role="dialog" aria-modal="true" aria-label="Hoja del cliente" className="relative flex h-full w-full flex-col gap-3 bg-surface p-4 shadow-2xl sm:w-[520px]">
+    <div className="pointer-events-none fixed inset-y-0 left-0 z-[60] flex w-full justify-start sm:w-auto">
+      <div role="dialog" aria-label="Hoja del cliente" className="pointer-events-auto relative flex h-full w-full flex-col gap-3 border-r border-silver bg-surface p-4 shadow-2xl sm:w-[520px]">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">Hoja del cliente</h3>
           <button type="button" onClick={onCerrar} aria-label="Cerrar" className={CLASE_ICONO}>
@@ -103,8 +118,7 @@ function HojaClienteCajon({ clienteId, hojas, onCerrar }: { clienteId: string; h
           {hoja.esPdf ? (
             <iframe key={hoja.id} src={url} title="Hoja" onLoad={() => setCargada(true)} className="h-full w-full rounded-lg border border-silver" />
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={hoja.id} src={url} alt="Hoja" onLoad={() => setCargada(true)} onError={() => setCargada(true)} className="h-full w-full rounded-lg border border-silver object-contain" />
+            <ImagenConZoom key={hoja.id} url={url} onCargada={() => setCargada(true)} />
           )}
         </div>
         <a href={urlArchivo(clienteId, hoja.id, true)} download className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white">
@@ -112,5 +126,25 @@ function HojaClienteCajon({ clienteId, hojas, onCerrar }: { clienteId: string; h
         </a>
       </div>
     </div>
+  );
+}
+
+function ImagenConZoom({ url, onCargada }: { url: string; onCargada: () => void }) {
+  return (
+    <TransformWrapper minScale={1} maxScale={8} centerOnInit doubleClick={{ mode: "zoomIn", step: 1 }}>
+      {({ zoomIn, zoomOut, resetTransform }) => (
+        <div className="relative h-full w-full overflow-hidden rounded-lg border border-silver bg-black/5">
+          <div className="absolute right-2 top-2 z-20 flex gap-1.5">
+            <button type="button" onClick={() => zoomOut(0.5)} aria-label="Alejar" className="rounded-lg border border-silver bg-surface p-1.5"><ZoomOut className="h-4 w-4" /></button>
+            <button type="button" onClick={() => zoomIn(0.5)} aria-label="Acercar" className="rounded-lg border border-silver bg-surface p-1.5"><ZoomIn className="h-4 w-4" /></button>
+            <button type="button" onClick={() => resetTransform()} className="rounded-lg border border-silver bg-surface px-2 text-xs">Restablecer</button>
+          </div>
+          <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }} contentStyle={{ width: "100%", height: "100%" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="Hoja" draggable={false} onLoad={onCargada} onError={onCargada} className="h-full w-full select-none object-contain" />
+          </TransformComponent>
+        </div>
+      )}
+    </TransformWrapper>
   );
 }
