@@ -126,20 +126,26 @@ function esHorarioVeranoEeuu(fechaIso: string): boolean {
 
 type HorasPorCiudad = { mx_cdmx: string; mx_cancun: string; mx_tij: string; us_la: string; us_ch: string; us_miami: string; gt: string; col: string; do: string };
 
+// México (CDMX/Mérida, Guatemala, Colombia/Perú, República Dominicana) no
+// tiene horario de verano desde la reforma de 2022, así que su diferencia
+// con CDMX es siempre la misma. Cancún (Quintana Roo) tampoco cambia — está
+// en UTC-5 fijo todo el año. Tijuana (Baja California) sí sigue el horario
+// de verano, igual que EE. UU. (Pacífico) — mismo huso que Los Ángeles, por
+// eso usa exactamente los mismos valores que us_la en las 3 tablas de abajo.
 function bloqueHorario(tipo: TipoMentoria, verano: boolean): string {
   const hora7pm: HorasPorCiudad = {
-    mx_cdmx: "7:00 pm", mx_cancun: "8:00 pm", mx_tij: "6:00 pm",
-    us_la: verano ? "5:00 pm" : "6:00 pm", us_ch: verano ? "7:00 pm" : "8:00 pm", us_miami: verano ? "8:00 pm" : "9:00 pm",
+    mx_cdmx: "7:00 pm", mx_cancun: "8:00 pm", mx_tij: verano ? "6:00 pm" : "5:00 pm",
+    us_la: verano ? "6:00 pm" : "5:00 pm", us_ch: verano ? "8:00 pm" : "7:00 pm", us_miami: verano ? "9:00 pm" : "8:00 pm",
     gt: "7:00 pm", col: "8:00 pm", do: "9:00 pm",
   };
   const hora12pm: HorasPorCiudad = {
-    mx_cdmx: "12:00 pm", mx_cancun: "1:00 pm", mx_tij: "11:00 am",
-    us_la: "11:00 am", us_ch: "1:00 pm", us_miami: "2:00 pm",
+    mx_cdmx: "12:00 pm", mx_cancun: "1:00 pm", mx_tij: verano ? "11:00 am" : "10:00 am",
+    us_la: verano ? "11:00 am" : "10:00 am", us_ch: verano ? "1:00 pm" : "12:00 pm", us_miami: verano ? "2:00 pm" : "1:00 pm",
     gt: "12:00 pm", col: "1:00 pm", do: "2:00 pm",
   };
   const hora4pm: HorasPorCiudad = {
-    mx_cdmx: "4:00 pm", mx_cancun: "5:00 pm", mx_tij: "3:00 pm",
-    us_la: verano ? "2:00 pm" : "3:00 pm", us_ch: verano ? "4:00 pm" : "5:00 pm", us_miami: verano ? "5:00 pm" : "6:00 pm",
+    mx_cdmx: "4:00 pm", mx_cancun: "5:00 pm", mx_tij: verano ? "3:00 pm" : "2:00 pm",
+    us_la: verano ? "3:00 pm" : "2:00 pm", us_ch: verano ? "5:00 pm" : "4:00 pm", us_miami: verano ? "6:00 pm" : "5:00 pm",
     gt: "4:00 pm", col: "5:00 pm", do: "6:00 pm",
   };
   const H = tipo === "lunes-prin" ? hora12pm : tipo === "viernes" ? hora4pm : hora7pm;
