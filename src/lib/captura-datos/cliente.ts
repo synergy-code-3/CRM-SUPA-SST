@@ -39,3 +39,22 @@ export function formatearFecha(fecha: string): string {
   const [a, m, d] = fecha.split("-");
   return `${d}/${m}/${a}`;
 }
+
+export const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
+
+/** Sube archivos de la computadora a un evento en tandas (imágenes reducidas a JPEG, PDF tal cual). `alSubirTanda` avisa qué archivos ya quedaron. */
+export async function subirHojas(eventoId: string, archivos: File[], estatus: string, alSubirTanda?: (tanda: File[]) => void): Promise<void> {
+  const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
+  for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
+    const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
+    const form = new FormData();
+    form.set("estatus", estatus);
+    form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
+    for (const a of tanda) {
+      if (a.type === "application/pdf") form.append("archivos", a, a.name);
+      else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
+    }
+    await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: form });
+    alSubirTanda?.(tanda);
+  }
+}

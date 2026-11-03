@@ -8,10 +8,12 @@ interface ModalProps {
   onCerrar: () => void;
   /** true mientras se guarda: no se puede cerrar para no creer que se canceló algo que ya va en camino. */
   bloqueado?: boolean;
+  /** Clases de tamaño del cuadro (por defecto, angosto). */
+  tamano?: string;
   children: React.ReactNode;
 }
 
-export function Modal({ titulo, onCerrar, bloqueado = false, children }: ModalProps) {
+export function Modal({ titulo, onCerrar, bloqueado = false, tamano = "max-h-[92vh] sm:max-w-lg", children }: ModalProps) {
   const idTitulo = useId();
   const dialogo = useRef<HTMLDivElement>(null);
   const empezoEnFondo = useRef(false);
@@ -45,7 +47,7 @@ export function Modal({ titulo, onCerrar, bloqueado = false, children }: ModalPr
         aria-modal="true"
         aria-labelledby={idTitulo}
         tabIndex={-1}
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-surface p-5 shadow-xl outline-none sm:max-w-lg sm:rounded-2xl"
+        className={`w-full overflow-y-auto rounded-t-2xl bg-surface p-5 shadow-xl outline-none sm:rounded-2xl ${tamano}`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={idTitulo} className="text-base font-semibold text-foreground">{titulo}</h2>

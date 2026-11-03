@@ -2,25 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
-import { ArrowLeft, ChevronDown, CloudUpload, Lock, Download, ExternalLink, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
+import { BarraColaboracion } from "./BarraColaboracion";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { EditorHoja } from "./EditorHoja";
 import { HistorialModal } from "./HistorialModal";
+import { InsigniaEstatus, ESTILO_ESTATUS } from "./InsigniaEstatus";
 import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
-import { api, ErrorApi, formatearFecha, imagenAJpeg } from "@/lib/captura-datos/cliente";
+import { VerHojaModal } from "./VerHojaModal";
+import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
+import { bloqueoVigente, misHojasEnEdicion, progresoPorPersona, type NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const POLLING_MS = 10_000;
-const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
@@ -37,42 +40,64 @@ interface Dialogo {
 export function EventoDetalle({ id }: { id: string }) {
   const { usuario } = useSesion();
   const router = useRouter();
-  const cacheado = leerCache<{ evento: EventoCaptura; hojas: HojaCaptura[] }>(usuario?.id, `evento:${id}`);
+  const cacheado = leerCache<{ evento: EventoCaptura; hojas: HojaCaptura[]; nombres?: NombresUsuarios }>(usuario?.id, `evento:${id}`);
   const [evento, setEvento] = useState<EventoCaptura | null>(cacheado?.evento ?? null);
   const [hojas, setHojas] = useState<HojaCaptura[]>(cacheado?.hojas ?? []);
+  const [nombres, setNombres] = useState<NombresUsuarios>(cacheado?.nombres ?? {});
   const [actual, setActual] = useState<HojaCaptura | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [subiendoFotos, setSubiendoFotos] = useState(false);
   const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
+  const [driveSubido, setDriveSubido] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
+  const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const abiertaDesdeEvento = useRef(false);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (): Promise<HojaCaptura[] | null> => {
     try {
       const [e, h] = await Promise.all([
         api<{ evento: EventoCaptura }>(`/api/captura-datos/eventos/${id}`),
-        api<{ hojas: HojaCaptura[] }>(`/api/captura-datos/eventos/${id}/hojas`),
+        api<{ hojas: HojaCaptura[]; usuarios?: NombresUsuarios }>(`/api/captura-datos/eventos/${id}/hojas`),
       ]);
       setEvento(e.evento);
       setHojas(h.hojas);
-      guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas });
+      setNombres(h.usuarios ?? {});
+      guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas, nombres: h.usuarios ?? {} });
+      return h.hojas;
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
+      return null;
     }
   }, [id, usuario?.id]);
 
   usePolling(cargar, POLLING_MS, true); // también dentro del editor: la tira de hojas se actualiza sola
 
-  async function tomarSiguiente(): Promise<boolean> {
+  async function liberarMisHojas() {
+    setOcupado("liberar");
+    setMensaje(null);
+    try {
+      const r = await api<{ liberadas: number }>(`/api/captura-datos/eventos/${id}/liberar-mis-hojas`, { method: "POST" });
+      setExito(r.liberadas === 1 ? "Se liberó 1 hoja: ya la puede tomar otra persona." : `Se liberaron ${r.liberadas} hojas: ya las puede tomar otra persona.`);
+      await cargar();
+    } catch (err) {
+      setMensaje(err instanceof Error ? err.message : "No se pudieron liberar tus hojas.");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function tomarSiguiente(silencioso = false): Promise<boolean> {
     setOcupado("tomar");
     setMensaje(null);
     try {
+      abiertaDesdeEvento.current = false;
       const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
       if (r.hoja) setActual(r.hoja);
-      else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+      else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
       return !!r.hoja;
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudo tomar una hoja.");
@@ -85,16 +110,20 @@ export function EventoDetalle({ id }: { id: string }) {
   /** Tras confirmar una hoja nueva se pasa directo a la siguiente; al terminar la última (o al corregir una ya guardada) se vuelve al evento. */
   async function siguiente(hojaTerminada: HojaCaptura) {
     // El editor se queda en pantalla hasta tener la siguiente hoja: así no aparece un instante el listado.
-    if (hojaTerminada.estado === "confirmada") {
+    if (hojaTerminada.estado === "confirmada" && abiertaDesdeEvento.current) {
       await cargar();
       setActual(null);
       return;
     }
-    const [hayOtra] = await Promise.all([tomarSiguiente(), cargar()]);
-    if (!hayOtra) setActual(null);
+    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(true), cargar()]);
+    if (hayOtra) return;
+    setActual(null);
+    if (actualizadas?.length && actualizadas.every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito("¡Listo! Se completaron todas las hojas del evento.");
+    else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
   }
 
-  async function abrirHoja(hojaId: string) {
+  async function abrirHoja(hojaId: string, desdeEvento = true) {
+    abiertaDesdeEvento.current = desdeEvento;
     setOcupado(hojaId);
     setMensaje(null);
     try {
@@ -111,19 +140,7 @@ export function EventoDetalle({ id }: { id: string }) {
   async function subirFotos(archivos: File[], estatus: Estatus) {
     setMensaje(null);
     try {
-      const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
-      for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
-        const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
-        const form = new FormData();
-        form.set("estatus", estatus);
-        form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
-        // Los PDF se suben tal cual (sin partir); las imágenes se reducen a JPEG.
-        for (const a of tanda) {
-          if (a.type === "application/pdf") form.append("archivos", a, a.name);
-          else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
-        }
-        await api(`/api/captura-datos/eventos/${id}/hojas/subir`, { method: "POST", body: form });
-      }
+      await subirHojas(id, archivos, estatus);
       await cargar();
     } catch (err) {
       setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");
@@ -138,7 +155,7 @@ export function EventoDetalle({ id }: { id: string }) {
     setExito(null);
     try {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion, ...opciones } });
-      setExito(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : evento?.estado === "abierto" ? "Se subió a Drive correctamente. El evento sigue abierto." : "Se subió a Drive correctamente.");
+      setDriveSubido(accion === "cerrar" ? "Evento cerrado y subido a Drive correctamente." : evento?.estado === "abierto" ? "Se subió a Drive correctamente. El evento sigue abierto." : "Se subió a Drive correctamente.");
       await cargar();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) {
@@ -178,11 +195,14 @@ export function EventoDetalle({ id }: { id: string }) {
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
   const hayCaptura = conteo("confirmada") > 0;
+  /** La tiene otra persona ahora mismo: se puede ver, no editar. */
+  const deOtra = (h: HojaCaptura) => bloqueoVigente(h) && h.bloqueadaPorId !== usuario?.id;
+  const quienEdita = (h: HojaCaptura) => (h.bloqueadaPorId === usuario?.id ? "Tú" : nombres[h.bloqueadaPorId ?? ""] ?? "Otra persona");
 
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
@@ -199,7 +219,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </p>
       </div>
 
-      {exito && <AvisoTemporal key={exito} onCerrar={() => setExito(null)}>{exito}</AvisoTemporal>}
+      {exito && <AvisoTemporal key={exito} positivo onCerrar={() => setExito(null)}>{exito}</AvisoTemporal>}
       {mensaje && <AvisoTemporal key={mensaje} peligro onCerrar={() => setMensaje(null)}>{mensaje}</AvisoTemporal>}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -253,6 +273,16 @@ export function EventoDetalle({ id }: { id: string }) {
         <Boton onClick={() => setVerHistorial(true)} icono={<History className="h-4 w-4" />}>Historial</Boton>
         <Boton onClick={() => setBorrando(true)} icono={<Trash2 className="h-4 w-4" />} peligro className="ml-auto hover:bg-danger hover:text-white">Borrar evento</Boton>
       </div>
+      {hojas.length > 0 && usuario && (
+        <BarraColaboracion
+          progreso={progresoPorPersona(hojas, usuario.id, nombres)}
+          misEnEdicion={misHojasEnEdicion(hojas, usuario.id)}
+          abierto={evento.estado === "abierto"}
+          liberando={ocupado === "liberar"}
+          onLiberar={() => void liberarMisHojas()}
+        />
+      )}
+      {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" && !deOtra(viendo) ?() => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
@@ -266,7 +296,7 @@ export function EventoDetalle({ id }: { id: string }) {
         </ConfirmarModal>
       )}
 
-      {ocupado === "confirmar" && <SubiendoADrive />}
+      {(ocupado === "confirmar" || driveSubido) && <SubiendoADrive subido={driveSubido} onCerrar={() => setDriveSubido(null)} />}
       {subiendoFotos && <SubirFotosModal onCerrar={() => setSubiendoFotos(false)} onSubir={subirFotos} />}
       {borrando && (
         <BorrarEventoModal
@@ -286,10 +316,10 @@ export function EventoDetalle({ id }: { id: string }) {
       {hojas.length > 0 && (
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
-            <section key={e.value} aria-label={e.carpeta} className="space-y-3">
+            <section key={e.value} aria-label={e.carpeta} className={`space-y-3 rounded-xl border p-3 ${ESTILO_ESTATUS[e.value].seccion}`}>
               <h2 className="text-sm font-semibold text-foreground">
                 <button onClick={() => alternarSeccion(e.value)} aria-expanded={!colapsadas.has(e.value)} className="flex w-full items-center gap-2 text-left">
-                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> {e.carpeta} <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
                 </button>
               </h2>
               {!colapsadas.has(e.value) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -299,19 +329,19 @@ export function EventoDetalle({ id }: { id: string }) {
                       <span className="block truncate text-sm font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.estado.replace("_", " ")}</span>
-                        {h.bloqueadaHasta && new Date(h.bloqueadaHasta) > new Date() && <span className="text-muted">en edición</span>}
+                        {bloqueoVigente(h) && <span className="text-muted">{quienEdita(h)} · en edición</span>}
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      {evento.estado === "abierto" && h.estado !== "no_valida" && (
+                      {evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) && (
                         <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50">
                           {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
                         </button>
                       )}
-                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida") && (
-                        <a href={`/api/captura-datos/hojas/${h.id}/foto`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
-                          <ExternalLink className="h-3.5 w-3.5" /> Ver foto
-                        </a>
+                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida" || deOtra(h)) && (
+                        <button onClick={() => setViendo(h)} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
+                          <Eye className="h-3.5 w-3.5" /> Ver
+                        </button>
                       )}
                     </span>
                   </li>
@@ -334,8 +364,20 @@ function Boton({ onClick, cargando, icono, primario, peligro, className = "", ch
   );
 }
 
-/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive. */
-function SubiendoADrive() {
+/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive y confirma cuando terminó. */
+function SubiendoADrive({ subido, onCerrar }: { subido: string | null; onCerrar: () => void }) {
+  if (subido) {
+    return (
+      <Modal titulo="Drive subido" onCerrar={onCerrar}>
+        <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-4 text-center">
+          <CheckCircle2 className="h-12 w-12 text-success" />
+          <p className="text-sm font-medium text-success">Drive subido</p>
+          <p className="text-sm text-foreground">{subido}</p>
+          <button type="button" onClick={onCerrar} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">Aceptar</button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal titulo="Guardando en Drive" onCerrar={() => {}} bloqueado>
       <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-4 text-center">

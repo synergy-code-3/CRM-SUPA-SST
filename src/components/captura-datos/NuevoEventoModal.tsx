@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Folder, Loader2, Upload } from "lucide-react";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { Modal } from "./Modal";
-import { api } from "@/lib/captura-datos/cliente";
+import { ZonaArchivos } from "./ZonaArchivos";
+import { api, subirHojas } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
@@ -16,7 +17,9 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [enlace, setEnlace] = useState("");
   const [info, setInfo] = useState<InfoCarpeta | null>(null);
   const [origen, setOrigen] = useState<OrigenEvento>("local");
-  const [estatus, setEstatus] = useState<Estatus>("Completo");
+  const [estatus, setEstatus] = useState<Estatus>("Completo"); // categoría abierta en el menú de subida local
+  const [archivos, setArchivos] = useState<Record<Estatus, File[]>>({ Completo: [], Apartado: [], Interesado: [] });
+  const subidos = useRef(new Set<File>()); // si falla a medias, el reintento no vuelve a subir lo que ya quedó
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
   const hoy = fechaDeHoy();
@@ -25,6 +28,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [error, setError] = useState<string | null>(null);
   const [enlaceBuscado, setEnlaceBuscado] = useState(""); // el enlace que produjo `info` (no el que se esté editando)
   const [confirmandoCierre, setConfirmandoCierre] = useState(false);
+  const totalArchivos = ESTATUS.reduce((n, e) => n + archivos[e.value].length, 0);
   const [eventoCreado, setEventoCreado] = useState<EventoCaptura | null>(null); // si falla la importación, se reintenta sin duplicar el evento
 
   async function buscarCarpeta() {
@@ -48,10 +52,16 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     setError(null);
     try {
       const evento = eventoCreado ?? (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
-        json: { nombre, fecha, estatus, origen, destino: { id: info.id, url: info.url, nombre: info.nombre } },
+        json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen, destino: { id: info.id, url: info.url, nombre: info.nombre } },
       })).evento;
       setEventoCreado(evento);
       if (origen === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
+      else {
+        for (const e of ESTATUS) {
+          const pendientes = archivos[e.value].filter((f) => !subidos.current.has(f));
+          if (pendientes.length) await subirHojas(evento.id, pendientes, e.value, (tanda) => tanda.forEach((f) => subidos.current.add(f)));
+        }
+      }
       onCreado(evento);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el evento.");
@@ -98,15 +108,30 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
                   className={`rounded-lg border px-3 py-2 text-left text-sm ${origen === o ? "border-primary bg-primary/10" : "border-silver"}`}
                 >
                   <span className="flex items-center gap-1 font-medium">{o === "local" ? <Upload className="h-4 w-4" /> : <Folder className="h-4 w-4" />}{o === "local" ? "Subir desde la computadora" : "Importar fotos de Drive"}</span>
-                  <span className="text-xs text-muted">{o === "local" ? "Eliges el estatus y subes las fotos después." : "Lee las subcarpetas Completos / Apartados / Interesados."}</span>
+                  <span className="text-xs text-muted">{o === "local" ? "Eliges Completos, Apartados o Interesados y subes las fotos." : "Lee las subcarpetas Completos / Apartados / Interesados."}</span>
                 </button>
               ))}
             </div>
 
             {origen === "local" && (
-              <select aria-label="Estatus de las hojas" value={estatus} onChange={(e) => setEstatus(e.target.value as Estatus)} className={CLASE_INPUT}>
-                {ESTATUS.map((e) => <option key={e.value} value={e.value}>{e.value} — {e.desc}</option>)}
-              </select>
+              <div className="space-y-3">
+                <div role="tablist" aria-label="Categoría de las hojas" className="grid gap-2 sm:grid-cols-3">
+                  {ESTATUS.map((e) => (
+                    <button
+                      key={e.value}
+                      role="tab"
+                      aria-selected={estatus === e.value}
+                      onClick={() => setEstatus(e.value)}
+                      disabled={cargando}
+                      className={`rounded-lg border px-3 py-2 text-left text-sm ${estatus === e.value ? "border-primary bg-primary/10" : "border-silver"}`}
+                    >
+                      <span className="font-medium">{e.carpeta}{archivos[e.value].length > 0 && ` (${archivos[e.value].length})`}</span>
+                      <span className="block text-xs text-muted">{e.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <ZonaArchivos archivos={archivos[estatus]} onCambio={(lista) => setArchivos((previos) => ({ ...previos, [estatus]: lista }))} disabled={cargando} />
+              </div>
             )}
           </>
         )}
@@ -115,7 +140,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button onClick={() => setConfirmandoCierre(true)} disabled={cargando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40">Cancelar</button>
-          <button onClick={crear} disabled={!info || !fecha || fechaFueraDeRango || cargando} className={CLASE_BOTON}>
+          <button onClick={crear} disabled={!info || !fecha || fechaFueraDeRango || cargando || (origen === "local" && totalArchivos === 0)} className={CLASE_BOTON}>
             {cargando && info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear evento"}
           </button>
         </div>

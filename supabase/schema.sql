@@ -991,7 +991,7 @@ alter table coord_mentorias add column if not exists flyer_url text;
 create table if not exists cap_eventos (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
-  fecha date,                          -- fecha del evento; en bases ya creadas se añade con supabase/captura-datos-fecha-orden.sql
+  fecha date,                          -- fecha del evento (en bases ya creadas: alter table cap_eventos add column if not exists fecha date)
   destino jsonb not null,              -- { id, url, nombre } carpeta principal de Drive
   origen text not null check (origen in ('drive', 'local')),
   carpeta_fotos_id text,               -- subcarpeta de Drive donde se suben fotos locales (si aplica)
@@ -1063,8 +1063,7 @@ create table if not exists cap_imagenes_no_validas (huella text primary key, en 
 -- Historial de movimientos importantes de Captura de Datos (solo lo ve un admin): crear, guardar en Drive, cerrar,
 -- reabrir y borrar eventos; confirmar y corregir hojas. NO lleva llaves foráneas a propósito: el rastro debe
 -- sobrevivir al borrado del evento, de la hoja o del usuario (por eso guarda también sus nombres). Se purga solo
--- (cron semanal, ver RETENCION_AUDITORIA_DIAS en captura-datos/auditoria.ts). En bases ya creadas se añade con
--- supabase/captura-datos-auditoria.sql.
+-- (cron semanal, ver RETENCION_AUDITORIA_DIAS en captura-datos/auditoria.ts).
 create table if not exists cap_auditoria (
   id bigserial primary key,
   en timestamptz not null default now(),
@@ -1078,6 +1077,14 @@ create table if not exists cap_auditoria (
 );
 create index if not exists idx_cap_auditoria_evento on cap_auditoria (evento_id, id desc);
 create index if not exists idx_cap_auditoria_en on cap_auditoria (en);
+-- Búsqueda del historial (ilike '%texto%'): sin estos índices trigram cada tecla recorre toda la tabla.
+create index if not exists idx_cap_auditoria_busq_evento on cap_auditoria using gin (evento_nombre gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_usuario on cap_auditoria using gin (usuario_nombre gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_folio on cap_auditoria using gin ((detalle ->> 'folio') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_motivo on cap_auditoria using gin ((detalle ->> 'motivo') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_nombre_antes on cap_auditoria using gin ((detalle -> 'cambios' -> 'nombre' ->> 'antes') gin_trgm_ops);
+create index if not exists idx_cap_auditoria_busq_nombre_despues on cap_auditoria using gin ((detalle -> 'cambios' -> 'nombre' ->> 'despues') gin_trgm_ops);
+create index if not exists idx_cap_hojas_busq_nombre on cap_hojas using gin ((campos ->> 'nombre') gin_trgm_ops);
 alter table cap_auditoria enable row level security;
 
 -- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo.
@@ -1105,28 +1112,114 @@ alter table certificaciones_clientes add column if not exists revocado boolean n
 alter table certificaciones_clientes add column if not exists fecha_revocacion timestamptz;
 alter table certificaciones_clientes add column if not exists motivo_revocacion text;
 
--- Captura de Datos: toma la siguiente hoja libre de un evento sin que dos personas tomen la
+-- Captura de Datos: máximo dos personas capturando un evento abierto, cada una desde un extremo.
+-- cap_evento_capturistas guarda quién captura el evento y en qué sentido (inverso = desde la última hoja).
+-- Se considera activa a la persona con actividad en los últimos 15 minutos o con una hoja tomada y vigente.
+create table if not exists cap_evento_capturistas (
+  evento_id uuid not null references cap_eventos (id) on delete cascade,
+  usuario_id uuid not null references usuarios (id) on delete cascade,
+  inverso boolean not null default false,
+  ultima_actividad timestamptz not null default now(),
+  primary key (evento_id, usuario_id)
+);
+alter table cap_evento_capturistas enable row level security;
+create index if not exists idx_cap_evento_capturistas_usuario on cap_evento_capturistas (usuario_id);
+
+-- Registra (o renueva) a la persona como capturista del evento y devuelve su sentido: 'normal' | 'inverso' | 'lleno'.
+-- Quien ya capturaba conserva su sentido; la primera persona va desde el inicio y la segunda desde el final;
+-- una tercera recibe 'lleno'. Un evento ya cerrado no limita a nadie. El candado serializa llegadas simultáneas.
+-- En una transacción: las funciones nuevas nunca quedan visibles con el EXECUTE por defecto (antes del revoke).
+begin;
+drop function if exists tomar_hoja_libre(uuid, uuid, boolean);
+drop function if exists tomar_hoja_libre(uuid, uuid);
+
+create or replace function registrar_capturista(p_evento uuid, p_usuario uuid)
+returns text
+language plpgsql
+as $$
+declare
+  v_otros int;
+  v_otro_inverso boolean;
+  v_mio boolean;
+  v_inverso boolean;
+begin
+  if not exists (select 1 from cap_eventos where id = p_evento and estado = 'abierto') then
+    return 'normal';
+  end if;
+  perform pg_advisory_xact_lock(hashtext(p_evento::text));
+
+  with activos as (
+    select c.usuario_id, c.inverso from cap_evento_capturistas c
+    where c.evento_id = p_evento
+      and (
+        c.ultima_actividad > now() - interval '15 minutes'
+        or exists (
+          select 1 from cap_hojas h
+          where h.evento_id = p_evento and h.bloqueada_por = c.usuario_id
+            and h.estado in ('pendiente', 'leida') and h.bloqueada_hasta > now()
+        )
+      )
+  )
+  select
+    count(*) filter (where usuario_id <> p_usuario),
+    bool_or(inverso) filter (where usuario_id <> p_usuario),
+    (array_agg(inverso) filter (where usuario_id = p_usuario))[1]
+  into v_otros, v_otro_inverso, v_mio
+  from activos;
+
+  if v_mio is not null then
+    v_inverso := v_mio;
+  elsif v_otros >= 2 then
+    return 'lleno';
+  elsif v_otros = 1 then
+    v_inverso := not v_otro_inverso;
+  else
+    v_inverso := false;
+  end if;
+
+  insert into cap_evento_capturistas (evento_id, usuario_id, inverso, ultima_actividad)
+  values (p_evento, p_usuario, v_inverso, now())
+  on conflict (evento_id, usuario_id) do update set inverso = excluded.inverso, ultima_actividad = excluded.ultima_actividad;
+  return case when v_inverso then 'inverso' else 'normal' end;
+end;
+$$;
+
+-- Toma la siguiente hoja libre de un evento sin que dos personas tomen la
 -- misma ("for update skip locked" — la segunda persona que llama al mismo
 -- tiempo simplemente salta a la siguiente fila disponible en vez de
 -- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
 -- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
 -- Si la persona ya tiene una hoja vigente en el evento, se la devuelve (renovando el bloqueo) en vez de bloquear otra.
 -- Orden = el de la pantalla (Completos, Apartados, Interesados; dentro de cada uno, por id); la lectura adelantada
--- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. En bases ya creadas se aplica con
--- supabase/captura-datos-fecha-orden.sql.
+-- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. Si registrar_capturista la manda desde el final
+-- el orden es el contrario (de la última Interesada a la primera Completa): las dos personas avanzan una hacia la otra.
+-- Una tercera persona recibe el error 'evento_lleno'.
 create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
 returns cap_hojas
 language plpgsql
 as $$
 declare
   fila cap_hojas;
+  v_modo text;
+  v_inverso boolean;
 begin
+  v_modo := registrar_capturista(p_evento, p_usuario);
+  if v_modo = 'lleno' then
+    raise exception 'evento_lleno';
+  end if;
+  v_inverso := v_modo = 'inverso';
+
   update cap_hojas set bloqueada_hasta = now() + interval '10 minutes'
   where id = (
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')
       and bloqueada_por = p_usuario and bloqueada_hasta > now()
-    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
+    order by
+      case when not v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
+      case when not v_inverso then id end,
+      case when v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
+      case when v_inverso then id end desc
+    limit 1
     for update skip locked
   )
   returning * into fila;
@@ -1139,7 +1232,12 @@ begin
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')
       and (bloqueada_hasta is null or bloqueada_hasta < now())
-    order by case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end, id limit 1
+    order by
+      case when not v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
+      case when not v_inverso then id end,
+      case when v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
+      case when v_inverso then id end desc
+    limit 1
     for update skip locked
   )
   returning * into fila;
@@ -1147,9 +1245,24 @@ begin
 end;
 $$;
 
--- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarla.
+-- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarlas.
+revoke execute on function registrar_capturista(uuid, uuid) from public, anon, authenticated;
+grant execute on function registrar_capturista(uuid, uuid) to service_role;
 revoke execute on function tomar_hoja_libre(uuid, uuid) from public, anon, authenticated;
 grant execute on function tomar_hoja_libre(uuid, uuid) to service_role;
+commit;
+-- PostgREST guarda en caché las firmas de las funciones: se recarga para que vea las nuevas sin esperar.
+notify pgrst, 'reload schema';
+
+-- Bases creadas antes de existir la fecha del evento (no hace nada si la columna ya está).
+alter table cap_eventos add column if not exists fecha date;
+
+-- Captura de Datos: índices de rendimiento (folio ya confirmado en cualquier evento, y tablas hijas por evento/hoja/usuario).
+create index if not exists idx_cap_hojas_folio_confirmada on cap_hojas (folio)
+  where estado = 'confirmada' and folio is not null and folio <> '';
+create index if not exists idx_cap_hojas_historial_hoja on cap_hojas_historial (hoja_id);
+create index if not exists idx_cap_reaperturas_evento on cap_eventos_reaperturas (evento_id);
+create index if not exists idx_cap_asignaciones_usuario on cap_evento_asignaciones (usuario_id);
 
 -- Integración con el CRM de Renovaciones (sistema aparte, nos consulta los
 -- clientes inactivos vía GET /api/externo/renovaciones/inactivos y nos
@@ -1200,3 +1313,18 @@ create index if not exists idx_clientes_acceso_revocado_manual_en on clientes (a
 -- El filtro de Etiquetas (resolverEtiquetasExtra en db.ts) usa .overlaps()
 -- sobre esta columna de arreglo sin índice.
 create index if not exists idx_clientes_etiquetas_extra on clientes using gin (etiquetas_extra);
+
+-- Búsquedas rápidas (2026-11-02): ilike '%texto%' solo usa índice si la columna tiene trigram, y un OR entre
+-- columnas solo usa índices si TODAS las columnas del OR lo tienen (antes faltaban teléfono, notas y la línea de tiempo).
+create index if not exists idx_clientes_telefono_trgm on clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_clientes_notas_trgm on clientes using gin (notas gin_trgm_ops);
+create index if not exists idx_clientes_notas_soporte_trgm on clientes using gin (notas_soporte gin_trgm_ops);
+create index if not exists idx_eventos_detalle_trgm on eventos_timeline using gin (detalle gin_trgm_ops);
+create index if not exists idx_eventos_autor_trgm on eventos_timeline using gin (autor gin_trgm_ops);
+create index if not exists idx_otras_ofertas_clientes_telefono_trgm on otras_ofertas_clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_telefono_trgm on certificaciones_clientes using gin (telefono gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_telefono_busqueda_trgm on certificaciones_clientes using gin (telefono_busqueda gin_trgm_ops);
+create index if not exists idx_certificaciones_clientes_notas_trgm on certificaciones_clientes using gin (notas gin_trgm_ops);
+create index if not exists idx_certificaciones_eventos_nota_trgm on certificaciones_eventos using gin (nota gin_trgm_ops);
+analyze clientes;
+analyze eventos_timeline;

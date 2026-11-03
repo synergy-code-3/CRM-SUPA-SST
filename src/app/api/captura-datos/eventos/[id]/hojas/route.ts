@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { crearHojas, listarHojasDeEvento, obtenerEvento } from "@/lib/captura-datos/db";
+import { crearHojas, listarHojasDeEvento, nombresDeUsuarios, obtenerEvento } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { idDrive } from "@/lib/captura-datos/validacion";
 import { ESTATUS } from "@/lib/captura-datos/fields";
@@ -15,7 +15,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     await requerirEvento(permiso.usuario, id);
     const hojas = await listarHojasDeEvento(id);
-    return NextResponse.json({ hojas });
+    // Solo el nombre de quien tiene o confirmó alguna hoja: para ver quién trabaja cada una y el avance por persona.
+    const usuarios = await nombresDeUsuarios(hojas.flatMap((h) => [h.bloqueadaPorId, h.confirmadaPorId].filter((u): u is string => !!u)));
+    return NextResponse.json({ hojas, usuarios });
   } catch (err) {
     return respuestaError(err, "captura-datos/eventos/[id]/hojas GET");
   }

@@ -1,5 +1,5 @@
 import { registrarAuditoria } from "./auditoria";
-import { confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
+import { cerrarEventoAbierto, eventoFueReabierto, listarHojasDeEvento, obtenerEvento } from "./db";
 import { generarExcelEvento } from "./excel";
 import { renombrarFotosDeEvento } from "./google";
 import type { Usuario } from "./sesion";
@@ -10,11 +10,13 @@ export function estaCompleto(estados: readonly string[]): boolean {
   return estados.some((e) => e === "confirmada") && estados.every((e) => e === "confirmada" || e === "no_valida");
 }
 
-/** Cierra el evento (sin tocar Drive) cuando ya no quedan hojas por revisar. Devuelve true si lo cerró. */
+/** Cierra el evento (sin tocar Drive) cuando ya no quedan hojas por revisar; uno reabierto solo se cierra con el botón. Devuelve true si lo cerró. */
 export async function cerrarEventoSiCompleto(eventoId: string, usuario: Usuario): Promise<boolean> {
   const [evento, hojas] = await Promise.all([obtenerEvento(eventoId), listarHojasDeEvento(eventoId)]);
   if (!evento || evento.estado !== "abierto" || !estaCompleto(hojas.map((h) => h.estado))) return false;
-  await confirmarEvento(eventoId, usuario.id, evento.drive);
+  if (await eventoFueReabierto(eventoId)) return false;
+  // Dos personas pueden confirmar la última hoja a la vez: solo quien realmente lo cierra sigue (Excel, fotos, historial).
+  if (!(await cerrarEventoAbierto(eventoId, usuario.id, evento.drive))) return false;
   await registrarAuditoria({ usuario, accion: "evento_cerrado_auto", eventoId, eventoNombre: evento.nombre });
   try {
     await subirExcelEvento(eventoId, await generarExcelEvento(hojas));

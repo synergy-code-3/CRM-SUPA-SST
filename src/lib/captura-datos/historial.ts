@@ -25,6 +25,8 @@ export interface RegistroAuditoria {
   hojaId: string | null;
   accion: AccionAuditoria;
   detalle: Record<string, unknown> | null;
+  /** Solo al buscar por nombre: el cliente de una hoja confirmada. */
+  clienteNombre?: string;
 }
 
 export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
@@ -36,6 +38,20 @@ export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   evento_borrado: "Borró el evento",
   hoja_confirmada: "Confirmó una hoja",
   hoja_corregida: "Corrigió una hoja ya confirmada",
+};
+
+export const ACCIONES_AUDITORIA = Object.keys(ETIQUETA_ACCION) as AccionAuditoria[];
+
+/** Nombre corto de cada acción para los filtros del historial. */
+export const ETIQUETA_FILTRO_ACCION: Record<AccionAuditoria, string> = {
+  evento_creado: "Creado",
+  evento_guardado_drive: "Guardado en Drive",
+  evento_cerrado: "Cerrado",
+  evento_cerrado_auto: "Cerrado solo",
+  evento_reabierto: "Reabierto",
+  evento_borrado: "Borrado",
+  hoja_confirmada: "Hoja confirmada",
+  hoja_corregida: "Hoja corregida",
 };
 
 const ETIQUETA_CAMPO: Record<string, string> = {
@@ -88,6 +104,7 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       break;
     case "hoja_confirmada":
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
+      if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
       break;
     case "hoja_corregida": {

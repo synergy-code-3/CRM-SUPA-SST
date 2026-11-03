@@ -440,11 +440,22 @@ function aplicarFiltrosClientes<
   return query;
 }
 
+// Los tres resolvedores son independientes entre sí (cada uno aporta un campo distinto), así que corren en paralelo.
+async function resolverOpcionesClientes(opciones?: FiltrosClientes): Promise<FiltrosClientes | undefined> {
+  const [conTipo, conTimeline, conEtiquetas] = await Promise.all([
+    resolverFiltroTipoEvento(opciones),
+    resolverBusquedaTimeline(opciones),
+    resolverEtiquetasExtra(opciones),
+  ]);
+  if (!conTipo) return conTipo;
+  return { ...conTipo, idsTimelinePorPalabra: conTimeline?.idsTimelinePorPalabra, idsEtiquetaExtra: conEtiquetas?.idsEtiquetaExtra };
+}
+
 export async function listarClientes(opcionesCrudas?: FiltrosClientes): Promise<{
   clientes: Cliente[];
   total: number;
 }> {
-  const opciones = await resolverEtiquetasExtra(await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas)));
+  const opciones = await resolverOpcionesClientes(opcionesCrudas);
   const limite = opciones?.limite ?? 100;
   const pagina = Math.max(1, opciones?.pagina ?? 1);
   const inicio = (pagina - 1) * limite;
@@ -466,7 +477,7 @@ const CAP_EXPORTACION = 50_000;
 // página actual. Usa el mismo traerTodo() que ya pagina de a 1000 filas
 // (límite de PostgREST) para las agregaciones del dashboard.
 export async function exportarClientes(opcionesCrudas?: FiltrosClientes): Promise<Cliente[]> {
-  const opciones = await resolverEtiquetasExtra(await resolverBusquedaTimeline(await resolverFiltroTipoEvento(opcionesCrudas)));
+  const opciones = await resolverOpcionesClientes(opcionesCrudas);
   const filas = await traerTodo<ClienteRow>((from, to) => {
     let query = supabase.from("clientes").select("*").is("eliminado_en", null);
     query = aplicarFiltrosClientes(query, opciones);

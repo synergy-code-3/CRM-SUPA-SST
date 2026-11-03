@@ -42,7 +42,7 @@ describe("crearEvento", () => {
 
   it.each(["PGRST204", "42703"])("si falta la columna fecha (%s), explica qué SQL correr", async (codigo) => {
     supabaseFalso.estado.errorEvento = { code: codigo };
-    await expect(crearEvento(entrada)).rejects.toMatchObject({ status: 503, message: expect.stringContaining("captura-datos-fecha-orden.sql") });
+    await expect(crearEvento(entrada)).rejects.toMatchObject({ status: 503, message: expect.stringContaining("schema.sql") });
   });
 
   it("otro error de la base no se esconde", async () => {

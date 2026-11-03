@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, Loader2, Sparkles, Undo2 } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { Modal } from "./Modal";
+import { InsigniaEstatus } from "./InsigniaEstatus";
 import { TiraHojas } from "./TiraHojas";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
@@ -15,6 +16,7 @@ import {
   type Box, type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
+import type { NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 
 const AUTOGUARDADO_MS = 1500;
 const AVISO_BLOQUEO_MS = 8 * 60 * 1000; // el bloqueo dura 10 min y se renueva con cada guardado
@@ -27,7 +29,18 @@ const CAMPOS_COMPARABLES_ETIQUETA: { k: CampoComparable; texto: string }[] = [{ 
 
 type Guardado = "guardado" | "pendiente" | "guardando" | "error";
 
-export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr }: { hoja: HojaCaptura; hojas: HojaCaptura[]; onTerminar: () => void; onSiguiente: () => void | Promise<void>; onIr: (id: string) => void | Promise<void> }) {
+interface EditorHojaProps {
+  hoja: HojaCaptura;
+  hojas: HojaCaptura[];
+  usuarioId?: string;
+  nombres: NombresUsuarios;
+  /** Se captura desde el final: la IA adelanta lecturas en ese mismo orden. */
+  onTerminar: () => void;
+  onSiguiente: () => void | Promise<void>;
+  onIr: (id: string) => void | Promise<void>;
+}
+
+export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTerminar, onSiguiente, onIr }: EditorHojaProps) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -198,7 +211,8 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
     setError(null);
     try {
       if (!(await guardar())) return;
-      await api(`/api/captura-datos/hojas/${inicial.id}${forzar ? "?force=1" : ""}`, {
+      const consulta = new URLSearchParams(forzar ? { force: "1" } : {}).toString();
+      await api(`/api/captura-datos/hojas/${inicial.id}${consulta ? `?${consulta}` : ""}`, {
         method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });
       await onSiguiente(); // se queda en esta hoja (con el aviso de trabajando) hasta que llegue la siguiente
@@ -239,6 +253,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
     setCambiando(false);
   }
 
+  const obligatorio = llevaPago(inicial.estatus);
   const campo = (k: FieldKey) => (intentoConfirmar ? errores[k] : undefined);
   const enlaceDuplicado = duplicado?.datos ? urlDuplicado(duplicado.datos) : null;
   const conciliacion = axis?.estado === "encontrado" ? conciliar(campos, axis.contacto) : null;
@@ -263,12 +278,12 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
-        <TiraHojas hojas={hojas} actualId={inicial.id} onElegir={irA} />
+        <TiraHojas hojas={hojas} actualId={inicial.id} usuarioId={usuarioId} nombres={nombres} onElegir={irA} />
       </div>
 
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2 text-xs text-muted">
-          <span className="truncate">{inicial.estatus} · {inicial.origen.nombreOriginal}</span>
+          <span className="flex min-w-0 items-center gap-2"><InsigniaEstatus estatus={inicial.estatus} /><span className="truncate">{inicial.origen.nombreOriginal}</span></span>
           <span role="status" aria-live="polite" className="shrink-0">{reedicion ? "Editando hoja confirmada" : { guardado: "Guardado", pendiente: "Cambios sin guardar…", guardando: "Guardando…", error: "Error al guardar" }[guardado]}</span>
         </div>
 
@@ -282,7 +297,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
         )}
 
         <button onClick={leerConIa} disabled={trabajando || reedicion || leidaIa} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary transition hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-primary">
-          {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {leidaIa ? "Hoja ya leída con IA" : "Leer con IA"}
+          {leyendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {leyendo ? "Leyendo con IA…" : leidaIa ? "Hoja ya leída con IA" : "Leer con IA"}
         </button>
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
@@ -329,16 +344,16 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
             </div>
           </div>
 
-          {llevaPago(inicial.estatus) && (
+          {(
             <>
               <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem]">
-                <Campo etiqueta="Método de pago" requerido error={campo("metodoPago")}>
+                <Campo etiqueta="Método de pago" requerido={obligatorio} error={campo("metodoPago")}>
                   <select value={campos.metodoPago} onChange={(e) => cambiar("metodoPago", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
                     {METODOS_PAGO.map((m) => <option key={m}>{m}</option>)}
                   </select>
                 </Campo>
-                <Campo etiqueta="Cantidad pagada" requerido error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
+                <Campo etiqueta="Cantidad pagada" requerido={obligatorio} error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
                 <Campo etiqueta="Membresía" requerido={inicial.estatus === "Completo"} error={campo("membresia")}>
                   <select value={campos.membresia} onChange={(e) => cambiar("membresia", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
@@ -354,7 +369,7 @@ export function EditorHoja({ hoja: inicial, hojas, onTerminar, onSiguiente, onIr
                       {MARCAS_TARJETA.map((m) => <option key={m}>{m}</option>)}
                     </select>
                   </Campo>
-                  <Campo etiqueta="Últimos 4 dígitos" requerido error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+                  <Campo etiqueta="Últimos 4 dígitos" requerido={obligatorio} error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" className={CLASE_INPUT} /></Campo>
               </div>
               )}
             </>

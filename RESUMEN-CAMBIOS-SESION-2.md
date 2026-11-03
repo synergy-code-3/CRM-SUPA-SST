@@ -271,15 +271,82 @@ botones de Axis siempre visibles, caché en memoria de eventos (`cache.ts`).
   el botón usa ese recuadro exacto.
 - Sin SQL pendiente nuevo.
 
-## Pendiente en Supabase (SQL a correr a mano)
+- **Captura de Datos** (30 oct): (1) los SQL sueltos se integraron en `supabase/schema.sql` (columna `fecha`, `cap_auditoria`,
+  `tomar_hoja_libre` ya estaban; se añadieron un `alter table cap_eventos add column if not exists fecha` y los 4 índices de
+  rendimiento) y se borraron `captura-datos-ajustes.sql`, `-auditoria.sql` y `-fecha-orden.sql`. (2) Nuevo evento con subida local:
+  menú Completos / Apartados / Interesados (con contador), zona "Subir o arrastrar" (`ZonaArchivos.tsx`, también en
+  "Subir fotos o PDF" del evento) con quitar archivo / quitar selección; los archivos se guardan por categoría y se suben al darle
+  "Crear evento" (`subirHojas` en `cliente.ts`; si falla a medias, el reintento no repite lo ya subido). (3) Historial con código de
+  color por acción y caché en memoria por persona: al reabrirlo solo pide lo posterior al último movimiento visto (`desde` en
+  `GET /api/captura-datos/historial`). Sin probar en el navegador.
+- Sin SQL pendiente nuevo.
 
-Ver la respuesta de la sesión del 26/10; en resumen, en este orden:
-1. `supabase/captura-datos-fecha-orden.sql` (columna `fecha` y orden de `tomar_hoja_libre`). **Obligatorio**: sin la columna,
-   crear un evento falla (ahora el error lo dice); el orden de `tomar_hoja_libre` es el que sigue la lectura adelantada.
-   `schema.sql` ya incluye ambas cosas (para bases nuevas); este archivo es la migración para la base que ya existe.
-2. Del `schema.sql`: columnas de revocación en `certificaciones_clientes` y tabla `solicitudes_renovacion_externa`.
-3. `supabase/captura-datos-auditoria.sql` (tabla del historial de movimientos). Sin ella la app funciona, pero no guarda historial.
-4. Opcional: `supabase/captura-datos-ajustes.sql` (solo 4 índices de rendimiento; ya no toca la función ni la cascada).
+## Supabase
 
-`supabase/captura-datos-borrado.sql` se eliminó (27/28 oct): su única instrucción, la cascada de reaperturas, ya está en
-`schema.sql` y el código la suple al borrar un evento.
+Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente). Ya se ejecutó en la base actual.
+
+## Ajustes de revisión de hojas
+- Visor: zoom automático a "Datos" al abrir una hoja.
+- Insignias de color por estatus (Completo / Apartado / Interesado) en secciones del evento y en el editor.
+- Interesados: se muestran y guardan método de pago, cantidad, membresía y tarjeta (opcionales, se validan solo si se llenan).
+- Al confirmar la última hoja: aviso verde "Se completaron todas las hojas" (ya no el rojo).
+- Botón IA: "Leyendo con IA…" mientras carga y "Hoja ya leída con IA" al terminar.
+- Ventana de Drive: pasa de "Subiendo" a "Drive subido".
+- SQL pendiente: ninguno.
+
+- **Captura de Datos** (30 oct): (1) editar una hoja desde la tira de progreso ya no saca a la vista del evento (solo si se abrió desde el evento). (2) Un evento reabierto ya no se cierra solo al confirmar todas las hojas: solo con el botón "Cerrar evento" (`eventoFueReabierto` en `db.ts`). (3) "Ver" en una hoja abre una ventana con la imagen y los datos del cliente (`VerHojaModal.tsx`). (4) Si el método de pago no usa tarjeta, Marca y Últimos 4 dígitos se vacían al guardar (`normalizeTodo` en `fields.ts`), así tampoco quedan en Drive. Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (30 oct, 2): (1) Tarjeta de evento con menú de 3 puntos (`MenuEvento.tsx`): Guardar en Drive, Excel, Historial, Borrar evento; se quitó el enlace suelto de Excel. (2) `VerHojaModal`: spinner "Cargando hoja…" mientras llega la foto/PDF. (3) `VerHojaModal` más grande (hasta 96vw × 98vh, hoja a 84vh) con datos en filas "Etiqueta: valor"; `Modal` acepta prop `tamano`. Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (30 oct, 3): (1) `VerHojaModal` más pequeño (mismas proporciones: 72vw × 80vh, hoja a 60vh) y, con el evento abierto y la hoja no inválida, botón "Editar" dentro del cuadro (cierra el cuadro y abre el editor). (2) Nuevo `captura-datos/layout.tsx`: solo quien tenga `verCapturaDatos` (admin) ve la sección, también por URL directa; la API ya exigía el permiso. (3) Historial general con filtros (`FiltrosHistorial.tsx`): búsqueda libre (evento, admin, folio, motivo, nombre del cliente en correcciones), lugar (texto dentro del nombre del evento, no hay campo "lugar"), chips por acción y rango de fechas del movimiento; filtrado en servidor (`listarAuditoria`, `GET /api/captura-datos/historial`). Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (30 oct, 4): (1) Historial por páginas (Anterior / Siguiente): cada página se pide solo al navegar a ella; se quitó la caché y el "Ver más". (2) Título de cada movimiento con el nombre del evento ("Creado Synergy GDL") en el historial general; ya no hay línea "Evento:" aparte. (3) La búsqueda ahora también encuentra por nombre del cliente en confirmaciones (busca en `cap_hojas.campos->>nombre` y trae los movimientos de esas hojas). (4) Lentitud al buscar: era `ilike '%texto%'` sobre 6 columnas sin índice (recorre toda `cap_auditoria` en cada consulta) más 350 ms de pausa; ahora 250 ms, indicador de carga y índices trigram. **SQL pendiente:** ejecutar en Supabase los índices `idx_cap_auditoria_busq_*` y `idx_cap_hojas_busq_nombre` (están al final del bloque `cap_auditoria` en `supabase/schema.sql`). Sin probar en el navegador.
+
+- **Captura de Datos** (2 nov): (1) El historial de un evento (ventana de la tarjeta/detalle) ahora es más grande (`sm:max-w-3xl`, 85vh) y lleva búsqueda, fechas y chips por acción (sin el campo "Lugar", que ahí no aplica). (2) Páginas del historial más cortas: 25 movimientos por página (antes 50; `LIMITE_POR_DEFECTO` en `auditoria.ts`). (3) Al buscar por nombre en el historial, las hojas confirmadas encontradas muestran "Nombre: …" debajo del folio (`clienteNombre` en `RegistroAuditoria`). Sin probar en el navegador. Sin SQL pendiente nuevo.
+
+- **Captura de Datos** (2 nov, 2): (1) El historial (general y del evento) guarda en memoria lo último visto (páginas, página actual y filtros, por usuario) y al volver lo muestra al instante sin recargar; solo hace una consulta mínima (`limite=1`) y recarga si hay un movimiento más nuevo (`HistorialModal.tsx`). (2) Lista de eventos con búsqueda por nombre/carpeta de destino (sin acentos), chips Abiertos / Confirmados / Con hojas por revisar y rango de fechas del evento, filtrado en el navegador (`FiltrosEventos.tsx`, `ListaEventos.tsx`). Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (2 nov, 3): la búsqueda y filtros de la lista de eventos van dentro de la misma tarjeta (`rounded-2xl border bg-surface p-4`) que usa el historial (`ListaEventos.tsx`). Sin probar en el navegador. Sin SQL pendiente.
+
+- **Captura de Datos** (2 nov, 4) — **capturar un evento entre dos personas (admins) en paralelo.** El bloqueo de 10 min por hoja ya
+  impedía que dos personas tomaran la misma; ahora además se ve y se coordina:
+  1. **Quién tiene cada hoja:** en la lista del evento dice "Marco · en edición" (o "Tú · en edición") y en la tira de miniaturas del
+     editor aparecen sus iniciales (con el nombre al pasar el mouse). `GET /api/captura-datos/eventos/[id]/hojas` devuelve también
+     `usuarios` (id → nombre, solo de quien bloqueó o confirmó hojas de ese evento; `nombresDeUsuarios` en `db.ts`).
+  2. **Ver sin editar:** una hoja que tiene otra persona muestra "Ver" (no "Abrir") y el cuadro de la hoja no ofrece "Editar".
+  3. **Avance por persona:** chips "Tú N · Marco N · Pendientes N" arriba de las hojas (`BarraColaboracion.tsx`,
+     `progresoPorPersona` en el nuevo `colaboracion.ts`).
+  4. **Capturar desde el final:** casilla junto al avance; quien la marca toma las hojas desde la última Interesada hacia la primera
+     Completa, así cada persona va hacia la otra en vez de pelear por las mismas. Se recuerda por evento en este navegador
+     (`localStorage`). Viaja como `?inverso=1` a `tomar-hoja`, a "Leer con IA" y al confirmar, para que la lectura adelantada de la
+     IA también siga ese orden (`tomarHojaLibre`/`siguientesHojasLibres`/`adelantarLecturas` con `inverso`).
+  5. **Botón "Liberar mis hojas (N)":** aparece solo si tienes hojas tomadas en el evento (p. ej. se te cerró la pestaña) y las
+     suelta para que la otra persona las tome sin esperar los 10 min. Solo suelta las tuyas, nunca las de otra persona
+     (`POST /api/captura-datos/eventos/[id]/liberar-mis-hojas`, `liberarHojasDeUsuario`).
+  6. **Cierre automático seguro:** si dos personas confirman la última hoja a la vez, solo una cierra el evento (`cerrarEventoAbierto`,
+     update con `estado = 'abierto'`); ya no se duplican el Excel, el renombrado de fotos ni el registro del historial.
+  7. Por pedido, **no** hay aviso cuando otra persona confirma una hoja.
+  Pruebas nuevas: `colaboracion.test.ts`, `db-colaboracion.test.ts`, `cierre-concurrencia.test.ts`, `api.test.ts` y un caso en
+  `lectura-ia.test.ts` (173 pruebas en verde, `tsc` y `next build` sin errores). Revisado por agentes de código, SQL y seguridad
+  (sin hallazgos críticos ni altos). Sin probar en el navegador.
+  **SQL pendiente:** volver a ejecutar `supabase/schema.sql` en el SQL Editor de Supabase (cambia `tomar_hoja_libre`: agrega
+  `p_inverso`, borra la versión de 2 parámetros y recarga PostgREST). Mientras no se ejecute, todo funciona igual que antes salvo
+  "Capturar desde el final", que responde "Falta actualizar la base de datos…".
+
+**Búsquedas rápidas** (2 nov, 5) — índices trigram faltantes (clientes: teléfono/notas/notas_soporte; eventos_timeline: detalle/autor; otras_ofertas: teléfono; certificaciones: teléfono/telefono_busqueda/notas/nota) al final de `supabase/schema.sql`, más `analyze`. En `db.ts`, `resolverOpcionesClientes` corre en paralelo los tres resolvedores de filtros de Clientes.
+- **SQL pendiente:** ejecutar `supabase/schema.sql` completo (incluye también los índices del historial del 30 oct y `tomar_hoja_libre`).
+
+**Captura de Datos: sentido automático y máximo dos personas** (2 nov, 6) — reemplaza la casilla "Capturar desde el final".
+- SQL: tabla `cap_evento_capturistas` y función `registrar_capturista(evento, usuario)` → 'normal' | 'inverso' | 'lleno'. La primera persona activa (actividad <15 min o hoja tomada vigente) va desde el inicio, la segunda desde el final, una tercera recibe 'lleno'. `tomar_hoja_libre(evento, usuario)` ya no recibe `p_inverso` (lo decide la base) y lanza `evento_lleno`. Un evento cerrado no limita a nadie.
+- Servidor: `registrarCapturista` en `db.ts`; lo llaman abrir una hoja por id, autoguardar/confirmar (PATCH) y la lectura con IA, así una tercera persona no puede confirmar ni leer hojas (409). La lectura anticipada sigue el sentido de quien la pide. "Liberar mis hojas" también deja libre su cupo.
+- Interfaz: se quitó la casilla, el localStorage y `?inverso=1`. Se conservan los chips de avance y "Liberar mis hojas".
+- Antes de correr el SQL todo sigue como antes (sin límite ni sentido automático).
+- **SQL pendiente:** ejecutar `supabase/schema.sql` completo.
+
+**Hoja del cliente en su perfil** (2 nov, 7) — en Clientes > perfil > "Seguimiento y soporte", junto al título: ícono para ver la hoja escaneada (cajón a la izquierda con la imagen/PDF y botón "Descargar") e ícono para descargarla. Solo se muestran si el cliente tiene hojas **confirmadas**; la ven todos los roles que ven Clientes (`verClientes`).
+- Cruce cliente → hoja: por correo (actual y original) o últimos 10 dígitos del teléfono (`cliente-hojas.ts`, `listarHojasDeCliente` en `db.ts`).
+- Endpoints nuevos: `GET /api/clientes/[id]/hojas` (lista) y `GET /api/clientes/[id]/hojas/[hojaId]/archivo[?descargar=1]` (verifica que la hoja sea del cliente; 404 si no). El servido del archivo vive en `archivo-hoja.ts`; los endpoints de `captura-datos` no se tocaron.
+- UI: `HojaClienteAcciones.tsx`; `Tarjeta` en `ClientePanel.tsx` acepta `acciones`. Con varias hojas, el ícono de descargar abre el cajón para elegir.
+- Pruebas nuevas: `cliente-hojas`, `db-cliente-hojas`, `archivo-hoja` (194 en verde, `tsc` y `next build` sin errores). Sin probar en el navegador.
+- **SQL pendiente:** ejecutar `supabase/indices-hojas-cliente.sql` (dos índices parciales sobre `cap_hojas` y `analyze`). Sin él todo funciona, solo más lento al crecer la tabla.
+- Revisión (código y seguridad) aplicada: correos con coma/comillas/paréntesis se descartan del filtro `in` y la lista se revalida contra el cliente; respuestas con `Cache-Control: private, no-store`; `%` mal formado en la URL da 404; `.PDF` en mayúsculas; un PDF de varias hojas (`paginas > 1`) no se entrega (403) porque traería hojas de otras personas. **Decisión del dueño:** las hojas las ve cualquier rol con `verClientes` (antes solo admin); no se limitan por evento ni hay registro de descargas. 200 pruebas en verde.

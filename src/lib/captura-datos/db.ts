@@ -9,6 +9,7 @@ import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
 import { ErrorPeticion } from "./errores";
+import { correosDeCliente, hojaPerteneceACliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
 
 type FilaEvento = {
   id: string;
@@ -112,7 +113,7 @@ export async function crearEvento(input: {
     .single();
   // PGRST204 / 42703 = la columna `fecha` no existe: falta correr el SQL que la crea (se explica en vez de "error interno").
   if (error?.code === "PGRST204" || error?.code === "42703") {
-    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/captura-datos-fecha-orden.sql en el SQL Editor de Supabase (columna fecha de los eventos).");
+    throw new ErrorPeticion(503, "Falta actualizar la base de datos: corre supabase/schema.sql en el SQL Editor de Supabase (columna fecha de los eventos).");
   }
   if (error) throw error;
 
@@ -240,6 +241,28 @@ export async function confirmarEvento(
   return filaAEvento(data as FilaEvento);
 }
 
+/** Como confirmarEvento, pero solo si sigue abierto: con dos personas confirmando la última hoja a la vez, solo una lo cierra (la otra recibe null). */
+export async function cerrarEventoAbierto(id: string, usuarioId: string, drive: EventoCaptura["drive"]): Promise<EventoCaptura | null> {
+  const { data, error } = await supabase
+    .from("cap_eventos")
+    .update({ estado: "confirmado", confirmado_por: usuarioId, confirmado_en: new Date().toISOString(), drive })
+    .eq("id", id)
+    .eq("estado", "abierto")
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? filaAEvento(data as FilaEvento) : null;
+}
+
+/** Nombre de cada persona por id, para mostrar quién tiene o confirmó cada hoja. */
+export async function nombresDeUsuarios(ids: readonly string[]): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids)];
+  if (unicos.length === 0) return {};
+  const { data, error } = await supabase.from("usuarios").select("id, nombre").in("id", unicos);
+  if (error) throw error;
+  return Object.fromEntries((data as { id: string; nombre: string }[]).map((u) => [u.id, u.nombre]));
+}
+
 /** Guarda los datos de Drive sin cerrar el evento: sigue abierto para seguir capturando. */
 export async function actualizarDriveEvento(id: string, drive: EventoCaptura["drive"]): Promise<void> {
   const { error } = await supabase.from("cap_eventos").update({ drive }).eq("id", id);
@@ -259,6 +282,12 @@ export async function reabrirEvento(id: string, adminId: string, motivo: string)
     .insert({ evento_id: id, admin_id: adminId, motivo });
   if (errLog) throw errLog;
   return filaAEvento(data as FilaEvento);
+}
+
+export async function eventoFueReabierto(id: string): Promise<boolean> {
+  const { count, error } = await supabase.from("cap_eventos_reaperturas").select("id", { count: "exact", head: true }).eq("evento_id", id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }
 
 export async function eliminarEvento(id: string): Promise<void> {
@@ -292,6 +321,52 @@ export async function crearHojas(
   return (data as FilaHoja[]).map(filaAHoja);
 }
 
+export interface HojaDeCliente {
+  id: string;
+  folio: string | null;
+  eventoNombre: string;
+  eventoFecha: string | null;
+  esPdf: boolean;
+  confirmadaEn: string | null;
+}
+
+type FilaHojaDeCliente = {
+  id: string;
+  folio: string | null;
+  origen: FotoRef;
+  campos: SheetFields | null;
+  confirmada_en: string | null;
+  cap_eventos: { nombre: string; fecha: string | null } | null;
+};
+
+const COLUMNAS_HOJA_DE_CLIENTE = "id, folio, origen, campos, confirmada_en, cap_eventos(nombre, fecha)";
+
+/** Hojas confirmadas cuyo correo o teléfono es el del cliente (no hay llave directa), la más reciente primero. */
+export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCliente[]> {
+  const base = () => supabase.from("cap_hojas").select(COLUMNAS_HOJA_DE_CLIENTE).eq("estado", "confirmada");
+  const correos = correosDeCliente(c);
+  const tel = telefonoDe10(c.telefono);
+  const [porCorreo, porTelefono] = await Promise.all([
+    correos.length ? base().in("campos->>correo", correos) : Promise.resolve({ data: [], error: null }),
+    tel ? base().eq("campos->>telefono", tel) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (porCorreo.error) throw porCorreo.error;
+  if (porTelefono.error) throw porTelefono.error;
+  const unicas = new Map<string, FilaHojaDeCliente>();
+  for (const f of [...(porCorreo.data ?? []), ...(porTelefono.data ?? [])] as unknown as FilaHojaDeCliente[]) unicas.set(f.id, f);
+  return [...unicas.values()]
+    .filter((f) => hojaPerteneceACliente({ estado: "confirmada", campos: f.campos }, c))
+    .sort((a, b) => (b.confirmada_en ?? "").localeCompare(a.confirmada_en ?? ""))
+    .map((f) => ({
+      id: f.id,
+      folio: f.folio,
+      eventoNombre: f.cap_eventos?.nombre ?? "Evento",
+      eventoFecha: f.cap_eventos?.fecha ?? null,
+      esPdf: /\.pdf$/i.test(f.origen.rutaStorage ?? "") || /\.pdf$/i.test(f.origen.nombreOriginal),
+      confirmadaEn: f.confirmada_en,
+    }));
+}
+
 const TAMANO_PAGINA = 1000; // PostgREST corta en 1000 filas por consulta sin avisar: se pagina para no truncar
 
 export async function listarHojasDeEvento(eventoId: string): Promise<HojaCaptura[]> {
@@ -316,9 +391,28 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
   return data ? filaAHoja(data as FilaHoja) : null;
 }
 
-/** Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). */
+const MENSAJE_EVENTO_LLENO = "Este evento ya lo están capturando dos personas. Puedes ver las hojas, pero no capturar hasta que alguna termine o libere las suyas.";
+
+/**
+ * Registra a la persona como capturista del evento (máximo dos: una desde el inicio y otra desde el final) y devuelve
+ * si le toca ir desde el final. Una tercera persona recibe 409. Si la base aún no tiene la función (falta correr
+ * schema.sql), no se limita a nadie y se captura como antes.
+ */
+export async function registrarCapturista(eventoId: string, usuarioId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId });
+  if (error?.code === "PGRST202") return false;
+  if (error) throw error;
+  if (data === "lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
+  return data === "inverso";
+}
+
+/**
+ * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). La base decide
+ * el sentido: la primera persona va desde el inicio y la segunda desde el final; una tercera recibe 409.
+ */
 export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
   const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+  if (error?.message === "evento_lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   if (error) throw error;
   const fila = data as FilaHoja | null;
   return fila?.id ? filaAHoja(fila) : null;
@@ -355,6 +449,27 @@ export async function liberarHoja(id: string, usuarioId: string): Promise<void> 
     .eq("id", id)
     .eq("bloqueada_por", usuarioId);
   if (error) throw error;
+}
+
+/** Suelta todas las hojas que la persona tiene tomadas en el evento (sin terminar). Devuelve cuántas soltó. */
+export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("evento_id", eventoId)
+    .eq("bloqueada_por", usuarioId)
+    .in("estado", ["pendiente", "leida"])
+    .gt("bloqueada_hasta", new Date().toISOString()) // las vencidas ya están libres: así cuenta lo mismo que el botón
+    .select("id");
+  if (error) throw error;
+  // Quien suelta sus hojas deja el cupo de capturista: la otra persona (o una tercera) puede tomar su lugar.
+  const { error: errorCupo } = await supabase
+    .from("cap_evento_capturistas")
+    .update({ ultima_actividad: new Date(0).toISOString() })
+    .eq("evento_id", eventoId)
+    .eq("usuario_id", usuarioId);
+  if (errorCupo && errorCupo.code !== "42P01" && errorCupo.code !== "PGRST205") throw errorCupo;
+  return (data as { id: string }[]).length;
 }
 
 export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
@@ -588,10 +703,10 @@ export async function guardarLecturaAdelantada(id: string, campos: SheetFields, 
 const ORDEN_ESTATUS: Estatus[] = ["Completo", "Apartado", "Interesado"];
 
 /** Las próximas `cantidad` hojas libres del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
-export async function siguientesHojasLibres(eventoId: string, cantidad: number): Promise<HojaCaptura[]> {
+export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso = false): Promise<HojaCaptura[]> {
   const ahora = new Date().toISOString();
   const hojas: HojaCaptura[] = [];
-  for (const estatus of ORDEN_ESTATUS) {
+  for (const estatus of inverso ? [...ORDEN_ESTATUS].reverse() : ORDEN_ESTATUS) {
     if (hojas.length >= cantidad) break;
     const { data, error } = await supabase
       .from("cap_hojas")
@@ -600,7 +715,7 @@ export async function siguientesHojasLibres(eventoId: string, cantidad: number):
       .eq("estatus", estatus)
       .in("estado", ["pendiente", "leida"])
       .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${ahora}`)
-      .order("id")
+      .order("id", { ascending: !inverso })
       .limit(cantidad - hojas.length);
     if (error) throw error;
     hojas.push(...(data as FilaHoja[]).map(filaAHoja));
