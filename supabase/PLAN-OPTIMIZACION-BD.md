@@ -2,6 +2,14 @@
 
 Para: la persona con acceso a Supabase y su Claude Code. Quien lo escribió no tiene acceso a la base. Todo el SQL de este documento se probó en un Postgres 17 desechable (Docker) con datos sintéticos, nunca contra producción, y pasó tres rondas de revisión independiente (SQL, ejecutabilidad, seguridad y fallos silenciosos). Sus hallazgos están incorporados.
 
+## Estado de ejecución (3 nov 2026)
+
+Aplicado en producción: `schema.sql` completo (tabla `cap_evento_capturistas`, `registrar_capturista`, nueva `tomar_hoja_libre`, índices de búsqueda y de hojas de cliente), la fase 2 (limpieza de constraints) y la fase 3 (4 índices nuevos), todo verificado sin errores. Fases 4 y 5: no se hicieron ni hacen falta (base de ~50 MB, ~10 % de filas muertas en `clientes`, autovacuum al día).
+
+Lecciones del día:
+- **La prueba local debe incluir filas reales de `catalogo_opciones` con todos los tipos** (`motivo_cm`, `palabra_descartada_cm`, `tag_certificaciones`). El `schema.sql` anterior recreaba el constraint en pasos intermedios más restrictivos y falló en producción con `23514 ... violated by some row`, algo que una base de pruebas vacía no muestra. El SQL Editor revirtió todo el intento fallido (el constraint siguió presente y validado).
+- Al copiar consultas al SQL Editor se puede perder la primera letra (`elect`). Tras ejecutar un bloque, repetir la consulta de definiciones (`indexdef`) cubre el caso en que la comprobación previa no corrió.
+
 ## 0. Reglas (si eres Claude, son obligatorias)
 
 1. **Todo el SQL vive en `supabase/schema.sql`.** No crees archivos `.sql` aparte. Los bloques de las fases 2 y 3 se agregan **al final** de `schema.sql` (ver §4 y §5).
@@ -193,7 +201,7 @@ create index if not exists idx_avisos_confirmaciones_aviso_id on avisos_confirma
 ```
 Más la copia de `schema.sql` de la §1 para el archivo.
 
-**Prueba local obligatoria antes de ejecutar** (con el `snap` de la §3): (a) instalación limpia (`prelude` + `schema.sql` editado) dos veces sin `FALLO`; (b) actualización: cargar primero el `schema.sql` **original** y luego el editado, dos veces sin `FALLO`; (c) `snap` de (a) y (b) idénticos; (d) con filas en las tablas, el conteo no cambia. Ya se verificó con este bloque exacto (incluido el caso de un `catalogo_opciones_tipo_check` con otro orden, que se corrige).
+**Prueba local obligatoria antes de ejecutar** (con el `snap` de la §3): (a) instalación limpia (`prelude` + `schema.sql` editado) dos veces sin `FALLO`; (b) actualización: cargar primero el `schema.sql` **original** y luego el editado, dos veces sin `FALLO`; (c) `snap` de (a) y (b) idénticos; (d) con filas en las tablas, el conteo no cambia; (e) con filas en `catalogo_opciones` de **todos** los tipos que usa la app (incluidos `motivo_cm` y `palabra_descartada_cm`), tanto con el constraint presente como con el constraint borrado. Ya se verificó con este bloque exacto (incluido el caso de un `catalogo_opciones_tipo_check` con otro orden, que se corrige).
 
 ## 5. Fase 3: índices nuevos
 
