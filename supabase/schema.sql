@@ -492,7 +492,6 @@ create table if not exists avisos_confirmaciones (
   confirmado_en timestamptz not null default now(),
   unique (aviso_id, usuario_id)
 );
-create index if not exists idx_avisos_confirmaciones_aviso_id on avisos_confirmaciones (aviso_id);
 alter table avisos_confirmaciones enable row level security;
 
 -- Avisos generados por el sistema (ej. reconciliación automática de Kajabi,
@@ -609,22 +608,13 @@ alter table certificaciones_abonos enable row level security;
 -- Biblioteca gana 2 catálogos para Certificaciones (certificaciones
 -- asignables y su propio catálogo de tags, aparte del de Club) — el check
 -- de tipo, no solo el enum de TypeScript, tiene que permitirlos.
-alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
-alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
-  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones'));
 
 -- "Motivo" en Moderación de Community Manager: lista base fija en el
 -- componente (Spam/Ofensas/...) + lo que cada usuario vaya agregando acá.
-alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
-alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
-  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones', 'motivo_cm'));
 
 -- "Palabras clave más comunes" (Community Manager): además de la lista
 -- fija de palabras vacías en community-manager.ts, cada quien puede
 -- descartar una palabra puntual desde la propia gráfica.
-alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
-alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
-  check (tipo in ('evento', 'etiqueta', 'tag', 'certificacion', 'tag_certificaciones', 'motivo_cm', 'palabra_descartada_cm'));
 
 -- Solicitudes de alta para Certificaciones — mismo patrón que
 -- solicitudes_cliente (Club), pero sin la separación correo de pago/acceso
@@ -662,9 +652,6 @@ alter table solicitudes_certificacion enable row level security;
 -- vendedor la corrige y reenvía desde "/solicitudes" (sección "Solicitudes
 -- inválidas") → vuelve a 'pendiente'. Solo aplica a solicitudes_cliente
 -- (Club), no a solicitudes_certificacion.
-alter table solicitudes_cliente drop constraint if exists solicitudes_cliente_estado_check;
-alter table solicitudes_cliente add constraint solicitudes_cliente_estado_check
-  check (estado in ('pendiente', 'aprobada', 'rechazada', 'correo_invalido'));
 
 -- Aviso dirigido a un solo usuario (ej. "tu solicitud tiene correo
 -- inválido") en vez de transmitido a todos/admins — null mantiene el
@@ -836,8 +823,6 @@ alter table cm_publicaciones alter column fecha_revision drop not null;
 
 -- "Respuesta" se suma a Acción (además de "Sin acción"/"Eliminado"): hay
 -- comentarios que no se borran ni se dejan tal cual, se les contesta.
-alter table cm_comentarios drop constraint if exists cm_comentarios_accion_check;
-alter table cm_comentarios add constraint cm_comentarios_accion_check check (accion in ('Sin acción', 'Eliminado', 'Respuesta'));
 
 -- Skool es distinto a las redes sociales: no hay "publicaciones" ni
 -- "comentarios borrados" — es un registro de atención (qué preguntaron,
@@ -1088,9 +1073,6 @@ create index if not exists idx_cap_hojas_busq_nombre on cap_hojas using gin ((ca
 alter table cap_auditoria enable row level security;
 
 -- Borrar un evento que alguna vez se reabrió fallaba por la FK de reaperturas (sin ON DELETE); el borrado es directo.
-alter table cap_eventos_reaperturas drop constraint if exists cap_eventos_reaperturas_evento_id_fkey;
-alter table cap_eventos_reaperturas
-  add constraint cap_eventos_reaperturas_evento_id_fkey foreign key (evento_id) references cap_eventos (id) on delete cascade;
 
 alter table cap_eventos enable row level security;
 alter table cap_evento_asignaciones enable row level security;
@@ -1344,3 +1326,64 @@ on conflict (id) do nothing;
 analyze clientes;
 analyze eventos_timeline;
 analyze cap_hojas;
+
+-- OPTIMIZACIÓN FASE 2 — limpieza (idempotente)
+begin;
+set local lock_timeout = '3s'; -- si hay una transacción larga abierta falla en vez de bloquear a la app: reintentar luego
+
+do $$
+begin
+  -- El índice solo sobra si el unique (aviso_id, usuario_id) existe de verdad en esta base.
+  if exists (select 1 from pg_constraint where conrelid = 'avisos_confirmaciones'::regclass and contype = 'u'
+             and pg_get_constraintdef(oid) = 'UNIQUE (aviso_id, usuario_id)') then
+    drop index if exists public.idx_avisos_confirmaciones_aviso_id;
+  end if;
+
+  -- Cada constraint se recrea solo si NO existe, no está validado o su definición difiere EXACTAMENTE de la final.
+  if not exists (select 1 from pg_constraint where conrelid = 'catalogo_opciones'::regclass and conname = 'catalogo_opciones_tipo_check' and convalidated
+      and pg_get_constraintdef(oid) = 'CHECK ((tipo = ANY (ARRAY[''evento''::text, ''etiqueta''::text, ''tag''::text, ''certificacion''::text, ''tag_certificaciones''::text, ''motivo_cm''::text, ''palabra_descartada_cm''::text])))') then
+    alter table catalogo_opciones drop constraint if exists catalogo_opciones_tipo_check;
+    alter table catalogo_opciones add constraint catalogo_opciones_tipo_check
+      check (tipo in ('evento','etiqueta','tag','certificacion','tag_certificaciones','motivo_cm','palabra_descartada_cm')) not valid;
+    alter table catalogo_opciones validate constraint catalogo_opciones_tipo_check;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conrelid = 'solicitudes_cliente'::regclass and conname = 'solicitudes_cliente_estado_check' and convalidated
+      and pg_get_constraintdef(oid) = 'CHECK ((estado = ANY (ARRAY[''pendiente''::text, ''aprobada''::text, ''rechazada''::text, ''correo_invalido''::text])))') then
+    alter table solicitudes_cliente drop constraint if exists solicitudes_cliente_estado_check;
+    alter table solicitudes_cliente add constraint solicitudes_cliente_estado_check
+      check (estado in ('pendiente','aprobada','rechazada','correo_invalido')) not valid;
+    alter table solicitudes_cliente validate constraint solicitudes_cliente_estado_check;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conrelid = 'cm_comentarios'::regclass and conname = 'cm_comentarios_accion_check' and convalidated
+      and pg_get_constraintdef(oid) = 'CHECK ((accion = ANY (ARRAY[''Sin acción''::text, ''Eliminado''::text, ''Respuesta''::text])))') then
+    alter table cm_comentarios drop constraint if exists cm_comentarios_accion_check;
+    alter table cm_comentarios add constraint cm_comentarios_accion_check check (accion in ('Sin acción','Eliminado','Respuesta')) not valid;
+    alter table cm_comentarios validate constraint cm_comentarios_accion_check;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conrelid = 'cap_eventos_reaperturas'::regclass and conname = 'cap_eventos_reaperturas_evento_id_fkey' and convalidated
+      and pg_get_constraintdef(oid) = 'FOREIGN KEY (evento_id) REFERENCES cap_eventos(id) ON DELETE CASCADE') then
+    alter table cap_eventos_reaperturas drop constraint if exists cap_eventos_reaperturas_evento_id_fkey;
+    alter table cap_eventos_reaperturas add constraint cap_eventos_reaperturas_evento_id_fkey
+      foreign key (evento_id) references cap_eventos (id) on delete cascade not valid;
+    alter table cap_eventos_reaperturas validate constraint cap_eventos_reaperturas_evento_id_fkey;
+  end if;
+end $$;
+commit;
+
+-- OPTIMIZACIÓN FASE 3 — índices nuevos (idempotente)
+begin;
+set local lock_timeout = '3s';
+-- Filtro de Etiquetas en Clientes (db.ts:406-408): sin índice, seq scan.
+create index if not exists idx_clientes_etiqueta on clientes (etiqueta) where etiqueta is not null;
+-- listarApartadosVencidos (db.ts:1420-1427)
+create index if not exists idx_clientes_apartado_50_en on clientes (apartado_50_en) where apartado_50 and eliminado_en is null;
+-- Otras Ofertas: filtros por etiqueta y tag (db.ts:2702-2703, 2738-2739)
+create index if not exists idx_otras_ofertas_clientes_etiqueta on otras_ofertas_clientes (etiqueta) where etiqueta is not null;
+create index if not exists idx_otras_ofertas_clientes_tags on otras_ofertas_clientes using gin (tags);
+commit;
+
+analyze clientes;
+analyze otras_ofertas_clientes;
