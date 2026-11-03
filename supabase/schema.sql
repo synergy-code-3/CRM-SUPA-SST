@@ -1326,5 +1326,21 @@ create index if not exists idx_certificaciones_clientes_telefono_trgm on certifi
 create index if not exists idx_certificaciones_clientes_telefono_busqueda_trgm on certificaciones_clientes using gin (telefono_busqueda gin_trgm_ops);
 create index if not exists idx_certificaciones_clientes_notas_trgm on certificaciones_clientes using gin (notas gin_trgm_ops);
 create index if not exists idx_certificaciones_eventos_nota_trgm on certificaciones_eventos using gin (nota gin_trgm_ops);
+
+-- Hojas confirmadas de un cliente (perfil > Seguimiento y soporte), por correo o teléfono.
+create index if not exists idx_cap_hojas_cliente_correo on cap_hojas ((campos ->> 'correo'))
+  where estado = 'confirmada';
+create index if not exists idx_cap_hojas_cliente_telefono on cap_hojas ((campos ->> 'telefono'))
+  where estado = 'confirmada';
+
+-- Buckets privados de Storage (los públicos —avatares, avisos-imagenes, cm-capturas, coord-flyer-assets— los crea
+-- el código al primer uso). Idempotente.
+insert into storage.buckets (id, name, public)
+values ('comprobantes-pago', 'comprobantes-pago', false),
+       ('cap-fotos', 'cap-fotos', false),
+       ('cap-excel', 'cap-excel', false)
+on conflict (id) do nothing;
+
 analyze clientes;
 analyze eventos_timeline;
+analyze cap_hojas;
