@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { Download, FileImage, Loader2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { HojaDeCliente } from "@/lib/captura-datos/db";
@@ -20,6 +20,15 @@ export function HojaClienteAcciones({ clienteId }: { clienteId: string }) {
   const [hojas, setHojas] = useState<HojaDeCliente[]>(() => cacheHojas.get(clienteId)?.hojas ?? []);
   const [cargando, setCargando] = useState(() => !cacheHojas.has(clienteId));
   const [abierto, setAbierto] = useState(false);
+  const precargada = useRef<string | null>(null);
+
+  // Al acercarse al ícono se descarga la imagen para que el cajón la muestre al instante (los PDF no se precargan).
+  function precargar() {
+    const primera = hojas[0];
+    if (!primera || primera.esPdf || precargada.current === primera.id) return;
+    precargada.current = primera.id;
+    new Image().src = urlArchivo(clienteId, primera.id);
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -51,7 +60,7 @@ export function HojaClienteAcciones({ clienteId }: { clienteId: string }) {
       <span className="flex h-6 w-14 items-center justify-end gap-0.5" aria-busy={cargando}>
         {cargando && <Search role="status" aria-label="Buscando hoja del cliente" className="h-4 w-4 animate-pulse text-muted" strokeWidth={1.75} />}
         {!cargando && hojas.length > 0 && <>
-        <button type="button" onClick={() => setAbierto(true)} title="Ver hoja del cliente" aria-label="Ver hoja del cliente" className={CLASE_ICONO}>
+        <button type="button" onClick={() => setAbierto(true)} onPointerEnter={precargar} onFocus={precargar} title="Ver hoja del cliente" aria-label="Ver hoja del cliente" className={CLASE_ICONO}>
           <FileImage className="h-4 w-4" strokeWidth={1.75} />
         </button>
         {hojas.length === 1 ? (

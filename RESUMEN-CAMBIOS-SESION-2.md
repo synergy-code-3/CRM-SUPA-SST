@@ -358,3 +358,4 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - Captura de Datos: la barra de búsqueda de eventos queda fija y solo cargan las tarjetas (`ListaEventos.tsx`).
 - Nuevo evento: "Importar fotos de Drive" se deshabilita si la carpeta no tiene subcarpetas Completos / Apartados / Interesados (`NuevoEventoModal.tsx`).
 - Hoja del cliente: mientras busca por correo/teléfono se ve una lupa que parpadea suave, y el espacio de los íconos queda reservado (24 px de alto, 56 de ancho) para que el texto de la tarjeta no se mueva al aparecer o no aparecer.
+- Hoja del cliente más rápida: al pasar el mouse o enfocar el ícono "ver hoja" se precarga la imagen (PDF no), y la vista (no la descarga) de `GET /api/clientes/[id]/hojas/[hojaId]/archivo` lleva `Cache-Control: private, max-age=300` (menor que los 10 min de la URL firmada). Sin SQL pendiente.
