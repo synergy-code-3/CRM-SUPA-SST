@@ -1,10 +1,12 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
-import { registrarConfirmacionDeHoja } from "@/lib/captura-datos/auditoria";
+import { registrarAuditoria, registrarConfirmacionDeHoja } from "@/lib/captura-datos/auditoria";
 import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
-import { actualizarCamposHoja, confirmarHoja, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, registrarCapturista } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, eliminarHoja, obtenerEvento, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, registrarCapturista } from "@/lib/captura-datos/db";
 import { adelantarLecturas } from "@/lib/captura-datos/lectura-ia";
+import { bloqueoVigente } from "@/lib/captura-datos/colaboracion";
+import { ErrorPeticion } from "@/lib/captura-datos/errores";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { patchHoja } from "@/lib/captura-datos/validacion";
 
@@ -65,5 +67,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   } catch (err) {
     if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada || err instanceof ErrorEstadoHoja) return NextResponse.json({ error: err.message }, { status: 409 });
     return respuestaError(err, "captura-datos/hojas/[id] PATCH");
+  }
+}
+
+// Borra la hoja. Solo admin, con el evento abierto y sin que otra persona la esté editando. Queda en el historial.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const permiso = await requerirPermiso("verCapturaDatos");
+  if (!permiso.ok) return permiso.respuesta;
+  if (permiso.usuario.rol !== "admin") return NextResponse.json({ error: "No tienes permiso para esto" }, { status: 403 });
+
+  const { id } = await params;
+  try {
+    const hoja = await requerirHoja(permiso.usuario, id);
+    const evento = await obtenerEvento(hoja.eventoId);
+    if (evento?.estado !== "abierto") throw new ErrorPeticion(409, "El evento ya está confirmado: reábrelo para borrar hojas.");
+    if (bloqueoVigente(hoja) && hoja.bloqueadaPorId !== permiso.usuario.id) throw new ErrorPeticion(409, "Otra persona está editando esta hoja.");
+    await eliminarHoja(id);
+    await registrarAuditoria({
+      usuario: permiso.usuario,
+      accion: "hoja_borrada",
+      eventoId: hoja.eventoId,
+      eventoNombre: evento.nombre,
+      hojaId: id,
+      detalle: { folio: hoja.campos?.folio ?? hoja.folio ?? "", foto: hoja.origen.nombreOriginal, estado: hoja.estado },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return respuestaError(err, "captura-datos/hojas/[id] DELETE");
   }
 }

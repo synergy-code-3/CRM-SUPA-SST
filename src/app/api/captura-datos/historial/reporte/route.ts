@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requerirPermiso } from "@/lib/auth";
-import { listarConfirmaciones, nombresDeFotos } from "@/lib/captura-datos/auditoria";
-import { detalleDeCaptura, resumirCaptura } from "@/lib/captura-datos/historial";
+import { listarConfirmaciones, listarMovimientosDePersona, nombresDeFotos } from "@/lib/captura-datos/auditoria";
+import { detalleDeCaptura, otrosMovimientos, resumirCaptura } from "@/lib/captura-datos/historial";
 import { ErrorPeticion, respuestaError } from "@/lib/captura-datos/api";
 
 const consulta = z.object({
@@ -21,12 +21,13 @@ export async function GET(req: NextRequest) {
   try {
     const q = consulta.safeParse(Object.fromEntries(req.nextUrl.searchParams));
     if (!q.success) throw new ErrorPeticion(400, "Parámetros inválidos.");
-    const { registros, truncado } = await listarConfirmaciones(q.data);
     if (q.data.usuarioId) {
+      const { registros, truncado } = await listarMovimientosDePersona({ eventoId: q.data.eventoId, usuarioId: q.data.usuarioId });
       const hojas = detalleDeCaptura(registros);
       const nombres = await nombresDeFotos(hojas.flatMap((h) => (h.hojaId ? [h.hojaId] : [])));
-      return NextResponse.json({ hojas: hojas.map((h) => ({ ...h, foto: h.hojaId ? nombres.get(h.hojaId) : undefined })), truncado });
+      return NextResponse.json({ hojas: hojas.map((h) => ({ ...h, foto: h.hojaId ? nombres.get(h.hojaId) : undefined })), otros: otrosMovimientos(registros), truncado });
     }
+    const { registros, truncado } = await listarConfirmaciones(q.data);
     return NextResponse.json({ filas: resumirCaptura(registros), truncado });
   } catch (err) {
     return respuestaError(err, "captura-datos/historial/reporte GET");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_FIELDS, type SheetFields } from "./fields";
-import { diferenciasDeCampos, duracionLegible, ETIQUETA_ACCION, lineasDeDetalle, resumirCaptura, SEGUNDOS_CAPTURA_RAPIDA, detalleDeCaptura, estadisticasDeCaptura, type AccionAuditoria, type RegistroAuditoria } from "./historial";
+import { otrosMovimientos, diferenciasDeCampos, duracionLegible, ETIQUETA_ACCION, lineasDeDetalle, resumirCaptura, SEGUNDOS_CAPTURA_RAPIDA, detalleDeCaptura, estadisticasDeCaptura, type AccionAuditoria, type RegistroAuditoria } from "./historial";
 
 const campos = (sobreescribir: Partial<SheetFields> = {}): SheetFields => ({ ...EMPTY_FIELDS, folio: "4476", nombre: "Ana Pérez", ...sobreescribir });
 
@@ -130,6 +130,19 @@ describe("detalleDeCaptura", () => {
     expect(d[0]).toMatchObject({ segundos: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null });
     expect(d[1]).toMatchObject({ segundos: 5, rapida: true, sinCambios: false, desdeAnteriorSegundos: 65 });
     expect(d[2]).toMatchObject({ rapida: false, sinCambios: true, desdeAnteriorSegundos: 95 });
+  });
+});
+
+describe("correcciones y otros movimientos", () => {
+  it("incluye las correcciones como hojas sin alertas ni tiempos y separa los movimientos del evento", () => {
+    const corr = { ...registro("hoja_corregida", { folio: "A", cambios: { nombre: { antes: "x", despues: "y" } } }), id: 2, hojaId: "h1", en: "2026-10-28T10:05:00.000Z" };
+    const conf = { ...registro("hoja_confirmada", { folio: "A" }), id: 1, hojaId: "h1", en: "2026-10-28T10:00:00.000Z" };
+    const creado = { ...registro("evento_creado"), id: 3, en: "2026-10-28T09:00:00.000Z" };
+    const drive = { ...registro("evento_guardado_drive"), id: 4, en: "2026-10-28T11:00:00.000Z" };
+    const d = detalleDeCaptura([corr, conf, creado, drive]);
+    expect(d.map((h) => h.tipo)).toEqual(["confirmada", "corregida"]);
+    expect(d[1]).toMatchObject({ rapida: false, sinCambios: false, segundos: null, cambios: ["Nombre: «x» → «y»"] });
+    expect(otrosMovimientos([corr, conf, creado, drive]).map((r) => r.accion)).toEqual(["evento_guardado_drive", "evento_creado"]);
   });
 });
 

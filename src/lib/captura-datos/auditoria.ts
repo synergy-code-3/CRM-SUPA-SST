@@ -177,6 +177,16 @@ export async function listarConfirmaciones(c: { eventoId?: string; usuarioId?: s
   return { registros: filas.slice(0, TOPE_CONFIRMACIONES).map(filaARegistro), truncado: filas.length > TOPE_CONFIRMACIONES };
 }
 
+/** Todo lo que una persona hizo en un evento (confirmar, corregir hojas y movimientos del evento), para su detalle en el reporte. */
+export async function listarMovimientosDePersona(c: { eventoId?: string; usuarioId: string }): Promise<{ registros: RegistroAuditoria[]; truncado: boolean }> {
+  let q = supabase.from("cap_auditoria").select("*").eq("usuario_id", c.usuarioId).order("id", { ascending: false }).limit(TOPE_CONFIRMACIONES + 1);
+  q = c.eventoId ? q.eq("evento_id", c.eventoId) : q.is("evento_id", null);
+  const { data, error } = await q;
+  if (error) throw error;
+  const filas = (data ?? []) as FilaAuditoria[];
+  return { registros: filas.slice(0, TOPE_CONFIRMACIONES).map(filaARegistro), truncado: filas.length > TOPE_CONFIRMACIONES };
+}
+
 /** Borra los movimientos con más de `dias` días. Devuelve cuántos borró. */
 export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): Promise<number> {
   const limite = new Date(Date.now() - dias * MS_POR_DIA).toISOString();

@@ -51,6 +51,7 @@ const COLOR_ACCION: Record<AccionAuditoria, { borde: string; punto: string }> = 
   evento_borrado: { borde: "border-danger", punto: "bg-danger" },
   hoja_confirmada: { borde: "border-success", punto: "bg-success" },
   hoja_corregida: { borde: "border-warning", punto: "bg-warning" },
+  hoja_borrada: { borde: "border-danger", punto: "bg-danger" },
 };
 const COLOR_DESCONOCIDO = { borde: "border-silver", punto: "bg-muted" };
 

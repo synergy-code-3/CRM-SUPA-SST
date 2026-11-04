@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, History, Loader2, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { BarraColaboracion } from "./BarraColaboracion";
 import { ConfirmarModal } from "./ConfirmarModal";
@@ -14,6 +14,7 @@ import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
 import { VerHojaModal } from "./VerHojaModal";
+import { MenuHoja } from "./MenuHoja";
 import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
@@ -55,6 +56,8 @@ export function EventoDetalle({ id }: { id: string }) {
   const [verHistorial, setVerHistorial] = useState(false);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const [hojaABorrar, setHojaABorrar] = useState<HojaCaptura | null>(null);
+  const [borrandoHoja, setBorrandoHoja] = useState(false);
   const abiertaDesdeEvento = useRef(false);
 
   const cargar = useCallback(async (): Promise<HojaCaptura[] | null> => {
@@ -196,6 +199,21 @@ export function EventoDetalle({ id }: { id: string }) {
   const porRevisar = conteo("pendiente") + conteo("leida");
   const hayCaptura = conteo("confirmada") > 0;
   /** La tiene otra persona ahora mismo: se puede ver, no editar. */
+  async function borrarHoja(h: HojaCaptura) {
+    setBorrandoHoja(true);
+    try {
+      await api(`/api/captura-datos/hojas/${h.id}`, { method: "DELETE" });
+      setHojaABorrar(null);
+      setExito("Se borró la hoja.");
+      await cargar();
+    } catch (err) {
+      setHojaABorrar(null);
+      setMensaje(err instanceof Error ? err.message : "No se pudo borrar la hoja.");
+    } finally {
+      setBorrandoHoja(false);
+    }
+  }
+
   const deOtra = (h: HojaCaptura) => bloqueoVigente(h) && h.bloqueadaPorId !== usuario?.id;
   const quienEdita = (h: HojaCaptura) => (h.bloqueadaPorId === usuario?.id ? "Tú" : nombres[h.bloqueadaPorId ?? ""] ?? "Otra persona");
 
@@ -283,6 +301,11 @@ export function EventoDetalle({ id }: { id: string }) {
         />
       )}
       {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" && !deOtra(viendo) ?() => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
+      {hojaABorrar && (
+        <ConfirmarModal titulo="Borrar hoja" textoConfirmar="Borrar hoja" peligro cargando={borrandoHoja} onCancelar={() => setHojaABorrar(null)} onConfirmar={() => void borrarHoja(hojaABorrar)}>
+          ¿Borrar la hoja {hojaABorrar.folio ? `con folio ${hojaABorrar.folio}` : hojaABorrar.origen.nombreOriginal}? Se quitará del evento y no se puede deshacer.
+        </ConfirmarModal>
+      )}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
@@ -332,18 +355,12 @@ export function EventoDetalle({ id }: { id: string }) {
                         {bloqueoVigente(h) && <span className="text-muted">{quienEdita(h)} · en edición</span>}
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1">
-                      {evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) && (
-                        <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50">
-                          {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
-                        </button>
-                      )}
-                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida" || deOtra(h)) && (
-                        <button onClick={() => setViendo(h)} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
-                          <Eye className="h-3.5 w-3.5" /> Ver
-                        </button>
-                      )}
-                    </span>
+                    <MenuHoja
+                      deshabilitado={ocupado !== null}
+                      onVer={() => setViendo(h)}
+                      onEditar={evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) ? () => void abrirHoja(h.id) : undefined}
+                      onBorrar={evento.estado === "abierto" && usuario?.rol === "admin" && !deOtra(h) ? () => setHojaABorrar(h) : undefined}
+                    />
                   </li>
                 ))}
               </ul>}

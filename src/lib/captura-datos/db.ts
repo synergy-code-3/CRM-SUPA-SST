@@ -325,6 +325,12 @@ export async function crearHojas(
   return (data as FilaHoja[]).map(filaAHoja);
 }
 
+/** Borra una hoja (y su historial de cambios, en cascada). */
+export async function eliminarHoja(id: string): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export interface HojaDeCliente {
   id: string;
   folio: string | null;

@@ -13,7 +13,8 @@ export type AccionAuditoria =
   | "evento_reabierto"
   | "evento_borrado"
   | "hoja_confirmada"
-  | "hoja_corregida";
+  | "hoja_corregida"
+  | "hoja_borrada";
 
 export interface RegistroAuditoria {
   id: number;
@@ -38,6 +39,7 @@ export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   evento_borrado: "Borró el evento",
   hoja_confirmada: "Confirmó una hoja",
   hoja_corregida: "Corrigió una hoja ya confirmada",
+  hoja_borrada: "Borró una hoja",
 };
 
 export const ACCIONES_AUDITORIA = Object.keys(ETIQUETA_ACCION) as AccionAuditoria[];
@@ -52,6 +54,7 @@ export const ETIQUETA_FILTRO_ACCION: Record<AccionAuditoria, string> = {
   evento_borrado: "Borrado",
   hoja_confirmada: "Hoja confirmada",
   hoja_corregida: "Hoja corregida",
+  hoja_borrada: "Hoja borrada",
 };
 
 const ETIQUETA_CAMPO: Record<string, string> = {
@@ -125,6 +128,10 @@ export interface HojaDeCaptura {
   desdeAnteriorSegundos: number | null;
   /** Nombre del archivo de la foto (se completa en el servidor si la hoja aún existe). */
   foto?: string;
+  /** "corregida" = edición posterior a la confirmación; "borrada" = se eliminó la hoja (ninguna cuenta en tiempos ni alertas). */
+  tipo: "confirmada" | "corregida" | "borrada";
+  /** Solo en correcciones: qué cambió; en borradas, el motivo/estado en que estaba. */
+  cambios?: string[];
 }
 
 /** Agrupa las hojas confirmadas por evento y persona. `rapidas` = confirmadas en menos de SEGUNDOS_CAPTURA_RAPIDA; `sinCambios` = sin ningún guardado desde que se tomó. */
@@ -154,20 +161,32 @@ export function resumirCaptura(registros: RegistroAuditoria[]): ResumenCaptura[]
   return [...grupos.values()].map(({ resumen, suma, medidas }) => ({ ...resumen, promedioSegundos: medidas ? Math.round(suma / medidas) : null }));
 }
 
-/** Cada hoja de las confirmaciones dadas, de la más antigua a la más reciente. */
+/** Cada hoja confirmada o corregida de los registros dados, de la más antigua a la más reciente. Otras acciones se ignoran. */
 export function detalleDeCaptura(registros: RegistroAuditoria[]): HojaDeCaptura[] {
-  const orden = [...registros].sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
+  const orden = registros.filter((r) => r.accion === "hoja_confirmada" || r.accion === "hoja_corregida" || r.accion === "hoja_borrada").sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
   let anterior: string | null = null;
   return orden.map((r) => {
+    if (r.accion === "hoja_borrada") {
+      const cambios = [texto(r.detalle?.foto) && `Foto: ${texto(r.detalle?.foto)}`, texto(r.detalle?.estado) && `Estaba ${texto(r.detalle?.estado).replace("_", " ")}`].filter((x): x is string => !!x);
+      return { hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: null, fin: r.en, segundos: null, guardados: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null, tipo: "borrada" as const, cambios };
+    }
+    if (r.accion === "hoja_corregida") {
+      const cambios = Object.entries((r.detalle?.cambios ?? {}) as Record<string, CambioCampo>).map(([campo, c]) => `${ETIQUETA_CAMPO[campo] ?? campo}: «${c.antes}» → «${c.despues}»`);
+      return { hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: null, fin: r.en, segundos: null, guardados: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null, tipo: "corregida" as const, cambios };
+    }
     const c = datosCaptura(r.detalle);
     const desdeAnteriorSegundos = anterior ? Math.max(0, Math.round((new Date(r.en).getTime() - new Date(anterior).getTime()) / 1000)) : null;
     anterior = r.en;
     return {
       hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: c?.inicio ?? null, fin: r.en, segundos: c?.segundos ?? null, guardados: c?.guardados ?? null,
-      rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos,
+      rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos, tipo: "confirmada" as const,
     };
   });
 }
+
+/** Movimientos que no son de hojas (crear evento, subir a Drive, cerrar, etc.), del más reciente al más antiguo. */
+export const otrosMovimientos = (registros: RegistroAuditoria[]): RegistroAuditoria[] =>
+  registros.filter((r) => r.accion !== "hoja_confirmada" && r.accion !== "hoja_corregida" && r.accion !== "hoja_borrada").sort((a, b) => b.en.localeCompare(a.en) || b.id - a.id);
 
 export function estadisticasDeCaptura(hojas: Pick<HojaDeCaptura, "segundos">[]): { medidas: number; minimo: number | null; mediana: number | null; maximo: number | null } {
   const v = hojas.flatMap((h) => (h.segundos === null ? [] : [h.segundos])).sort((a, b) => a - b);
@@ -206,6 +225,11 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
       lineas.push(...lineasDeCaptura(r));
+      break;
+    case "hoja_borrada":
+      if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
+      if (texto(d.foto)) lineas.push(`Foto: ${texto(d.foto)}`);
+      if (texto(d.estado)) lineas.push(`Estaba ${texto(d.estado).replace("_", " ")}`);
       break;
     case "hoja_corregida": {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
