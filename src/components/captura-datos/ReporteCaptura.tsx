@@ -13,7 +13,14 @@ interface Respuesta {
 
 const dia = (d: string, fin: boolean) => new Date(`${d}T${fin ? "23:59:59.999" : "00:00:00"}`).toISOString();
 const CAMPO = "rounded-lg border border-silver bg-surface px-3 py-1.5 text-sm";
-const aviso = (n: number, texto: string) => (n > 0 ? <span className="font-semibold text-danger">{n} {texto}</span> : <span className="text-muted">0 {texto}</span>);
+
+/** Una sola línea: sin alertas, la alerta que hay, o "Varias alertas" (el desglose está en el detalle). */
+function Alertas({ f }: { f: ResumenCaptura }) {
+  const desglose = [f.rapidas ? `${f.rapidas} muy rápidas` : "", f.sinCambios ? `${f.sinCambios} sin cambios` : ""].filter(Boolean);
+  if (desglose.length > 1) return <span title={desglose.join(" · ")} className="font-semibold text-danger">⚠ Varias alertas</span>;
+  if (desglose.length === 1) return <span className="font-semibold text-danger">{desglose[0]}</span>;
+  return <span className="text-muted">{f.sinDatos > 0 ? `${f.sinDatos} sin medición` : "Sin alertas"}</span>;
+}
 
 /** Quién capturó qué: inicio, fin y ritmo por persona y evento, para detectar a quien confirma sin leer. */
 export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
@@ -69,18 +76,14 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
             </thead>
             <tbody className="divide-y divide-silver/60">
               {datos.filas.map((f) => (
-                <tr key={`${f.eventoId}|${f.usuarioId ?? f.usuario}`} className="align-top">
+                <tr key={`${f.eventoId}|${f.usuarioId ?? f.usuario}`} className="align-middle">
                   <td className="py-2 pr-3 font-medium text-foreground">{f.usuario}</td>
                   {!eventoId && <td className="pr-3">{f.eventoNombre ?? "Evento borrado"}</td>}
                   <td className="pr-3">{f.inicio ? fechaHoraCompleta(f.inicio) : "—"}</td>
                   <td className="pr-3">{f.fin ? fechaHoraCompleta(f.fin) : "—"}</td>
                   <td className="pr-3">{f.hojas}</td>
                   <td className="pr-3">{f.promedioSegundos === null ? "—" : duracionLegible(f.promedioSegundos)}</td>
-                  <td className="space-y-0.5 text-xs">
-                    <p>{aviso(f.rapidas, "muy rápidas")}</p>
-                    <p>{aviso(f.sinCambios, "sin cambios")}</p>
-                    {f.sinDatos > 0 && <p className="text-muted">{f.sinDatos} sin medición</p>}
-                  </td>
+                  <td className="text-xs"><Alertas f={f} /></td>
                   <td className="text-right">
                     {f.eventoId && f.usuarioId && (
                       <button onClick={() => setDetalle(f)} aria-label={`Ver detalle de ${f.usuario}`} title="Ver detalle hoja por hoja" className="rounded-lg p-1 text-primary hover:bg-silver/40">

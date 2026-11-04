@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileDown } from "lucide-react";
+import { Eye, FileDown, Loader2 } from "lucide-react";
 import { Modal } from "./Modal";
 import { VerHojaModal } from "./VerHojaModal";
 import { api } from "@/lib/captura-datos/cliente";
 import { duracionLegible, estadisticasDeCaptura, fechaHoraCompleta, type HojaDeCaptura, type ResumenCaptura } from "@/lib/captura-datos/historial";
-import { imprimirInforme } from "@/lib/captura-datos/pdf-captura";
+import { abrirInforme } from "@/lib/captura-datos/pdf-captura";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 
 type Filtro = "todas" | "rapidas" | "sinCambios";
@@ -27,6 +27,7 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const [abriendo, setAbriendo] = useState<string | null>(null);
 
   useEffect(() => {
     const p = new URLSearchParams(params);
@@ -43,16 +44,19 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
   const stats = useMemo(() => estadisticasDeCaptura(hojas ?? []), [hojas]);
 
   async function verHoja(id: string) {
+    setAbriendo(id);
     try {
       setViendo((await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${id}`)).hoja);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo abrir la hoja.");
+    } finally {
+      setAbriendo(null);
     }
   }
 
-  function descargar() {
+  function informe(imprimir: boolean) {
     if (!hojas) return;
-    const abierto = imprimirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo, hojas });
+    const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo, hojas }, imprimir);
     if (!abierto) setError("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio.");
   }
 
@@ -69,9 +73,14 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
               <span>Mínimo {seg(stats.minimo)}</span>
               <span>Mediana {seg(stats.mediana)}</span>
               <span>Máximo {seg(stats.maximo)}</span>
-              <button onClick={descargar} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm hover:bg-silver/40">
-                <FileDown className="h-4 w-4" /> Descargar PDF
-              </button>
+              <span className="ml-auto flex gap-2">
+                <button onClick={() => informe(false)} className="inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm hover:bg-silver/40">
+                  <Eye className="h-4 w-4" /> Ver PDF
+                </button>
+                <button onClick={() => informe(true)} className="inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm hover:bg-silver/40">
+                  <FileDown className="h-4 w-4" /> Descargar PDF
+                </button>
+              </span>
             </div>
             <div className="flex gap-2">
               {FILTROS.map(([k, etiqueta]) => (
@@ -99,7 +108,7 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
                           {h.sinCambios && <span className="rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">Sin cambios</span>}
                           {h.segundos === null && <span className="text-muted">Sin medición</span>}
                         </td>
-                        <td>{h.hojaId && h.foto && <button onClick={() => void verHoja(h.hojaId!)} aria-label="Ver hoja" className="text-primary"><Eye className="h-4 w-4" /></button>}</td>
+                        <td>{h.hojaId && h.foto && <button onClick={() => void verHoja(h.hojaId!)} disabled={abriendo !== null} aria-label="Ver hoja" className="text-primary disabled:opacity-60">{abriendo === h.hojaId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}</button>}</td>
                       </tr>
                     ))}
                   </tbody>

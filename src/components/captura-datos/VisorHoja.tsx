@@ -15,9 +15,11 @@ interface VisorHojaProps {
   esPdf: boolean;
   voucherBox: Box | null;
   onVoucherBox: (caja: Box | null) => void;
+  /** Solo ver y hacer zoom: sin "Marcar voucher" ni "Quitar marca". */
+  soloLectura?: boolean;
 }
 
-export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaProps) {
+export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox, soloLectura = false }: VisorHojaProps) {
   const zoom = useRef<ReactZoomPanPinchRef>(null);
   const vista = useRef<HTMLDivElement>(null);
   const [tamanoVista, setTamanoVista] = useState<Tamano>({ w: 0, h: 0 });
@@ -89,10 +91,12 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox }: VisorHojaPro
         <div className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex flex-wrap items-center gap-1.5 [&_button]:pointer-events-auto">
           <BotonVisor onClick={() => ampliar(CAJA_DATOS)} disabled={!listo} icono={<TextSelect className="h-4 w-4" />}>Datos</BotonVisor>
           <BotonVisor onClick={() => ampliar(voucherBox ?? CAJA_VOUCHER_PREDETERMINADA)} disabled={!listo} icono={<ReceiptText className="h-4 w-4" />}>Voucher</BotonVisor>
-          <BotonVisor onClick={() => { setTrazo(null); setMarcando((m) => !m); }} disabled={!listo} activo={marcando} icono={<SquareDashedMousePointer className="h-4 w-4" />}>
-            {marcando ? "Dibuja el área…" : "Marcar voucher"}
-          </BotonVisor>
-          {voucherBox && !marcando && <BotonVisor onClick={() => onVoucherBox(null)} icono={<X className="h-4 w-4" />}>Quitar marca</BotonVisor>}
+          {!soloLectura && (
+            <BotonVisor onClick={() => { setTrazo(null); setMarcando((m) => !m); }} disabled={!listo} activo={marcando} icono={<SquareDashedMousePointer className="h-4 w-4" />}>
+              {marcando ? "Dibuja el área…" : "Marcar voucher"}
+            </BotonVisor>
+          )}
+          {!soloLectura && voucherBox && !marcando && <BotonVisor onClick={() => onVoucherBox(null)} icono={<X className="h-4 w-4" />}>Quitar marca</BotonVisor>}
           <BotonVisor onClick={hojaCompleta} disabled={!listo} icono={<FileText className="h-4 w-4" />}>Hoja completa</BotonVisor>
           <span className="ml-auto flex gap-1.5">
             <BotonVisor onClick={() => zoom.current?.zoomOut(PASO_ZOOM, ANIMACION_MS)} disabled={!listo} etiqueta="Alejar" icono={<ZoomOut className="h-4 w-4" />} />

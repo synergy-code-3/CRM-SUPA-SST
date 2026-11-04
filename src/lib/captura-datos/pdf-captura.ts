@@ -34,13 +34,13 @@ tr.alerta td{background:#fff3e0}@media print{@page{size:landscape;margin:12mm}}<
 </body></html>`;
 }
 
-/** Abre el informe en una pestaña nueva y lanza la impresión. Devuelve false si el navegador bloqueó la ventana. */
-export function imprimirInforme(d: DatosInforme): boolean {
+/** Abre el informe en una pestaña nueva; con `imprimir` lanza además el cuadro de impresión (para guardarlo como PDF). Devuelve false si el navegador bloqueó la ventana. */
+export function abrirInforme(d: DatosInforme, imprimir: boolean): boolean {
   const ventana = window.open("", "_blank");
   if (!ventana) return false;
   ventana.document.write(htmlInforme(d));
   ventana.document.close();
   ventana.focus();
-  ventana.print();
+  if (imprimir) ventana.print();
   return true;
 }
