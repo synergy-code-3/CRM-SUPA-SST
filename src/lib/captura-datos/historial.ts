@@ -12,6 +12,7 @@ export type AccionAuditoria =
   | "evento_cerrado_auto"
   | "evento_reabierto"
   | "evento_borrado"
+  | "hojas_agregadas"
   | "hoja_confirmada"
   | "hoja_corregida"
   | "hoja_borrada";
@@ -37,8 +38,9 @@ export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   evento_cerrado_auto: "El evento se cerró solo (todas las hojas confirmadas)",
   evento_reabierto: "Reabrió el evento",
   evento_borrado: "Borró el evento",
+  hojas_agregadas: "Agregó hojas al evento",
   hoja_confirmada: "Confirmó una hoja",
-  hoja_corregida: "Corrigió una hoja ya confirmada",
+  hoja_corregida: "Modificó una hoja ya confirmada",
   hoja_borrada: "Borró una hoja",
 };
 
@@ -52,8 +54,9 @@ export const ETIQUETA_FILTRO_ACCION: Record<AccionAuditoria, string> = {
   evento_cerrado_auto: "Cerrado solo",
   evento_reabierto: "Reabierto",
   evento_borrado: "Borrado",
+  hojas_agregadas: "Hojas agregadas",
   hoja_confirmada: "Hoja confirmada",
-  hoja_corregida: "Hoja corregida",
+  hoja_corregida: "Hoja modificada",
   hoja_borrada: "Hoja borrada",
 };
 
@@ -161,11 +164,11 @@ export function resumirCaptura(registros: RegistroAuditoria[]): ResumenCaptura[]
   return [...grupos.values()].map(({ resumen, suma, medidas }) => ({ ...resumen, promedioSegundos: medidas ? Math.round(suma / medidas) : null }));
 }
 
-/** Cada hoja confirmada o corregida de los registros dados, de la más antigua a la más reciente. Otras acciones se ignoran. */
+/** Cada hoja confirmada, modificada o borrada de los registros dados, de la más antigua a la más reciente. Otras acciones se ignoran. */
 export function detalleDeCaptura(registros: RegistroAuditoria[]): HojaDeCaptura[] {
   const orden = registros.filter((r) => r.accion === "hoja_confirmada" || r.accion === "hoja_corregida" || r.accion === "hoja_borrada").sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
   let anterior: string | null = null;
-  return orden.map((r) => {
+  const filas = orden.map((r) => {
     if (r.accion === "hoja_borrada") {
       const cambios = [texto(r.detalle?.foto) && `Foto: ${texto(r.detalle?.foto)}`, texto(r.detalle?.estado) && `Estaba ${texto(r.detalle?.estado).replace("_", " ")}`].filter((x): x is string => !!x);
       return { hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: null, fin: r.en, segundos: null, guardados: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null, tipo: "borrada" as const, cambios };
@@ -182,6 +185,21 @@ export function detalleDeCaptura(registros: RegistroAuditoria[]): HojaDeCaptura[
       rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos, tipo: "confirmada" as const,
     };
   });
+  return agruparBajoSuHoja(filas);
+}
+
+/** Las modificaciones y borrados de una hoja van justo debajo de su confirmación; los que no tienen la confirmación en la lista quedan en su sitio cronológico. */
+function agruparBajoSuHoja(filas: HojaDeCaptura[]): HojaDeCaptura[] {
+  const confirmadas = new Set(filas.filter((f) => f.tipo === "confirmada" && f.hojaId).map((f) => f.hojaId));
+  const resultado: HojaDeCaptura[] = [];
+  for (const f of filas) {
+    if (f.tipo !== "confirmada") {
+      if (!f.hojaId || !confirmadas.has(f.hojaId)) resultado.push(f);
+      continue;
+    }
+    resultado.push(f, ...filas.filter((x) => x.tipo !== "confirmada" && x.hojaId && x.hojaId === f.hojaId));
+  }
+  return resultado;
 }
 
 /** Movimientos que no son de hojas (crear evento, subir a Drive, cerrar, etc.), del más reciente al más antiguo. */
@@ -212,6 +230,11 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (texto(d.fecha)) lineas.push(`Fecha del evento: ${fechaCorta(texto(d.fecha))}`);
       if (d.origen === "drive") lineas.push("Fotos desde una carpeta de Drive");
       if (d.origen === "local") lineas.push("Fotos subidas desde la computadora");
+      break;
+    case "hojas_agregadas":
+      if (typeof d.cantidad === "number") lineas.push(`${d.cantidad} ${d.cantidad === 1 ? "hoja nueva" : "hojas nuevas"}`);
+      if (d.origen === "drive") lineas.push("Desde una carpeta de Drive");
+      if (d.origen === "local") lineas.push("Subidas desde la computadora");
       break;
     case "evento_reabierto":
       if (texto(d.motivo)) lineas.push(`Motivo: ${texto(d.motivo)}`);

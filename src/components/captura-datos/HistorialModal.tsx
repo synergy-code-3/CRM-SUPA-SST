@@ -42,18 +42,19 @@ export function HistorialConReporte({ eventoId }: { eventoId?: string }) {
 }
 
 /** Color por tipo de movimiento: verde = confirmar/cerrar, ámbar = corregir/reabrir, rojo = borrar, azul = crear/Drive. */
-const COLOR_ACCION: Record<AccionAuditoria, { borde: string; punto: string }> = {
+export const COLOR_ACCION: Record<AccionAuditoria, { borde: string; punto: string }> = {
   evento_creado: { borde: "border-primary", punto: "bg-primary" },
   evento_guardado_drive: { borde: "border-primary", punto: "bg-primary" },
   evento_cerrado: { borde: "border-success", punto: "bg-success" },
   evento_cerrado_auto: { borde: "border-success", punto: "bg-success" },
   evento_reabierto: { borde: "border-warning", punto: "bg-warning" },
   evento_borrado: { borde: "border-danger", punto: "bg-danger" },
+  hojas_agregadas: { borde: "border-primary", punto: "bg-primary" },
   hoja_confirmada: { borde: "border-success", punto: "bg-success" },
   hoja_corregida: { borde: "border-warning", punto: "bg-warning" },
   hoja_borrada: { borde: "border-danger", punto: "bg-danger" },
 };
-const COLOR_DESCONOCIDO = { borde: "border-silver", punto: "bg-muted" };
+export const COLOR_DESCONOCIDO = { borde: "border-silver", punto: "bg-muted" };
 
 interface Pagina {
   registros: RegistroAuditoria[];

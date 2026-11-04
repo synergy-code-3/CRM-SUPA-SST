@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Eye, FileDown, Loader2, RefreshCw } from "lucide-react";
 import { Modal } from "./Modal";
+import { COLOR_ACCION, COLOR_DESCONOCIDO } from "./HistorialModal";
 import { Paginador } from "./Paginador";
 import { VerHojaModal } from "./VerHojaModal";
 import { useSesion } from "@/lib/session-context";
@@ -99,12 +100,15 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
             </div>
             {enOtros ? (otros.length === 0 ? <p className="py-4 text-center text-muted">Sin otros movimientos.</p> : (
               <ul className="divide-y divide-silver/60 text-xs">
-                {otros.map((r) => (
-                  <li key={r.id} className="py-2">
-                    <p className="font-medium text-foreground">{ETIQUETA_ACCION[r.accion] ?? r.accion} <span className="font-normal text-muted">· {fechaHoraCompleta(r.en)}</span></p>
+                {otros.map((r) => {
+                  const color = COLOR_ACCION[r.accion] ?? COLOR_DESCONOCIDO;
+                  return (
+                  <li key={r.id} className={`border-l-4 py-2 pl-3 ${color.borde}`}>
+                    <p className="flex items-center gap-2 font-medium text-foreground"><span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${color.punto}`} />{ETIQUETA_ACCION[r.accion] ?? r.accion} <span className="font-normal text-muted">· {fechaHoraCompleta(r.en)}</span></p>
                     {lineasDeDetalle(r).map((l) => <p key={l} className="text-muted">{l}</p>)}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )) : visibles.length === 0 ? <p className="py-4 text-center text-muted">Ninguna hoja coincide.</p> : (
               <div className="overflow-x-auto">
@@ -114,7 +118,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
                   </thead>
                   <tbody className="divide-y divide-silver/60">
                     {enPagina.map((h, i) => (
-                      <tr key={h.hojaId ?? i} className={`align-middle ${h.rapida || h.sinCambios ? "bg-warning/5" : ""}`}>
+                      <tr key={`${h.hojaId ?? i}-${h.tipo}-${h.fin}`} className={`align-middle ${h.tipo !== "confirmada" ? "bg-primary/5" : h.rapida || h.sinCambios ? "bg-warning/5" : ""}`}>
                         <td className="py-2 pr-3 font-medium text-foreground">{h.foto ?? "No disponible"}</td>
                         <td className="py-2 pr-3">{h.folio || "—"}</td>
                         <td className="py-2 pr-3">{h.inicio ? fechaHoraCompleta(h.inicio) : "—"}</td>
@@ -125,7 +129,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
                         <td className="space-x-1 py-2 pr-3">
                           {h.rapida && <span className="rounded bg-danger/10 px-1.5 py-0.5 font-medium text-danger">Muy rápida</span>}
                           {h.sinCambios && <span className="rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">Sin cambios</span>}
-                          {h.tipo === "corregida" && <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">Corregida</span>}
+                          {h.tipo === "corregida" && <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">Modificado</span>}
                           {h.tipo === "borrada" && <span className="rounded bg-danger/10 px-1.5 py-0.5 font-medium text-danger">Borrada</span>}
                           {h.tipo !== "confirmada" && h.cambios?.map((c) => <span key={c} className="block text-muted">{c}</span>)}
                           {h.tipo === "confirmada" && h.segundos === null && <span className="text-muted">Sin medición</span>}
