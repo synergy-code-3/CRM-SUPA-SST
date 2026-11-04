@@ -58,6 +58,8 @@ type FilaHoja = {
   confirmada_en: string | null;
   folio: string | null;
   version: number;
+  tomada_en?: string | null;
+  guardados_toma?: number | null;
 };
 
 /** Una lectura con IA reclamada que nunca terminó (la función murió a medias) deja de contar como leída pasado este tiempo. */
@@ -85,6 +87,8 @@ function filaAHoja(f: FilaHoja): HojaCaptura {
     confirmadaEn: f.confirmada_en,
     folio: f.folio,
     version: f.version,
+    tomadaEn: f.tomada_en ?? null,
+    guardadosDesdeToma: f.guardados_toma ?? null,
   };
 }
 
@@ -424,14 +428,20 @@ export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promi
  */
 export async function tomarHojaPorId(id: string, usuarioId: string): Promise<HojaCaptura> {
   const ahora = new Date();
-  const { data, error } = await supabase
+  const bloqueo = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(ahora.getTime() + BLOQUEO_MS).toISOString() };
+  const estados = ["pendiente", "leida", "confirmada"]; // una confirmada se reabre para corregirla (solo con el evento abierto)
+  // Toma nueva (hoja libre o con bloqueo vencido): empieza a contar la captura. Si ya es suya y vigente, solo se renueva.
+  const nueva = await supabase
     .from("cap_hojas")
-    .update({ bloqueada_por: usuarioId, bloqueada_hasta: new Date(ahora.getTime() + BLOQUEO_MS).toISOString() })
+    .update({ ...bloqueo, tomada_en: ahora.toISOString(), guardados_toma: 0 })
     .eq("id", id)
-    .in("estado", ["pendiente", "leida", "confirmada"]) // una confirmada se reabre para corregirla (solo con el evento abierto)
-    .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${ahora.toISOString()}`)
+    .in("estado", estados)
+    .or(`bloqueada_por.is.null,bloqueada_hasta.lt.${ahora.toISOString()}`)
     .select("*")
     .maybeSingle();
+  if (nueva.error) throw nueva.error;
+  if (nueva.data) return filaAHoja(nueva.data as FilaHoja);
+  const { data, error } = await supabase.from("cap_hojas").update(bloqueo).eq("id", id).in("estado", estados).eq("bloqueada_por", usuarioId).select("*").maybeSingle();
   if (error) throw error;
   if (data) return filaAHoja(data as FilaHoja);
   // No se pudo tomar: se distingue "ya no se edita" de "la tiene otra persona".
@@ -501,7 +511,7 @@ export async function actualizarCamposHoja(
 ): Promise<HojaCaptura> {
   const { data: actual, error: errLectura } = await supabase
     .from("cap_hojas")
-    .select("version, estado, bloqueada_por, bloqueada_hasta")
+    .select("version, estado, bloqueada_por, bloqueada_hasta, guardados_toma")
     .eq("id", id)
     .maybeSingle();
   if (errLectura) throw errLectura;
@@ -514,7 +524,7 @@ export async function actualizarCamposHoja(
   if (usuarioId) {
     const vigente = actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date();
     if (vigente && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
-    renovar = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(Date.now() + BLOQUEO_MS).toISOString() };
+    renovar = { bloqueada_por: usuarioId, bloqueada_hasta: new Date(Date.now() + BLOQUEO_MS).toISOString(), guardados_toma: (actual.guardados_toma ?? 0) + 1 };
   }
 
   if (actual.estado !== "pendiente" && actual.estado !== "leida") throw new ErrorEstadoHoja();

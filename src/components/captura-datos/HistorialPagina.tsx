@@ -1,7 +1,7 @@
 "use client";
 
 import { History, ShieldAlert } from "lucide-react";
-import { HistorialLista } from "./HistorialModal";
+import { HistorialConReporte } from "./HistorialModal";
 import { RETENCION_AUDITORIA_DIAS } from "@/lib/captura-datos/historial";
 import { useSesion } from "@/lib/session-context";
 
@@ -25,7 +25,7 @@ export function HistorialPagina() {
 
       {usuario?.rol === "admin" ? (
         <div className="rounded-2xl border border-silver bg-surface p-4">
-          <HistorialLista conFiltros />
+          <HistorialConReporte />
         </div>
       ) : (
         <p className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">

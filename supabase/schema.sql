@@ -1112,6 +1112,9 @@ create index if not exists idx_cap_evento_capturistas_usuario on cap_evento_capt
 -- una tercera recibe 'lleno'. Un evento ya cerrado no limita a nadie. El candado serializa llegadas simultáneas.
 -- En una transacción: las funciones nuevas nunca quedan visibles con el EXECUTE por defecto (antes del revoke).
 begin;
+-- Reporte de captura: cuándo tomó la hoja la persona actual y cuántos autoguardados lleva (se reinician en cada toma nueva).
+alter table cap_hojas add column if not exists tomada_en timestamptz;
+alter table cap_hojas add column if not exists guardados_toma int not null default 0;
 drop function if exists tomar_hoja_libre(uuid, uuid, boolean);
 drop function if exists tomar_hoja_libre(uuid, uuid);
 
@@ -1209,7 +1212,7 @@ begin
     return fila;
   end if;
 
-  update cap_hojas set bloqueada_por = p_usuario, bloqueada_hasta = now() + interval '10 minutes'
+  update cap_hojas set bloqueada_por = p_usuario, bloqueada_hasta = now() + interval '10 minutes', tomada_en = now(), guardados_toma = 0
   where id = (
     select id from cap_hojas
     where evento_id = p_evento and estado in ('pendiente', 'leida')

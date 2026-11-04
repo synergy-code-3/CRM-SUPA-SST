@@ -3,7 +3,8 @@
 // todo sigue. Los textos y tipos compartidos con el navegador viven en historial.ts.
 import { supabase } from "@/lib/supabase";
 import { diferenciasDeCampos, RETENCION_AUDITORIA_DIAS, type AccionAuditoria, type RegistroAuditoria } from "./historial";
-import type { HojaCaptura } from "./modelo";
+import { imageFileName, type SheetFields } from "./fields";
+import type { FotoRef, HojaCaptura } from "./modelo";
 
 export { RETENCION_AUDITORIA_DIAS };
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -69,6 +70,15 @@ export async function registrarAuditoria(entrada: EntradaAuditoria): Promise<voi
   }
 }
 
+/** Cuándo se tomó la hoja, cuánto pasó hasta confirmarla y cuántos autoguardados hizo la persona entretanto (vacío si no se sabe). */
+function datosDeCaptura(previa: HojaCaptura, hoja: HojaCaptura): Record<string, unknown> {
+  if (!previa.tomadaEn) return {};
+  const fin = hoja.confirmadaEn ? new Date(hoja.confirmadaEn).getTime() : Date.now();
+  const segundos = Math.max(0, Math.round((fin - new Date(previa.tomadaEn).getTime()) / 1000));
+  const guardados = previa.guardadosDesdeToma ?? 0;
+  return { inicio: previa.tomadaEn, segundos, guardados };
+}
+
 /**
  * Registra una confirmación de hoja. La primera vez es "hoja_confirmada" (solo el folio, no se guardan los datos
  * personales); si la hoja ya estaba confirmada es una corrección: se guardan los campos que cambiaron (antes y después)
@@ -82,14 +92,15 @@ export async function registrarConfirmacionDeHoja(entrada: {
 }): Promise<void> {
   const { usuario, previa, hoja } = entrada;
   const base = { usuario, eventoId: hoja.eventoId, hojaId: hoja.id };
+  const captura = datosDeCaptura(previa, hoja);
   const folio = hoja.campos?.folio ?? hoja.folio ?? "";
   if (previa.estado !== "confirmada") {
-    await registrarAuditoria({ ...base, accion: "hoja_confirmada", detalle: { folio, ...(entrada.duplicadoForzado ? { duplicadoForzado: true } : {}) } });
+    await registrarAuditoria({ ...base, accion: "hoja_confirmada", detalle: { folio, ...(entrada.duplicadoForzado ? { duplicadoForzado: true } : {}), ...captura } });
     return;
   }
   const cambios = hoja.campos ? diferenciasDeCampos(previa.campos, hoja.campos) : {};
   if (Object.keys(cambios).length === 0) return;
-  await registrarAuditoria({ ...base, accion: "hoja_corregida", detalle: { folio, cambios } });
+  await registrarAuditoria({ ...base, accion: "hoja_corregida", detalle: { folio, cambios, ...captura } });
 }
 
 export interface ConsultaAuditoria {
@@ -151,10 +162,51 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
   return { registros, hayMas: filas.length > limite };
 }
 
+const TOPE_CONFIRMACIONES = 5000;
+
+/** Las hojas confirmadas (primera vez) de un evento o rango, para el reporte de captura. `truncado` = había más que el tope. */
+export async function listarConfirmaciones(c: { eventoId?: string; usuarioId?: string; fechaDesde?: string; fechaHasta?: string }): Promise<{ registros: RegistroAuditoria[]; truncado: boolean }> {
+  let q = supabase.from("cap_auditoria").select("*").eq("accion", "hoja_confirmada").order("id", { ascending: false }).limit(TOPE_CONFIRMACIONES + 1);
+  if (c.eventoId) q = q.eq("evento_id", c.eventoId);
+  if (c.usuarioId) q = q.eq("usuario_id", c.usuarioId);
+  if (c.fechaDesde) q = q.gte("en", c.fechaDesde);
+  if (c.fechaHasta) q = q.lte("en", c.fechaHasta);
+  const { data, error } = await q;
+  if (error) throw error;
+  const filas = (data ?? []) as FilaAuditoria[];
+  return { registros: filas.slice(0, TOPE_CONFIRMACIONES).map(filaARegistro), truncado: filas.length > TOPE_CONFIRMACIONES };
+}
+
 /** Borra los movimientos con más de `dias` días. Devuelve cuántos borró. */
 export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): Promise<number> {
   const limite = new Date(Date.now() - dias * MS_POR_DIA).toISOString();
   const { data, error } = await supabase.from("cap_auditoria").delete().lt("en", limite).select("id");
   if (error) throw error;
   return (data ?? []).length;
+}
+
+const HOJAS_POR_CONSULTA = 200;
+
+/**
+ * Nombre de la foto de cada hoja que aún existe (id → nombre), en el formato ya usado en Drive: "folio_Nombre.jpg".
+ * Si la hoja no tiene folio y nombre capturados, se usa el nombre original del archivo. Las de eventos borrados no aparecen.
+ */
+export async function nombresDeFotos(ids: string[]): Promise<Map<string, string>> {
+  const nombres = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += HOJAS_POR_CONSULTA) {
+    const { data, error } = await supabase.from("cap_hojas").select("id, origen, campos").in("id", ids.slice(i, i + HOJAS_POR_CONSULTA));
+    if (error) throw error;
+    for (const h of (data ?? []) as { id: string; origen: FotoRef | null; campos: SheetFields | null }[]) {
+      const nombre = nombreDeFoto(h.origen, h.campos);
+      if (nombre) nombres.set(h.id, nombre);
+    }
+  }
+  return nombres;
+}
+
+function nombreDeFoto(origen: FotoRef | null, campos: SheetFields | null): string | null {
+  if (!origen?.nombreOriginal) return null;
+  const pagina = origen.pagina ? ` (pág. ${origen.pagina})` : "";
+  if (!campos?.folio || !campos.nombre) return `${origen.nombreOriginal}${pagina}`;
+  return `${imageFileName(campos, undefined, /\.pdf$/i.test(origen.nombreOriginal) ? "pdf" : "jpg")}${pagina}`;
 }

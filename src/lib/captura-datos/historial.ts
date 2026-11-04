@@ -77,6 +77,105 @@ export function diferenciasDeCampos(antes: SheetFields | null, despues: SheetFie
   return cambios;
 }
 
+/** Confirmar una hoja en menos de esto (desde que se tomó) se marca como sospechosa de no haberse leído. */
+export const SEGUNDOS_CAPTURA_RAPIDA = 15;
+
+export function duracionLegible(segundos: number): string {
+  if (segundos < 60) return `${segundos} s`;
+  if (segundos < 3600) return `${Math.floor(segundos / 60)} min ${segundos % 60} s`;
+  return `${Math.floor(segundos / 3600)} h ${Math.floor((segundos % 3600) / 60)} min`;
+}
+
+const HORA = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+export const fechaHoraCompleta = (iso: string) => HORA.format(new Date(iso));
+
+interface DatosCaptura { inicio: string; segundos: number; guardados: number }
+
+function datosCaptura(d: Record<string, unknown> | null): DatosCaptura | null {
+  if (!d || typeof d.inicio !== "string" || typeof d.segundos !== "number") return null;
+  return { inicio: d.inicio, segundos: d.segundos, guardados: typeof d.guardados === "number" ? d.guardados : 0 };
+}
+
+/** Una fila del reporte: lo que una persona capturó en un evento (primera confirmación de cada hoja). */
+export interface ResumenCaptura {
+  eventoId: string | null;
+  eventoNombre: string | null;
+  usuarioId: string | null;
+  usuario: string;
+  hojas: number;
+  inicio: string | null;
+  fin: string | null;
+  promedioSegundos: number | null;
+  rapidas: number;
+  sinCambios: number;
+  sinDatos: number;
+}
+
+/** Una hoja capturada, con todo lo medido (para el detalle de una persona). Sin medición = hojas anteriores al reporte. */
+export interface HojaDeCaptura {
+  hojaId: string | null;
+  folio: string;
+  inicio: string | null;
+  fin: string;
+  segundos: number | null;
+  guardados: number | null;
+  rapida: boolean;
+  sinCambios: boolean;
+  /** Segundos desde que confirmó la hoja anterior (la primera no tiene). */
+  desdeAnteriorSegundos: number | null;
+  /** Nombre del archivo de la foto (se completa en el servidor si la hoja aún existe). */
+  foto?: string;
+}
+
+/** Agrupa las hojas confirmadas por evento y persona. `rapidas` = confirmadas en menos de SEGUNDOS_CAPTURA_RAPIDA; `sinCambios` = sin ningún guardado desde que se tomó. */
+export function resumirCaptura(registros: RegistroAuditoria[]): ResumenCaptura[] {
+  const grupos = new Map<string, { resumen: ResumenCaptura; suma: number; medidas: number }>();
+  for (const r of registros) {
+    const usuario = r.usuarioNombre ?? "Usuario desconocido";
+    const clave = `${r.eventoId ?? ""}|${r.usuarioId ?? usuario}`;
+    let g = grupos.get(clave);
+    if (!g) {
+      g = { resumen: { eventoId: r.eventoId, eventoNombre: r.eventoNombre, usuarioId: r.usuarioId, usuario, hojas: 0, inicio: null, fin: null, promedioSegundos: null, rapidas: 0, sinCambios: 0, sinDatos: 0 }, suma: 0, medidas: 0 };
+      grupos.set(clave, g);
+    }
+    const x = g.resumen;
+    x.hojas++;
+    const c = datosCaptura(r.detalle);
+    if (!c) { x.sinDatos++; continue; }
+    g.suma += c.segundos;
+    g.medidas++;
+    const rapida = c.segundos < SEGUNDOS_CAPTURA_RAPIDA;
+    const sinCambios = c.guardados === 0;
+    if (rapida) x.rapidas++;
+    if (sinCambios) x.sinCambios++;
+    if (!x.inicio || c.inicio < x.inicio) x.inicio = c.inicio;
+    if (!x.fin || r.en > x.fin) x.fin = r.en;
+  }
+  return [...grupos.values()].map(({ resumen, suma, medidas }) => ({ ...resumen, promedioSegundos: medidas ? Math.round(suma / medidas) : null }));
+}
+
+/** Cada hoja de las confirmaciones dadas, de la más antigua a la más reciente. */
+export function detalleDeCaptura(registros: RegistroAuditoria[]): HojaDeCaptura[] {
+  const orden = [...registros].sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
+  let anterior: string | null = null;
+  return orden.map((r) => {
+    const c = datosCaptura(r.detalle);
+    const desdeAnteriorSegundos = anterior ? Math.max(0, Math.round((new Date(r.en).getTime() - new Date(anterior).getTime()) / 1000)) : null;
+    anterior = r.en;
+    return {
+      hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: c?.inicio ?? null, fin: r.en, segundos: c?.segundos ?? null, guardados: c?.guardados ?? null,
+      rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos,
+    };
+  });
+}
+
+export function estadisticasDeCaptura(hojas: Pick<HojaDeCaptura, "segundos">[]): { medidas: number; minimo: number | null; mediana: number | null; maximo: number | null } {
+  const v = hojas.flatMap((h) => (h.segundos === null ? [] : [h.segundos])).sort((a, b) => a - b);
+  if (v.length === 0) return { medidas: 0, minimo: null, mediana: null, maximo: null };
+  const mitad = Math.floor(v.length / 2);
+  return { medidas: v.length, minimo: v[0], mediana: v.length % 2 ? v[mitad] : Math.round((v[mitad - 1] + v[mitad]) / 2), maximo: v[v.length - 1] };
+}
+
 const texto = (v: unknown): string => (typeof v === "string" || typeof v === "number" ? String(v) : "");
 
 /** "2026-10-28" → "28/10/2026" (sin pasar por Date, para evitar el desfase de zona horaria). */
@@ -106,6 +205,7 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
       if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
+      lineas.push(...lineasDeCaptura(r));
       break;
     case "hoja_corregida": {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
@@ -113,10 +213,22 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       for (const [campo, c] of Object.entries(cambios)) {
         lineas.push(`${ETIQUETA_CAMPO[campo] ?? campo}: «${c.antes}» → «${c.despues}»`);
       }
+      lineas.push(...lineasDeCaptura(r));
       break;
     }
     default:
       break;
   }
   return lineas;
+}
+
+function lineasDeCaptura(r: RegistroAuditoria): string[] {
+  const c = datosCaptura(r.detalle);
+  if (!c) return [];
+  const rapida = c.segundos < SEGUNDOS_CAPTURA_RAPIDA ? " ⚠ muy rápido" : "";
+  return [
+    `Inició ${fechaHoraCompleta(c.inicio)} · terminó ${fechaHoraCompleta(r.en)}`,
+    `Duración: ${duracionLegible(c.segundos)}${rapida}`,
+    c.guardados === 0 ? "Sin cambios guardados mientras la tenía" : `${c.guardados} ${c.guardados === 1 ? "cambio guardado" : "cambios guardados"} mientras la tenía`,
+  ];
 }
