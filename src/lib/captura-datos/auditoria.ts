@@ -69,6 +69,15 @@ export async function registrarAuditoria(entrada: EntradaAuditoria): Promise<voi
   }
 }
 
+/** Cuándo se tomó la hoja, cuánto pasó hasta confirmarla y cuántos autoguardados hizo la persona entretanto (vacío si no se sabe). */
+function datosDeCaptura(previa: HojaCaptura, hoja: HojaCaptura): Record<string, unknown> {
+  if (!previa.tomadaEn) return {};
+  const fin = hoja.confirmadaEn ? new Date(hoja.confirmadaEn).getTime() : Date.now();
+  const segundos = Math.max(0, Math.round((fin - new Date(previa.tomadaEn).getTime()) / 1000));
+  const guardados = previa.guardadosDesdeToma ?? 0;
+  return { inicio: previa.tomadaEn, segundos, guardados };
+}
+
 /**
  * Registra una confirmación de hoja. La primera vez es "hoja_confirmada" (solo el folio, no se guardan los datos
  * personales); si la hoja ya estaba confirmada es una corrección: se guardan los campos que cambiaron (antes y después)
@@ -82,14 +91,15 @@ export async function registrarConfirmacionDeHoja(entrada: {
 }): Promise<void> {
   const { usuario, previa, hoja } = entrada;
   const base = { usuario, eventoId: hoja.eventoId, hojaId: hoja.id };
+  const captura = datosDeCaptura(previa, hoja);
   const folio = hoja.campos?.folio ?? hoja.folio ?? "";
   if (previa.estado !== "confirmada") {
-    await registrarAuditoria({ ...base, accion: "hoja_confirmada", detalle: { folio, ...(entrada.duplicadoForzado ? { duplicadoForzado: true } : {}) } });
+    await registrarAuditoria({ ...base, accion: "hoja_confirmada", detalle: { folio, ...(entrada.duplicadoForzado ? { duplicadoForzado: true } : {}), ...captura } });
     return;
   }
   const cambios = hoja.campos ? diferenciasDeCampos(previa.campos, hoja.campos) : {};
   if (Object.keys(cambios).length === 0) return;
-  await registrarAuditoria({ ...base, accion: "hoja_corregida", detalle: { folio, cambios } });
+  await registrarAuditoria({ ...base, accion: "hoja_corregida", detalle: { folio, cambios, ...captura } });
 }
 
 export interface ConsultaAuditoria {
@@ -149,6 +159,20 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
     return clienteNombre ? { ...filaARegistro(f), clienteNombre } : filaARegistro(f);
   });
   return { registros, hayMas: filas.length > limite };
+}
+
+const TOPE_CONFIRMACIONES = 5000;
+
+/** Las hojas confirmadas (primera vez) de un evento o rango, para el reporte de captura. `truncado` = había más que el tope. */
+export async function listarConfirmaciones(c: { eventoId?: string; fechaDesde?: string; fechaHasta?: string }): Promise<{ registros: RegistroAuditoria[]; truncado: boolean }> {
+  let q = supabase.from("cap_auditoria").select("*").eq("accion", "hoja_confirmada").order("id", { ascending: false }).limit(TOPE_CONFIRMACIONES + 1);
+  if (c.eventoId) q = q.eq("evento_id", c.eventoId);
+  if (c.fechaDesde) q = q.gte("en", c.fechaDesde);
+  if (c.fechaHasta) q = q.lte("en", c.fechaHasta);
+  const { data, error } = await q;
+  if (error) throw error;
+  const filas = (data ?? []) as FilaAuditoria[];
+  return { registros: filas.slice(0, TOPE_CONFIRMACIONES).map(filaARegistro), truncado: filas.length > TOPE_CONFIRMACIONES };
 }
 
 /** Borra los movimientos con más de `dias` días. Devuelve cuántos borró. */

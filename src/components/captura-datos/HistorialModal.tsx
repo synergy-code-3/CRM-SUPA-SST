@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Modal } from "./Modal";
+import { ReporteCaptura } from "./ReporteCaptura";
 import { FiltrosHistorial, hayFiltros, paramsDeFiltros, SIN_FILTROS, type Filtros } from "./FiltrosHistorial";
 import { api } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
@@ -20,8 +21,23 @@ interface HistorialModalProps {
 export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: HistorialModalProps) {
   return (
     <Modal titulo={titulo} onCerrar={onCerrar} tamano="max-h-[85vh] sm:max-w-3xl">
-      <HistorialLista eventoId={eventoId} conFiltros />
+      <HistorialConReporte eventoId={eventoId} />
     </Modal>
+  );
+}
+
+/** Pestañas "Movimientos" y "Reporte de captura" (quién capturó, cuándo empezó y terminó, cuánto tardó). */
+export function HistorialConReporte({ eventoId }: { eventoId?: string }) {
+  const [vista, setVista] = useState<"movimientos" | "reporte">("movimientos");
+  const pestana = (v: typeof vista) => `rounded-lg px-3 py-1.5 text-sm ${vista === v ? "bg-primary text-white" : "border border-silver"}`;
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <button onClick={() => setVista("movimientos")} className={pestana("movimientos")}>Movimientos</button>
+        <button onClick={() => setVista("reporte")} className={pestana("reporte")}>Reporte de captura</button>
+      </div>
+      {vista === "movimientos" ? <HistorialLista eventoId={eventoId} conFiltros /> : <ReporteCaptura eventoId={eventoId} />}
+    </div>
   );
 }
 

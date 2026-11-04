@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const RAIZ = join(process.cwd(), "src/app/api/captura-datos");
 // Rutas que no son de un evento/hoja concreto o cuyo control de acceso es otro (rol admin).
-const EXENTAS = new Set(["eventos/route.ts", "axis/route.ts", "drive/carpeta/route.ts", "historial/route.ts"]);
+const EXENTAS = new Set(["eventos/route.ts", "axis/route.ts", "drive/carpeta/route.ts", "historial/route.ts", "historial/reporte/route.ts"]);
 
 function rutas(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -31,8 +31,8 @@ describe("rutas de evento y hoja", () => {
     expect(codigo).toMatch(/requerir(Evento|Hoja)\(permiso\.usuario/);
   });
 
-  it("el historial solo lo puede leer un admin", () => {
-    const codigo = readFileSync(join(RAIZ, "historial/route.ts"), "utf8");
+  it.each(["historial/route.ts", "historial/reporte/route.ts"])("%s solo lo puede leer un admin", (ruta) => {
+    const codigo = readFileSync(join(RAIZ, ruta), "utf8");
     expect(codigo).toMatch(/requerirPermiso\("verCapturaDatos"\)/);
     expect(codigo).toMatch(/rol !== "admin"/);
   });

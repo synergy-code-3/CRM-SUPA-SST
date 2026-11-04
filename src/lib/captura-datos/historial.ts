@@ -77,6 +77,64 @@ export function diferenciasDeCampos(antes: SheetFields | null, despues: SheetFie
   return cambios;
 }
 
+/** Confirmar una hoja en menos de esto (desde que se tomó) se marca como sospechosa de no haberse leído. */
+export const SEGUNDOS_CAPTURA_RAPIDA = 15;
+
+export function duracionLegible(segundos: number): string {
+  if (segundos < 60) return `${segundos} s`;
+  if (segundos < 3600) return `${Math.floor(segundos / 60)} min ${segundos % 60} s`;
+  return `${Math.floor(segundos / 3600)} h ${Math.floor((segundos % 3600) / 60)} min`;
+}
+
+const HORA = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+export const fechaHoraCompleta = (iso: string) => HORA.format(new Date(iso));
+
+interface DatosCaptura { inicio: string; segundos: number; guardados: number }
+
+function datosCaptura(d: Record<string, unknown> | null): DatosCaptura | null {
+  if (!d || typeof d.inicio !== "string" || typeof d.segundos !== "number") return null;
+  return { inicio: d.inicio, segundos: d.segundos, guardados: typeof d.guardados === "number" ? d.guardados : 0 };
+}
+
+/** Una fila del reporte: lo que una persona capturó en un evento (primera confirmación de cada hoja). */
+export interface ResumenCaptura {
+  eventoId: string | null;
+  eventoNombre: string | null;
+  usuario: string;
+  hojas: number;
+  inicio: string | null;
+  fin: string | null;
+  promedioSegundos: number | null;
+  rapidas: number;
+  sinCambios: number;
+  sinDatos: number;
+}
+
+/** Agrupa las hojas confirmadas por evento y persona. `rapidas` = confirmadas en menos de SEGUNDOS_CAPTURA_RAPIDA; `sinCambios` = sin ningún guardado desde que se tomó. */
+export function resumirCaptura(registros: RegistroAuditoria[]): ResumenCaptura[] {
+  const grupos = new Map<string, { resumen: ResumenCaptura; suma: number; medidas: number }>();
+  for (const r of registros) {
+    const usuario = r.usuarioNombre ?? "Usuario desconocido";
+    const clave = `${r.eventoId ?? ""}|${r.usuarioId ?? usuario}`;
+    let g = grupos.get(clave);
+    if (!g) {
+      g = { resumen: { eventoId: r.eventoId, eventoNombre: r.eventoNombre, usuario, hojas: 0, inicio: null, fin: null, promedioSegundos: null, rapidas: 0, sinCambios: 0, sinDatos: 0 }, suma: 0, medidas: 0 };
+      grupos.set(clave, g);
+    }
+    const x = g.resumen;
+    x.hojas++;
+    const c = datosCaptura(r.detalle);
+    if (!c) { x.sinDatos++; continue; }
+    g.suma += c.segundos;
+    g.medidas++;
+    if (c.segundos < SEGUNDOS_CAPTURA_RAPIDA) x.rapidas++;
+    if (c.guardados === 0) x.sinCambios++;
+    if (!x.inicio || c.inicio < x.inicio) x.inicio = c.inicio;
+    if (!x.fin || r.en > x.fin) x.fin = r.en;
+  }
+  return [...grupos.values()].map(({ resumen, suma, medidas }) => ({ ...resumen, promedioSegundos: medidas ? Math.round(suma / medidas) : null }));
+}
+
 const texto = (v: unknown): string => (typeof v === "string" || typeof v === "number" ? String(v) : "");
 
 /** "2026-10-28" → "28/10/2026" (sin pasar por Date, para evitar el desfase de zona horaria). */
@@ -106,6 +164,7 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
       if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
+      lineas.push(...lineasDeCaptura(r));
       break;
     case "hoja_corregida": {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
@@ -113,10 +172,22 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       for (const [campo, c] of Object.entries(cambios)) {
         lineas.push(`${ETIQUETA_CAMPO[campo] ?? campo}: «${c.antes}» → «${c.despues}»`);
       }
+      lineas.push(...lineasDeCaptura(r));
       break;
     }
     default:
       break;
   }
   return lineas;
+}
+
+function lineasDeCaptura(r: RegistroAuditoria): string[] {
+  const c = datosCaptura(r.detalle);
+  if (!c) return [];
+  const rapida = c.segundos < SEGUNDOS_CAPTURA_RAPIDA ? " ⚠ muy rápido" : "";
+  return [
+    `Inició ${fechaHoraCompleta(c.inicio)} · terminó ${fechaHoraCompleta(r.en)}`,
+    `Duración: ${duracionLegible(c.segundos)}${rapida}`,
+    c.guardados === 0 ? "Sin cambios guardados mientras la tenía" : `${c.guardados} ${c.guardados === 1 ? "cambio guardado" : "cambios guardados"} mientras la tenía`,
+  ];
 }

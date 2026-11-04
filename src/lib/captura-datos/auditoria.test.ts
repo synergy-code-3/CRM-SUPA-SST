@@ -30,7 +30,7 @@ const mock = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase", () => ({ supabase: mock.cliente }));
 
-import { listarAuditoria, purgarAuditoria, registrarAuditoria, registrarConfirmacionDeHoja } from "./auditoria";
+import { listarAuditoria, listarConfirmaciones, purgarAuditoria, registrarAuditoria, registrarConfirmacionDeHoja } from "./auditoria";
 import { EMPTY_FIELDS, type SheetFields } from "./fields";
 import type { HojaCaptura } from "./modelo";
 
@@ -84,6 +84,12 @@ describe("registrarConfirmacionDeHoja", () => {
     expect(JSON.stringify(fila?.detalle)).not.toContain("Ana");
   });
 
+  it("guarda cuándo se tomó la hoja, cuánto tardó y cuántos cambios se guardaron", async () => {
+    const previa = { ...hoja("leida", campos()), tomadaEn: "2026-10-28T11:59:50.000Z", guardadosDesdeToma: 2 };
+    await registrarConfirmacionDeHoja({ usuario, previa, hoja: { ...hoja("confirmada", campos()), confirmadaEn: "2026-10-28T12:00:00.000Z" }, duplicadoForzado: false });
+    expect(insertado()?.detalle).toEqual({ folio: "4476", inicio: "2026-10-28T11:59:50.000Z", segundos: 10, guardados: 2 });
+  });
+
   it("marca cuando se confirmó forzando un folio duplicado", async () => {
     await registrarConfirmacionDeHoja({ usuario, previa: hoja("leida", campos()), hoja: hoja("confirmada", campos()), duplicadoForzado: true });
     expect(insertado()?.detalle).toEqual({ folio: "4476", duplicadoForzado: true });
@@ -97,6 +103,17 @@ describe("registrarConfirmacionDeHoja", () => {
   it("si al corregir no cambió nada, no registra nada", async () => {
     await registrarConfirmacionDeHoja({ usuario, previa: hoja("confirmada", campos()), hoja: hoja("confirmada", campos()), duplicadoForzado: false });
     expect(insertado()).toBeUndefined();
+  });
+});
+
+describe("listarConfirmaciones", () => {
+  it("pide solo las hojas confirmadas del evento y avisa si el tope cortó la lista", async () => {
+    mock.respuestas.cap_auditoria = { data: [], error: null };
+    await listarConfirmaciones({ eventoId: "e1", fechaDesde: "2026-10-01T00:00:00.000Z" });
+    const ops = operacionesDe("cap_auditoria");
+    expect(ops).toContainEqual(["eq", ["accion", "hoja_confirmada"]]);
+    expect(ops).toContainEqual(["eq", ["evento_id", "e1"]]);
+    expect(ops).toContainEqual(["gte", ["en", "2026-10-01T00:00:00.000Z"]]);
   });
 });
 

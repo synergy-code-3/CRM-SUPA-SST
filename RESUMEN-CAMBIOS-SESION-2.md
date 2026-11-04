@@ -359,3 +359,10 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - Nuevo evento: "Importar fotos de Drive" se deshabilita si la carpeta no tiene subcarpetas Completos / Apartados / Interesados (`NuevoEventoModal.tsx`).
 - Hoja del cliente: mientras busca por correo/teléfono se ve una lupa que parpadea suave, y el espacio de los íconos queda reservado (24 px de alto, 56 de ancho) para que el texto de la tarjeta no se mueva al aparecer o no aparecer.
 - Hoja del cliente más rápida: al pasar el mouse o enfocar el ícono "ver hoja" se precarga la imagen (PDF no), y la vista (no la descarga) de `GET /api/clientes/[id]/hojas/[hojaId]/archivo` lleva `Cache-Control: private, max-age=300` (menor que los 10 min de la URL firmada). Sin SQL pendiente.
+
+**Reporte de captura en el Historial** (4 nov) — para detectar a quien confirma sin leer.
+- Cada hoja guarda cuándo la tomó la persona (`cap_hojas.tomada_en`) y cuántos autoguardados lleva (`guardados_toma`, vuelve a 0 en cada toma nueva; `tomar_hoja_libre` y `tomarHojaPorId` los fijan). Al confirmar, el movimiento `hoja_confirmada`/`hoja_corregida` guarda `inicio`, `segundos` y `guardados`.
+- Historial: cada confirmación muestra "Inició … · terminó …", duración (⚠ si < 15 s, `SEGUNDOS_CAPTURA_RAPIDA`) y "sin cambios guardados".
+- Pestaña nueva "Reporte de captura" (página Historial y modal por evento, filtro de fechas): por persona y evento, primer inicio, último fin, hojas, promedio, "muy rápidas" y "sin cambios". Endpoint `GET /api/captura-datos/historial/reporte` (solo admin).
+- Las hojas confirmadas antes de este cambio salen "sin medición".
+- **SQL pendiente:** ejecutar `supabase/schema.sql` ANTES de desplegar (agrega las 2 columnas y reemplaza `tomar_hoja_libre`); sin las columnas, abrir y autoguardar hojas falla.

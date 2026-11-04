@@ -89,4 +89,7 @@ export interface HojaCaptura {
   confirmadaEn: string | null;
   folio: string | null;
   version: number;
+  /** Cuándo (ISO) la tomó la persona actual y cuántos guardados lleva desde entonces: mide cuánto tardó y si tocó algo. */
+  tomadaEn?: string | null;
+  guardadosDesdeToma?: number | null;
 }
