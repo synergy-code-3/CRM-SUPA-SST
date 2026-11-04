@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ListChecks, RefreshCw } from "lucide-react";
 import { DetalleCapturaModal } from "./DetalleCapturaModal";
 import { Paginador } from "./Paginador";
+import { SelectorLista, useOpcionesHistorial } from "./SelectoresHistorial";
 import { paginar } from "@/lib/captura-datos/paginacion";
 import { api } from "@/lib/captura-datos/cliente";
 import { useSesion } from "@/lib/session-context";
@@ -27,13 +28,18 @@ function Alertas({ f }: { f: ResumenCaptura }) {
 }
 
 /** Quién capturó qué: inicio, fin y ritmo por persona y evento, para detectar a quien confirma sin leer. */
-export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
+export function ReporteCaptura({ eventoId: eventoFijo }: { eventoId?: string }) {
   const { usuario } = useSesion();
+  const opciones = useOpcionesHistorial();
+  const [eventoElegido, setEventoElegido] = useState("");
+  const [admin, setAdmin] = useState("");
+  const eventoId = eventoFijo ?? (eventoElegido || undefined);
   const [detalle, setDetalle] = useState<ResumenCaptura | null>(null);
   const [pagina, setPagina] = useState(0);
-  const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}`, () => {
+  const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}:${admin || "todos"}`, () => {
     const params = new URLSearchParams();
     if (eventoId) params.set("eventoId", eventoId);
+    if (admin) params.set("admin", admin);
     return api<Respuesta>(`/api/captura-datos/historial/reporte?${params}`);
   });
 
@@ -43,13 +49,15 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 border-t border-silver pt-3 text-sm">
         <h3 className="text-base font-semibold text-foreground">Reporte de captura</h3>
+        <SelectorLista valor={admin} onCambio={(v) => { setAdmin(v); setPagina(0); }} opciones={opciones?.admins ?? []} todas="Todos los admins" etiqueta="Admin" />
+        {!eventoFijo && <SelectorLista valor={eventoElegido} onCambio={(v) => { setEventoElegido(v); setPagina(0); }} opciones={opciones?.eventos ?? []} todas="Todos los eventos" etiqueta="Evento" />}
         <button onClick={recargar} disabled={!datos && !error} title="Volver a pedir los datos (lo ya visto se guarda mientras la pestaña esté abierta)" className="ml-auto inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 hover:bg-silver/40 disabled:opacity-50">
           <RefreshCw className="h-4 w-4" /> Actualizar
         </button>
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!datos && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
-      {datos?.filas.length === 0 && <p className="py-6 text-center text-sm text-muted">Todavía no hay hojas confirmadas.</p>}
+      {datos?.filas.length === 0 && <p className="py-6 text-center text-sm text-muted">{admin || eventoId ? "Ninguna hoja confirmada con esos filtros." : "Todavía no hay hojas confirmadas."}</p>}
       {datos?.truncado && <p className="text-xs text-warning">Hay demasiadas hojas: el reporte solo cubre las más recientes.</p>}
       {datos && datos.filas.length > 0 && (
         <div className="overflow-x-auto">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_FIELDS, type SheetFields } from "./fields";
-import { otrosMovimientos, diferenciasDeCampos, duracionLegible, ETIQUETA_ACCION, lineasDeDetalle, resumirCaptura, SEGUNDOS_CAPTURA_RAPIDA, detalleDeCaptura, estadisticasDeCaptura, type AccionAuditoria, type RegistroAuditoria } from "./historial";
+import { csvDeRegistros, otrosMovimientos, diferenciasDeCampos, duracionLegible, ETIQUETA_ACCION, lineasDeDetalle, resumirCaptura, SEGUNDOS_CAPTURA_RAPIDA, detalleDeCaptura, estadisticasDeCaptura, type AccionAuditoria, type RegistroAuditoria } from "./historial";
 
 const campos = (sobreescribir: Partial<SheetFields> = {}): SheetFields => ({ ...EMPTY_FIELDS, folio: "4476", nombre: "Ana Pérez", ...sobreescribir });
 
@@ -151,5 +151,13 @@ describe("estadisticasDeCaptura", () => {
     const h = (segundos: number | null) => ({ segundos }) as { segundos: number | null };
     expect(estadisticasDeCaptura([h(10), h(40), h(null), h(20)] as never)).toEqual({ medidas: 3, minimo: 10, mediana: 20, maximo: 40 });
     expect(estadisticasDeCaptura([h(null)] as never)).toEqual({ medidas: 0, minimo: null, mediana: null, maximo: null });
+  });
+});
+
+describe("csvDeRegistros", () => {
+  it("arma encabezado y filas, y protege comas, comillas y saltos de línea", () => {
+    const csv = csvDeRegistros([{ id: 1, en: "2026-01-02T10:00:00.000Z", usuarioId: null, usuarioNombre: 'Ana "A", Pérez', eventoId: null, eventoNombre: "Evento", hojaId: null, accion: "evento_creado", detalle: null }]);
+    expect(csv.startsWith("﻿Fecha,Admin,Evento,Acción,Detalle\r\n")).toBe(true);
+    expect(csv).toContain('2026-01-02T10:00:00.000Z,"Ana ""A"", Pérez",Evento,Creó el evento,');
   });
 });

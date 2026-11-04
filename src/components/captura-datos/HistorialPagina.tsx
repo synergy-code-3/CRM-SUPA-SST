@@ -1,6 +1,7 @@
 "use client";
 
 import { History, ShieldAlert } from "lucide-react";
+import { ArchivoHistorial } from "./ArchivoHistorial";
 import { HistorialConReporte } from "./HistorialModal";
 import { RETENCION_AUDITORIA_DIAS } from "@/lib/captura-datos/historial";
 import { useSesion } from "@/lib/session-context";
@@ -19,14 +20,17 @@ export function HistorialPagina() {
         </h1>
         <p className="text-sm text-muted">
           Movimientos importantes de Captura de Datos: eventos creados, cerrados, reabiertos y borrados, y hojas confirmadas o corregidas.
-          Se conservan {MESES_DE_HISTORIAL} meses.
+          Se conservan {MESES_DE_HISTORIAL} meses; lo anterior se borra y queda en un CSV descargable.
         </p>
       </div>
 
       {usuario?.rol === "admin" ? (
-        <div className="rounded-2xl border border-silver bg-surface p-4">
-          <HistorialConReporte />
-        </div>
+        <>
+          <div className="rounded-2xl border border-silver bg-surface p-4">
+            <HistorialConReporte />
+          </div>
+          <ArchivoHistorial />
+        </>
       ) : (
         <p className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
           <ShieldAlert className="h-4 w-4 shrink-0" /> Solo un admin puede ver el historial.

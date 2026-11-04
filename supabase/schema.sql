@@ -1323,7 +1323,8 @@ create index if not exists idx_cap_hojas_cliente_telefono on cap_hojas ((campos 
 insert into storage.buckets (id, name, public)
 values ('comprobantes-pago', 'comprobantes-pago', false),
        ('cap-fotos', 'cap-fotos', false),
-       ('cap-excel', 'cap-excel', false)
+       ('cap-excel', 'cap-excel', false),
+       ('cap-historial', 'cap-historial', false)
 on conflict (id) do nothing;
 
 analyze clientes;

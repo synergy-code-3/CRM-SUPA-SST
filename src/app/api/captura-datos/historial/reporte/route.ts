@@ -8,6 +8,7 @@ import { ErrorPeticion, respuestaError } from "@/lib/captura-datos/api";
 const consulta = z.object({
   eventoId: z.uuid().optional(),
   usuarioId: z.uuid().optional(), // con esto se devuelve el detalle hoja por hoja de esa persona (junto con eventoId)
+  admin: z.uuid().optional(), // filtra el resumen a los eventos donde participó este admin
   fechaDesde: z.iso.datetime().optional(),
   fechaHasta: z.iso.datetime().optional(),
 });
@@ -27,7 +28,8 @@ export async function GET(req: NextRequest) {
       const nombres = await nombresDeFotos(hojas.flatMap((h) => (h.hojaId ? [h.hojaId] : [])));
       return NextResponse.json({ hojas: hojas.map((h) => ({ ...h, foto: h.hojaId ? nombres.get(h.hojaId) : undefined })), otros: otrosMovimientos(registros), truncado });
     }
-    const { registros, truncado } = await listarConfirmaciones(q.data);
+    const { admin, ...filtros } = q.data;
+    const { registros, truncado } = await listarConfirmaciones({ ...filtros, usuarioId: admin });
     return NextResponse.json({ filas: resumirCaptura(registros), truncado });
   } catch (err) {
     return respuestaError(err, "captura-datos/historial/reporte GET");

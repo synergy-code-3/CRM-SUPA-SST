@@ -2,8 +2,8 @@
 // navegador (HistorialModal), por eso no importa nada de Supabase.
 import type { SheetFields } from "./fields";
 
-/** Cuánto se conserva el historial; el cron semanal /api/cron/purgar-auditoria borra lo más viejo (ver auditoria.ts). */
-export const RETENCION_AUDITORIA_DIAS = 365;
+/** Cuánto se conserva el historial (6 meses); el cron semanal /api/cron/purgar-auditoria guarda un CSV de lo más viejo y lo borra (ver auditoria.ts). */
+export const RETENCION_AUDITORIA_DIAS = 180;
 
 export type AccionAuditoria =
   | "evento_creado"
@@ -278,4 +278,12 @@ function lineasDeCaptura(r: RegistroAuditoria): string[] {
     `Duración: ${duracionLegible(c.segundos)}${rapida}`,
     c.guardados === 0 ? "Sin cambios guardados mientras la tenía" : `${c.guardados} ${c.guardados === 1 ? "cambio guardado" : "cambios guardados"} mientras la tenía`,
   ];
+}
+
+const celdaCsv = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** CSV (con BOM para que Excel lo abra con acentos) de movimientos del historial: fecha, admin, evento, acción y detalle. */
+export function csvDeRegistros(registros: RegistroAuditoria[]): string {
+  const filas = registros.map((r) => [r.en, r.usuarioNombre ?? "", r.eventoNombre ?? "", ETIQUETA_ACCION[r.accion] ?? r.accion, lineasDeDetalle(r).join(" | ")]);
+  return "\uFEFF" + [["Fecha", "Admin", "Evento", "Acción", "Detalle"], ...filas].map((f) => f.map(celdaCsv).join(",")).join("\r\n") + "\r\n";
 }

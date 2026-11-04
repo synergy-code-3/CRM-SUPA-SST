@@ -148,7 +148,7 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
 
   return (
     <div className="space-y-3">
-      {conFiltros && <FiltrosHistorial filtros={filtros} onCambio={setFiltros} sinLugar={!!eventoId} />}
+      {conFiltros && <FiltrosHistorial filtros={filtros} onCambio={setFiltros} sinEvento={!!eventoId} />}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!actual && cargando && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
       {actual?.registros.length === 0 && <p className="py-6 text-center text-sm text-muted">{filtrando ? "Ningún movimiento coincide con los filtros." : "Todavía no hay movimientos registrados."}</p>}

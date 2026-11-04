@@ -4,7 +4,7 @@ import { purgarAuditoria, RETENCION_AUDITORIA_DIAS } from "@/lib/captura-datos/a
 
 export const maxDuration = 60;
 
-// Borra del historial de Captura de Datos (cap_auditoria) lo que tenga más de RETENCION_AUDITORIA_DIAS días.
+// Guarda en CSV y borra del historial de Captura de Datos (cap_auditoria) lo que tenga más de RETENCION_AUDITORIA_DIAS días.
 // Invocado una vez por semana por el Cron Job de Vercel (ver vercel.json).
 async function manejar(req: NextRequest) {
   if (!autorizadoParaCron(req)) {
@@ -12,8 +12,8 @@ async function manejar(req: NextRequest) {
   }
 
   try {
-    const borrados = await purgarAuditoria();
-    return NextResponse.json({ ok: true, borrados, dias: RETENCION_AUDITORIA_DIAS });
+    const { borrados, archivo } = await purgarAuditoria();
+    return NextResponse.json({ ok: true, borrados, archivo, dias: RETENCION_AUDITORIA_DIAS });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido";
     return NextResponse.json({ error: message }, { status: 502 });

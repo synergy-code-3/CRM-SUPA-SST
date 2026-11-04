@@ -2,7 +2,8 @@
 // que se está registrando: si falla (p. ej. la tabla aún no existe en Supabase), se anota en la consola del servidor y
 // todo sigue. Los textos y tipos compartidos con el navegador viven en historial.ts.
 import { supabase } from "@/lib/supabase";
-import { diferenciasDeCampos, RETENCION_AUDITORIA_DIAS, type AccionAuditoria, type RegistroAuditoria } from "./historial";
+import { subirArchivoHistorial } from "@/lib/storage";
+import { csvDeRegistros, diferenciasDeCampos, RETENCION_AUDITORIA_DIAS, type AccionAuditoria, type RegistroAuditoria } from "./historial";
 import { imageFileName, type SheetFields } from "./fields";
 import type { FotoRef, HojaCaptura } from "./modelo";
 
@@ -187,12 +188,35 @@ export async function listarMovimientosDePersona(c: { eventoId?: string; usuario
   return { registros: filas.slice(0, TOPE_CONFIRMACIONES).map(filaARegistro), truncado: filas.length > TOPE_CONFIRMACIONES };
 }
 
-/** Borra los movimientos con más de `dias` días. Devuelve cuántos borró. */
-export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): Promise<number> {
+const LOTE_ARCHIVO = 1000;
+
+/** Todos los movimientos anteriores a `limite`, del más viejo al más nuevo (por lotes). */
+async function registrosAnterioresA(limite: string): Promise<RegistroAuditoria[]> {
+  const todos: RegistroAuditoria[] = [];
+  for (let desde = 0; ; ) {
+    const { data, error } = await supabase.from("cap_auditoria").select("*").lt("en", limite).gt("id", desde).order("id", { ascending: true }).limit(LOTE_ARCHIVO);
+    if (error) throw error;
+    const filas = (data ?? []) as FilaAuditoria[];
+    todos.push(...filas.map(filaARegistro));
+    if (filas.length < LOTE_ARCHIVO) return todos;
+    desde = filas[filas.length - 1].id;
+  }
+}
+
+/**
+ * Guarda en un CSV los movimientos con más de `dias` días y luego los borra; si el CSV no se pudo guardar no borra nada.
+ * Devuelve cuántos borró y el nombre del archivo.
+ */
+export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): Promise<{ borrados: number; archivo: string | null }> {
   const limite = new Date(Date.now() - dias * MS_POR_DIA).toISOString();
-  const { data, error } = await supabase.from("cap_auditoria").delete().lt("en", limite).select("id");
+  const viejos = await registrosAnterioresA(limite);
+  if (viejos.length === 0) return { borrados: 0, archivo: null };
+  const dia = (iso: string) => iso.slice(0, 10);
+  const archivo = `historial_${dia(viejos[0].en)}_a_${dia(viejos[viejos.length - 1].en)}.csv`;
+  await subirArchivoHistorial(archivo, csvDeRegistros(viejos));
+  const { data, error } = await supabase.from("cap_auditoria").delete().lt("en", limite).lte("id", viejos[viejos.length - 1].id).select("id");
   if (error) throw error;
-  return (data ?? []).length;
+  return { borrados: (data ?? []).length, archivo };
 }
 
 const HOJAS_POR_CONSULTA = 100; // los ids van en la URL: con más, la dirección puede pasarse del límite del servidor

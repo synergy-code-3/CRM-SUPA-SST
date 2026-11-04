@@ -29,6 +29,9 @@ const mock = vi.hoisted(() => {
   return { consultas, respuestas, cliente };
 });
 vi.mock("@/lib/supabase", () => ({ supabase: mock.cliente }));
+const almacen = vi.hoisted(() => ({ falla: false }));
+const subir = vi.hoisted(() => vi.fn(async () => { if (almacen.falla) throw new Error("storage"); }));
+vi.mock("@/lib/storage", () => ({ subirArchivoHistorial: subir }));
 
 import { listarAuditoria, listarConfirmaciones, nombresDeFotos, purgarAuditoria, registrarAuditoria, registrarConfirmacionDeHoja } from "./auditoria";
 import { EMPTY_FIELDS, type SheetFields } from "./fields";
@@ -180,17 +183,44 @@ describe("listarAuditoria", () => {
 });
 
 describe("purgarAuditoria", () => {
-  it("borra lo anterior al plazo y devuelve cuántos borró", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
-    mock.respuestas.cap_auditoria = { data: [{ id: 1 }, { id: 2 }], error: null };
-    const borrados = await purgarAuditoria(365);
-    vi.useRealTimers();
-    expect(borrados).toBe(2);
-    expect(operacionesDe("cap_auditoria")).toContainEqual(["lt", ["en", "2025-10-28T12:00:00.000Z"]]);
+  const fila = (id: number, en: string) => ({ id, en, usuario_id: null, usuario_nombre: "Ana", evento_id: null, evento_nombre: "Evento", hoja_id: null, accion: "evento_creado", detalle: null });
+
+  beforeEach(() => {
+    subir.mockClear();
+    almacen.falla = false;
   });
 
-  it("si falla, lanza el error", async () => {
+  it("guarda un CSV de lo anterior al plazo y luego lo borra", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
+    mock.respuestas.cap_auditoria = { data: [fila(1, "2026-01-02T10:00:00.000Z"), fila(2, "2026-03-05T10:00:00.000Z")], error: null };
+    const r = await purgarAuditoria(180);
+    vi.useRealTimers();
+    expect(r).toEqual({ borrados: 2, archivo: "historial_2026-01-02_a_2026-03-05.csv" });
+    expect(subir).toHaveBeenCalledWith("historial_2026-01-02_a_2026-03-05.csv", expect.stringContaining("Creó el evento"));
+    expect(operacionesDe("cap_auditoria")).toContainEqual(["lt", ["en", "2026-05-01T12:00:00.000Z"]]);
+  });
+
+  it("si no hay nada viejo, no sube ni borra", async () => {
+    mock.respuestas.cap_auditoria = { data: [], error: null };
+    expect(await purgarAuditoria()).toEqual({ borrados: 0, archivo: null });
+    expect(subir).not.toHaveBeenCalled();
+  });
+
+  it("si el CSV no se pudo guardar, no borra", async () => {
+    mock.respuestas.cap_auditoria = { data: [fila(1, "2026-01-02T10:00:00.000Z")], error: null };
+    almacen.falla = true;
+    let mensaje = "";
+    try {
+      await purgarAuditoria();
+    } catch (e) {
+      mensaje = (e as Error).message;
+    }
+    expect(mensaje).toBe("storage");
+    expect(operacionesDe("cap_auditoria").some(([m]) => m === "delete")).toBe(false);
+  });
+
+  it("si falla la base, lanza el error", async () => {
     mock.respuestas.cap_auditoria = { error: new Error("db") };
     await expect(purgarAuditoria()).rejects.toThrow("db");
   });
