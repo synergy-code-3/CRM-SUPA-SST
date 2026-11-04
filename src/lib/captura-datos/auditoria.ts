@@ -164,9 +164,10 @@ export async function listarAuditoria(consulta: ConsultaAuditoria = {}): Promise
 const TOPE_CONFIRMACIONES = 5000;
 
 /** Las hojas confirmadas (primera vez) de un evento o rango, para el reporte de captura. `truncado` = había más que el tope. */
-export async function listarConfirmaciones(c: { eventoId?: string; fechaDesde?: string; fechaHasta?: string }): Promise<{ registros: RegistroAuditoria[]; truncado: boolean }> {
+export async function listarConfirmaciones(c: { eventoId?: string; usuarioId?: string; fechaDesde?: string; fechaHasta?: string }): Promise<{ registros: RegistroAuditoria[]; truncado: boolean }> {
   let q = supabase.from("cap_auditoria").select("*").eq("accion", "hoja_confirmada").order("id", { ascending: false }).limit(TOPE_CONFIRMACIONES + 1);
   if (c.eventoId) q = q.eq("evento_id", c.eventoId);
+  if (c.usuarioId) q = q.eq("usuario_id", c.usuarioId);
   if (c.fechaDesde) q = q.gte("en", c.fechaDesde);
   if (c.fechaHasta) q = q.lte("en", c.fechaHasta);
   const { data, error } = await q;
@@ -181,4 +182,19 @@ export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): 
   const { data, error } = await supabase.from("cap_auditoria").delete().lt("en", limite).select("id");
   if (error) throw error;
   return (data ?? []).length;
+}
+
+const HOJAS_POR_CONSULTA = 200;
+
+/** Nombre del archivo de cada hoja que aún existe (id → nombre). Las de eventos borrados no aparecen. */
+export async function nombresDeFotos(ids: string[]): Promise<Map<string, string>> {
+  const nombres = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += HOJAS_POR_CONSULTA) {
+    const { data, error } = await supabase.from("cap_hojas").select("id, origen").in("id", ids.slice(i, i + HOJAS_POR_CONSULTA));
+    if (error) throw error;
+    for (const h of (data ?? []) as { id: string; origen: { nombreOriginal?: string; pagina?: number } | null }[]) {
+      if (h.origen?.nombreOriginal) nombres.set(h.id, h.origen.pagina ? `${h.origen.nombreOriginal} (pág. ${h.origen.pagina})` : h.origen.nombreOriginal);
+    }
+  }
+  return nombres;
 }

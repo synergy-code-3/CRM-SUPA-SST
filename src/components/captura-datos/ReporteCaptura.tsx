@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ListChecks } from "lucide-react";
+import { DetalleCapturaModal } from "./DetalleCapturaModal";
 import { api } from "@/lib/captura-datos/cliente";
 import { duracionLegible, fechaHoraCompleta, type ResumenCaptura } from "@/lib/captura-datos/historial";
 
@@ -19,12 +21,18 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
   const [hasta, setHasta] = useState("");
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [detalle, setDetalle] = useState<ResumenCaptura | null>(null);
+  const fechas = useMemo(() => {
+    const p = new URLSearchParams();
+    if (desde) p.set("fechaDesde", dia(desde, false));
+    if (hasta) p.set("fechaHasta", dia(hasta, true));
+    return p;
+  }, [desde, hasta]);
+  const periodo = desde || hasta ? `${desde || "inicio"} a ${hasta || "hoy"}` : "Todo el tiempo";
 
   useEffect(() => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(fechas);
     if (eventoId) params.set("eventoId", eventoId);
-    if (desde) params.set("fechaDesde", dia(desde, false));
-    if (hasta) params.set("fechaHasta", dia(hasta, true));
     let vigente = true;
     setDatos(null);
     setError(null);
@@ -32,7 +40,7 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
       .then((r) => vigente && setDatos(r))
       .catch((e) => vigente && setError(e instanceof Error ? e.message : "No se pudo cargar el reporte."));
     return () => { vigente = false; };
-  }, [eventoId, desde, hasta]);
+  }, [eventoId, fechas]);
 
   return (
     <div className="space-y-3">
@@ -56,11 +64,12 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
                 <th className="pr-3 font-medium">Hojas</th>
                 <th className="pr-3 font-medium">Promedio</th>
                 <th className="font-medium">Alertas</th>
+                <th />
               </tr>
             </thead>
             <tbody className="divide-y divide-silver/60">
               {datos.filas.map((f) => (
-                <tr key={`${f.eventoId}|${f.usuario}`} className="align-top">
+                <tr key={`${f.eventoId}|${f.usuarioId ?? f.usuario}`} className="align-top">
                   <td className="py-2 pr-3 font-medium text-foreground">{f.usuario}</td>
                   {!eventoId && <td className="pr-3">{f.eventoNombre ?? "Evento borrado"}</td>}
                   <td className="pr-3">{f.inicio ? fechaHoraCompleta(f.inicio) : "—"}</td>
@@ -72,12 +81,21 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
                     <p>{aviso(f.sinCambios, "sin cambios")}</p>
                     {f.sinDatos > 0 && <p className="text-muted">{f.sinDatos} sin medición</p>}
                   </td>
+                  <td className="text-right">
+                    {f.eventoId && f.usuarioId && (
+                      <button onClick={() => setDetalle(f)} aria-label={`Ver detalle de ${f.usuario}`} title="Ver detalle hoja por hoja" className="rounded-lg p-1 text-primary hover:bg-silver/40">
+                        <ListChecks className="h-5 w-5" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {detalle && <DetalleCapturaModal fila={detalle} params={fechas} periodo={periodo} onCerrar={() => setDetalle(null)} />}
     </div>
   );
 }
+
