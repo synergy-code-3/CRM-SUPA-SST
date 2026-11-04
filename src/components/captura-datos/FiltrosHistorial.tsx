@@ -20,7 +20,7 @@ export const hayFiltros = (f: Filtros) => !!(f.q.trim() || f.eventoId || f.accio
 export function paramsDeFiltros(f: Filtros): URLSearchParams {
   const p = new URLSearchParams();
   if (f.q.trim()) p.set("q", f.q.trim());
-  if (f.eventoId) p.set("lugar", f.eventoId);
+  if (f.eventoId) p.set("eventoId", f.eventoId);
   if (f.acciones.length) p.set("acciones", f.acciones.join(","));
   if (f.desde) p.set("fechaDesde", new Date(`${f.desde}T00:00:00`).toISOString());
   if (f.hasta) p.set("fechaHasta", new Date(`${f.hasta}T23:59:59.999`).toISOString());
