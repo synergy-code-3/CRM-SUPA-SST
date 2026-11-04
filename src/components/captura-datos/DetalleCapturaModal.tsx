@@ -13,25 +13,23 @@ import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 
 type Filtro = "todas" | "rapidas" | "sinCambios";
 const FILTROS: [Filtro, string][] = [["todas", "Todas"], ["rapidas", "Muy rápidas"], ["sinCambios", "Sin cambios"]];
+const PERIODO = "Todo el historial";
 const seg = (s: number | null) => (s === null ? "—" : duracionLegible(s));
 
 interface Props {
   fila: ResumenCaptura;
-  /** Query con las fechas del reporte (fechaDesde / fechaHasta ya armadas). */
-  params: URLSearchParams;
-  periodo: string;
   onCerrar: () => void;
 }
 
 /** Detalle hoja por hoja de lo que una persona capturó en un evento, con descarga en PDF. */
-export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) {
+export function DetalleCapturaModal({ fila, onCerrar }: Props) {
   const { usuario } = useSesion();
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
   const [abriendo, setAbriendo] = useState<string | null>(null);
-  const { datos, error: errorCarga, recargar } = useDatosEnCache<{ hojas: HojaDeCaptura[] }>(usuario?.id, `detalle:${fila.eventoId}:${fila.usuarioId}:${params}`, () => {
-    const p = new URLSearchParams(params);
+  const { datos, error: errorCarga, recargar } = useDatosEnCache<{ hojas: HojaDeCaptura[] }>(usuario?.id, `detalle:${fila.eventoId}:${fila.usuarioId}`, () => {
+    const p = new URLSearchParams();
     if (fila.eventoId) p.set("eventoId", fila.eventoId);
     if (fila.usuarioId) p.set("usuarioId", fila.usuarioId);
     return api<{ hojas: HojaDeCaptura[] }>(`/api/captura-datos/historial/reporte?${p}`);
@@ -55,14 +53,14 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
 
   function informe(imprimir: boolean) {
     if (!hojas) return;
-    const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo, hojas }, imprimir);
+    const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo: PERIODO, hojas }, imprimir);
     if (!abierto) setAvisoLocal("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio.");
   }
 
   return (
     <Modal titulo={`Detalle de ${fila.usuario}`} onCerrar={onCerrar} tamano="max-h-[88vh] sm:max-w-5xl">
       <div className="space-y-3 text-sm">
-        <p className="text-muted">{fila.eventoNombre ?? "Evento borrado"} · {periodo}</p>
+        <p className="text-muted">{fila.eventoNombre ?? "Evento borrado"}</p>
         {error && <p role="alert" className="text-danger">{error}</p>}
         {!hojas && !error && <p className="py-6 text-center text-muted">Cargando…</p>}
         {hojas && (
@@ -97,20 +95,20 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
                   </thead>
                   <tbody className="divide-y divide-silver/60">
                     {visibles.map((h, i) => (
-                      <tr key={h.hojaId ?? i} className={`align-top ${h.rapida || h.sinCambios ? "bg-warning/5" : ""}`}>
-                        <td className="py-1.5 pr-3 font-medium text-foreground">{h.foto ?? "No disponible"}</td>
-                        <td className="pr-3">{h.folio || "—"}</td>
-                        <td className="pr-3">{h.inicio ? fechaHoraCompleta(h.inicio) : "—"}</td>
-                        <td className="pr-3">{fechaHoraCompleta(h.fin)}</td>
-                        <td className="pr-3">{seg(h.segundos)}</td>
-                        <td className="pr-3">{h.guardados ?? "—"}</td>
-                        <td className="pr-3">{seg(h.desdeAnteriorSegundos)}</td>
-                        <td className="space-x-1">
+                      <tr key={h.hojaId ?? i} className={`align-middle ${h.rapida || h.sinCambios ? "bg-warning/5" : ""}`}>
+                        <td className="py-2 pr-3 font-medium text-foreground">{h.foto ?? "No disponible"}</td>
+                        <td className="py-2 pr-3">{h.folio || "—"}</td>
+                        <td className="py-2 pr-3">{h.inicio ? fechaHoraCompleta(h.inicio) : "—"}</td>
+                        <td className="py-2 pr-3">{fechaHoraCompleta(h.fin)}</td>
+                        <td className="py-2 pr-3">{seg(h.segundos)}</td>
+                        <td className="py-2 pr-3">{h.guardados ?? "—"}</td>
+                        <td className="py-2 pr-3">{seg(h.desdeAnteriorSegundos)}</td>
+                        <td className="space-x-1 py-2 pr-3">
                           {h.rapida && <span className="rounded bg-danger/10 px-1.5 py-0.5 font-medium text-danger">Muy rápida</span>}
                           {h.sinCambios && <span className="rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">Sin cambios</span>}
                           {h.segundos === null && <span className="text-muted">Sin medición</span>}
                         </td>
-                        <td>{h.hojaId && h.foto && <button onClick={() => void verHoja(h.hojaId!)} disabled={abriendo !== null} aria-label="Ver hoja" className="text-primary disabled:opacity-60">{abriendo === h.hojaId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}</button>}</td>
+                        <td className="py-2">{h.hojaId && h.foto && <button onClick={() => void verHoja(h.hojaId!)} disabled={abriendo !== null} aria-label="Ver hoja" className="text-primary disabled:opacity-60">{abriendo === h.hojaId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}</button>}</td>
                       </tr>
                     ))}
                   </tbody>
