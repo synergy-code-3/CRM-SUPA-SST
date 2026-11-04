@@ -25,7 +25,7 @@ export function htmlInforme(d: DatosInforme): string {
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de captura - ${esc(d.usuario)}</title><style>
 body{font-family:system-ui,sans-serif;font-size:11px;color:#111;margin:24px}h1{font-size:18px;margin:0 0 4px}p{margin:2px 0}
 table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f0f0f0}
-tr.alerta td{background:#fff3e0}@media print{@page{size:landscape;margin:12mm}}</style></head><body>
+tr.alerta td{background:#fff3e0}thead{display:table-header-group}tr{page-break-inside:avoid}@media print{@page{size:landscape;margin:12mm}}</style></head><body>
 <h1>Reporte de captura: ${esc(d.usuario)}</h1>
 <p>Evento: ${esc(d.evento)} · Periodo: ${esc(d.periodo)}</p>
 <p>Hojas: ${d.hojas.length} · Medidas: ${e.medidas} · Mínimo ${seg(e.minimo)} · Mediana ${seg(e.mediana)} · Máximo ${seg(e.maximo)}</p>

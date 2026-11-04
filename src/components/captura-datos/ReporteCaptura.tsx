@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ListChecks, RefreshCw } from "lucide-react";
 import { DetalleCapturaModal } from "./DetalleCapturaModal";
+import { Paginador } from "./Paginador";
+import { paginar } from "@/lib/captura-datos/paginacion";
 import { api } from "@/lib/captura-datos/cliente";
 import { useSesion } from "@/lib/session-context";
 import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
@@ -13,6 +15,8 @@ interface Respuesta {
   truncado: boolean;
 }
 
+
+const FILAS_POR_PAGINA = 15;
 
 /** Una sola línea: sin alertas, la alerta que hay, o "Varias alertas" (el desglose está en el detalle). */
 function Alertas({ f }: { f: ResumenCaptura }) {
@@ -26,11 +30,14 @@ function Alertas({ f }: { f: ResumenCaptura }) {
 export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
   const { usuario } = useSesion();
   const [detalle, setDetalle] = useState<ResumenCaptura | null>(null);
+  const [pagina, setPagina] = useState(0);
   const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}`, () => {
     const params = new URLSearchParams();
     if (eventoId) params.set("eventoId", eventoId);
     return api<Respuesta>(`/api/captura-datos/historial/reporte?${params}`);
   });
+
+  const { items: filas, pagina: paginaActual, paginas } = paginar(datos?.filas ?? [], pagina, FILAS_POR_PAGINA);
 
   return (
     <div className="space-y-3">
@@ -60,7 +67,7 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-silver/60">
-              {datos.filas.map((f) => (
+              {filas.map((f) => (
                 <tr key={`${f.eventoId}|${f.usuarioId ?? f.usuario}`} className="align-middle">
                   <td className="py-2 pr-3 font-medium text-foreground">{f.usuario}</td>
                   {!eventoId && <td className="pr-3">{f.eventoNombre ?? "Evento borrado"}</td>}
@@ -82,6 +89,7 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
           </table>
         </div>
       )}
+      {datos && <Paginador pagina={paginaActual} paginas={paginas} total={datos.filas.length} onCambio={setPagina} />}
       {detalle && <DetalleCapturaModal fila={detalle} onCerrar={() => setDetalle(null)} />}
     </div>
   );

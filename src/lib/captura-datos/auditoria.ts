@@ -185,7 +185,7 @@ export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): 
   return (data ?? []).length;
 }
 
-const HOJAS_POR_CONSULTA = 200;
+const HOJAS_POR_CONSULTA = 100; // los ids van en la URL: con más, la dirección puede pasarse del límite del servidor
 
 /**
  * Nombre de la foto de cada hoja que aún existe (id → nombre), en el formato ya usado en Drive: "folio_Nombre.jpg".

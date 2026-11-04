@@ -3,16 +3,19 @@
 import { useMemo, useState } from "react";
 import { Eye, FileDown, Loader2, RefreshCw } from "lucide-react";
 import { Modal } from "./Modal";
+import { Paginador } from "./Paginador";
 import { VerHojaModal } from "./VerHojaModal";
 import { useSesion } from "@/lib/session-context";
 import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
 import { api } from "@/lib/captura-datos/cliente";
 import { duracionLegible, estadisticasDeCaptura, fechaHoraCompleta, type HojaDeCaptura, type ResumenCaptura } from "@/lib/captura-datos/historial";
+import { paginar } from "@/lib/captura-datos/paginacion";
 import { abrirInforme } from "@/lib/captura-datos/pdf-captura";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 
 type Filtro = "todas" | "rapidas" | "sinCambios";
 const FILTROS: [Filtro, string][] = [["todas", "Todas"], ["rapidas", "Muy rápidas"], ["sinCambios", "Sin cambios"]];
+const HOJAS_POR_PAGINA = 15;
 const PERIODO = "Todo el historial";
 const seg = (s: number | null) => (s === null ? "—" : duracionLegible(s));
 
@@ -26,6 +29,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
   const { usuario } = useSesion();
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [pagina, setPagina] = useState(0);
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
   const [abriendo, setAbriendo] = useState<string | null>(null);
   const { datos, error: errorCarga, recargar } = useDatosEnCache<{ hojas: HojaDeCaptura[] }>(usuario?.id, `detalle:${fila.eventoId}:${fila.usuarioId}`, () => {
@@ -38,6 +42,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
   const error = errorCarga ?? avisoLocal;
 
   const visibles = useMemo(() => (hojas ?? []).filter((h) => filtro === "todas" || (filtro === "rapidas" ? h.rapida : h.sinCambios)), [hojas, filtro]);
+  const { items: enPagina, pagina: paginaActual, paginas } = paginar(visibles, pagina, HOJAS_POR_PAGINA);
   const stats = useMemo(() => estadisticasDeCaptura(hojas ?? []), [hojas]);
 
   async function verHoja(id: string) {
@@ -84,7 +89,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
             </div>
             <div className="flex gap-2">
               {FILTROS.map(([k, etiqueta]) => (
-                <button key={k} onClick={() => setFiltro(k)} aria-pressed={filtro === k} className={`rounded-lg px-3 py-1 text-xs ${filtro === k ? "bg-primary text-white" : "border border-silver"}`}>{etiqueta}</button>
+                <button key={k} onClick={() => { setFiltro(k); setPagina(0); }} aria-pressed={filtro === k} className={`rounded-lg px-3 py-1 text-xs ${filtro === k ? "bg-primary text-white" : "border border-silver"}`}>{etiqueta}</button>
               ))}
             </div>
             {visibles.length === 0 ? <p className="py-4 text-center text-muted">Ninguna hoja coincide.</p> : (
@@ -94,7 +99,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
                     <tr><th className="py-1.5 pr-3 font-medium">Foto</th><th className="pr-3 font-medium">Folio</th><th className="pr-3 font-medium">Inició</th><th className="pr-3 font-medium">Terminó</th><th className="pr-3 font-medium">Duración</th><th className="pr-3 font-medium">Guardados</th><th className="pr-3 font-medium">Desde la anterior</th><th className="font-medium">Alertas</th><th /></tr>
                   </thead>
                   <tbody className="divide-y divide-silver/60">
-                    {visibles.map((h, i) => (
+                    {enPagina.map((h, i) => (
                       <tr key={h.hojaId ?? i} className={`align-middle ${h.rapida || h.sinCambios ? "bg-warning/5" : ""}`}>
                         <td className="py-2 pr-3 font-medium text-foreground">{h.foto ?? "No disponible"}</td>
                         <td className="py-2 pr-3">{h.folio || "—"}</td>
@@ -115,6 +120,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
                 </table>
               </div>
             )}
+            <Paginador pagina={paginaActual} paginas={paginas} total={visibles.length} onCambio={setPagina} />
           </>
         )}
       </div>
