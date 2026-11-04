@@ -30,7 +30,7 @@ const mock = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase", () => ({ supabase: mock.cliente }));
 
-import { listarAuditoria, listarConfirmaciones, purgarAuditoria, registrarAuditoria, registrarConfirmacionDeHoja } from "./auditoria";
+import { listarAuditoria, listarConfirmaciones, nombresDeFotos, purgarAuditoria, registrarAuditoria, registrarConfirmacionDeHoja } from "./auditoria";
 import { EMPTY_FIELDS, type SheetFields } from "./fields";
 import type { HojaCaptura } from "./modelo";
 
@@ -114,6 +114,20 @@ describe("listarConfirmaciones", () => {
     expect(ops).toContainEqual(["eq", ["accion", "hoja_confirmada"]]);
     expect(ops).toContainEqual(["eq", ["evento_id", "e1"]]);
     expect(ops).toContainEqual(["gte", ["en", "2026-10-01T00:00:00.000Z"]]);
+  });
+});
+
+describe("nombresDeFotos", () => {
+  it("usa el formato folio_Nombre y, sin esos datos, el nombre original del archivo", async () => {
+    mock.respuestas.cap_hojas = { data: [
+      { id: "h1", origen: { nombreOriginal: "WhatsApp Image 2026.jpeg" }, campos: campos({ nombre: "María Pérez" }) },
+      { id: "h2", origen: { nombreOriginal: "lista.pdf", pagina: 2 }, campos: campos({ folio: "12", nombre: "Ana" }) },
+      { id: "h3", origen: { nombreOriginal: "IMG_9.jpg" }, campos: null },
+    ], error: null };
+    const n = await nombresDeFotos(["h1", "h2", "h3"]);
+    expect(n.get("h1")).toBe("4476_Maria_Perez.jpg");
+    expect(n.get("h2")).toBe("12_Ana.pdf (pág. 2)");
+    expect(n.get("h3")).toBe("IMG_9.jpg");
   });
 });
 

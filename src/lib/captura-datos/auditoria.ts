@@ -3,7 +3,8 @@
 // todo sigue. Los textos y tipos compartidos con el navegador viven en historial.ts.
 import { supabase } from "@/lib/supabase";
 import { diferenciasDeCampos, RETENCION_AUDITORIA_DIAS, type AccionAuditoria, type RegistroAuditoria } from "./historial";
-import type { HojaCaptura } from "./modelo";
+import { imageFileName, type SheetFields } from "./fields";
+import type { FotoRef, HojaCaptura } from "./modelo";
 
 export { RETENCION_AUDITORIA_DIAS };
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -186,15 +187,26 @@ export async function purgarAuditoria(dias: number = RETENCION_AUDITORIA_DIAS): 
 
 const HOJAS_POR_CONSULTA = 200;
 
-/** Nombre del archivo de cada hoja que aún existe (id → nombre). Las de eventos borrados no aparecen. */
+/**
+ * Nombre de la foto de cada hoja que aún existe (id → nombre), en el formato ya usado en Drive: "folio_Nombre.jpg".
+ * Si la hoja no tiene folio y nombre capturados, se usa el nombre original del archivo. Las de eventos borrados no aparecen.
+ */
 export async function nombresDeFotos(ids: string[]): Promise<Map<string, string>> {
   const nombres = new Map<string, string>();
   for (let i = 0; i < ids.length; i += HOJAS_POR_CONSULTA) {
-    const { data, error } = await supabase.from("cap_hojas").select("id, origen").in("id", ids.slice(i, i + HOJAS_POR_CONSULTA));
+    const { data, error } = await supabase.from("cap_hojas").select("id, origen, campos").in("id", ids.slice(i, i + HOJAS_POR_CONSULTA));
     if (error) throw error;
-    for (const h of (data ?? []) as { id: string; origen: { nombreOriginal?: string; pagina?: number } | null }[]) {
-      if (h.origen?.nombreOriginal) nombres.set(h.id, h.origen.pagina ? `${h.origen.nombreOriginal} (pág. ${h.origen.pagina})` : h.origen.nombreOriginal);
+    for (const h of (data ?? []) as { id: string; origen: FotoRef | null; campos: SheetFields | null }[]) {
+      const nombre = nombreDeFoto(h.origen, h.campos);
+      if (nombre) nombres.set(h.id, nombre);
     }
   }
   return nombres;
+}
+
+function nombreDeFoto(origen: FotoRef | null, campos: SheetFields | null): string | null {
+  if (!origen?.nombreOriginal) return null;
+  const pagina = origen.pagina ? ` (pág. ${origen.pagina})` : "";
+  if (!campos?.folio || !campos.nombre) return `${origen.nombreOriginal}${pagina}`;
+  return `${imageFileName(campos, undefined, /\.pdf$/i.test(origen.nombreOriginal) ? "pdf" : "jpg")}${pagina}`;
 }

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ListChecks } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ListChecks, RefreshCw } from "lucide-react";
 import { DetalleCapturaModal } from "./DetalleCapturaModal";
 import { api } from "@/lib/captura-datos/cliente";
+import { useSesion } from "@/lib/session-context";
+import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
 import { duracionLegible, fechaHoraCompleta, type ResumenCaptura } from "@/lib/captura-datos/historial";
 
 interface Respuesta {
@@ -26,8 +28,7 @@ function Alertas({ f }: { f: ResumenCaptura }) {
 export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
-  const [datos, setDatos] = useState<Respuesta | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { usuario } = useSesion();
   const [detalle, setDetalle] = useState<ResumenCaptura | null>(null);
   const fechas = useMemo(() => {
     const p = new URLSearchParams();
@@ -37,23 +38,20 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
   }, [desde, hasta]);
   const periodo = desde || hasta ? `${desde || "inicio"} a ${hasta || "hoy"}` : "Todo el tiempo";
 
-  useEffect(() => {
+  const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}:${fechas}`, () => {
     const params = new URLSearchParams(fechas);
     if (eventoId) params.set("eventoId", eventoId);
-    let vigente = true;
-    setDatos(null);
-    setError(null);
-    api<Respuesta>(`/api/captura-datos/historial/reporte?${params}`)
-      .then((r) => vigente && setDatos(r))
-      .catch((e) => vigente && setError(e instanceof Error ? e.message : "No se pudo cargar el reporte."));
-    return () => { vigente = false; };
-  }, [eventoId, fechas]);
+    return api<Respuesta>(`/api/captura-datos/historial/reporte?${params}`);
+  });
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-1">Desde <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={CAMPO} /></label>
         <label className="flex items-center gap-1">Hasta <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={CAMPO} /></label>
+        <button onClick={recargar} disabled={!datos && !error} title="Volver a pedir los datos (lo ya visto se guarda mientras la pestaña esté abierta)" className="ml-auto inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 hover:bg-silver/40 disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> Actualizar
+        </button>
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!datos && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}

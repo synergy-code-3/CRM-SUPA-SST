@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Eye, FileDown, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Eye, FileDown, Loader2, RefreshCw } from "lucide-react";
 import { Modal } from "./Modal";
 import { VerHojaModal } from "./VerHojaModal";
+import { useSesion } from "@/lib/session-context";
+import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
 import { api } from "@/lib/captura-datos/cliente";
 import { duracionLegible, estadisticasDeCaptura, fechaHoraCompleta, type HojaDeCaptura, type ResumenCaptura } from "@/lib/captura-datos/historial";
 import { abrirInforme } from "@/lib/captura-datos/pdf-captura";
@@ -23,22 +25,19 @@ interface Props {
 
 /** Detalle hoja por hoja de lo que una persona capturó en un evento, con descarga en PDF. */
 export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) {
-  const [hojas, setHojas] = useState<HojaDeCaptura[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { usuario } = useSesion();
+  const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
   const [abriendo, setAbriendo] = useState<string | null>(null);
-
-  useEffect(() => {
+  const { datos, error: errorCarga, recargar } = useDatosEnCache<{ hojas: HojaDeCaptura[] }>(usuario?.id, `detalle:${fila.eventoId}:${fila.usuarioId}:${params}`, () => {
     const p = new URLSearchParams(params);
     if (fila.eventoId) p.set("eventoId", fila.eventoId);
     if (fila.usuarioId) p.set("usuarioId", fila.usuarioId);
-    let vigente = true;
-    api<{ hojas: HojaDeCaptura[] }>(`/api/captura-datos/historial/reporte?${p}`)
-      .then((r) => vigente && setHojas(r.hojas))
-      .catch((e) => vigente && setError(e instanceof Error ? e.message : "No se pudo cargar el detalle."));
-    return () => { vigente = false; };
-  }, [fila, params]);
+    return api<{ hojas: HojaDeCaptura[] }>(`/api/captura-datos/historial/reporte?${p}`);
+  });
+  const hojas = datos?.hojas ?? null;
+  const error = errorCarga ?? avisoLocal;
 
   const visibles = useMemo(() => (hojas ?? []).filter((h) => filtro === "todas" || (filtro === "rapidas" ? h.rapida : h.sinCambios)), [hojas, filtro]);
   const stats = useMemo(() => estadisticasDeCaptura(hojas ?? []), [hojas]);
@@ -48,7 +47,7 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
     try {
       setViendo((await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${id}`)).hoja);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo abrir la hoja.");
+      setAvisoLocal(e instanceof Error ? e.message : "No se pudo abrir la hoja.");
     } finally {
       setAbriendo(null);
     }
@@ -57,7 +56,7 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
   function informe(imprimir: boolean) {
     if (!hojas) return;
     const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo, hojas }, imprimir);
-    if (!abierto) setError("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio.");
+    if (!abierto) setAvisoLocal("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio.");
   }
 
   return (
@@ -74,6 +73,9 @@ export function DetalleCapturaModal({ fila, params, periodo, onCerrar }: Props) 
               <span>Mediana {seg(stats.mediana)}</span>
               <span>Máximo {seg(stats.maximo)}</span>
               <span className="ml-auto flex gap-2">
+                <button onClick={recargar} className="inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm hover:bg-silver/40" title="Volver a pedir los datos">
+                  <RefreshCw className="h-4 w-4" /> Actualizar
+                </button>
                 <button onClick={() => informe(false)} className="inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm hover:bg-silver/40">
                   <Eye className="h-4 w-4" /> Ver PDF
                 </button>
