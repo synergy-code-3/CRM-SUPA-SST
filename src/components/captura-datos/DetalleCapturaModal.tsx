@@ -63,7 +63,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
 
   function informe(imprimir: boolean) {
     if (!hojas) return;
-    const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo: PERIODO, hojas: confirmadas }, imprimir);
+    const abierto = abrirInforme({ usuario: fila.usuario, evento: fila.eventoNombre ?? "Evento borrado", periodo: PERIODO, hojas }, imprimir);
     if (!abierto) setAvisoLocal("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio.");
   }
 
