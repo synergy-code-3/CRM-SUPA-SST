@@ -346,34 +346,39 @@ function CuentaFooter({ onAbrirPerfil }: { onAbrirPerfil: () => void }) {
 
 // Enlaces fijos de checkout de renovación — un botón por región copia su
 // enlace al portapapeles, no navega a ningún lado.
-const ENLACES_RENOVACION: { label: string; url: string }[] = [
+const ENLACES_RENOVACION_CLUB: { label: string; url: string }[] = [
   { label: "Renovación MX", url: "https://checkout.synergyforeducation.com/pay/pl_d5a368bddbdd56eac7c049c65fe3d6c9" },
   { label: "Renovación USA", url: "https://www.synergyforeducation.com/offers/hAH7JZbL" },
   { label: "Renovación LATAM", url: "https://pay.hotmart.com/D106300176V?off=ill2992e" },
 ];
 
+// Mismo patrón que arriba, para la subplataforma de Certificaciones
+// (Legendar-IA) — un botón por checkout copia su enlace al portapapeles.
+const ENLACES_LEGENDARIA: { label: string; url: string }[] = [
+  { label: "TOTAL LEGENDAR IA ($5,997)", url: "https://pay.hotmart.com/L106635907R?off=84tq6u0m" },
+  { label: "CS TOTAL LEGENDAR IA ($3,997)", url: "https://checkout.synergyforeducation.com/pay/pl_43aafece8aa3b645e8a4c93e6f156f3b" },
+];
+
 // Igual criterio de persistencia que "Ocultar filtros" en Clientes
 // (src/app/(app)/clientes/page.tsx): sessionStorage, visible por default.
-const CLAVE_ENLACES_RENOVACION_VISIBLES = "crm-enlaces-renovacion-visibles";
-
-function leerEnlacesVisiblesGuardado(): boolean {
+function leerEnlacesVisiblesGuardado(clave: string): boolean {
   try {
-    const guardado = sessionStorage.getItem(CLAVE_ENLACES_RENOVACION_VISIBLES);
+    const guardado = sessionStorage.getItem(clave);
     return guardado === null ? true : guardado === "1";
   } catch {
     return true;
   }
 }
 
-function EnlacesRenovacion() {
+function EnlacesCopiables({ titulo, clave, enlaces }: { titulo: string; clave: string; enlaces: { label: string; url: string }[] }) {
   const [copiado, setCopiado] = useState<string | null>(null);
-  const [visibles, setVisibles] = useState(leerEnlacesVisiblesGuardado);
+  const [visibles, setVisibles] = useState(() => leerEnlacesVisiblesGuardado(clave));
 
   function alternarVisibles() {
     setVisibles((v) => {
       const nuevo = !v;
       try {
-        sessionStorage.setItem(CLAVE_ENLACES_RENOVACION_VISIBLES, nuevo ? "1" : "0");
+        sessionStorage.setItem(clave, nuevo ? "1" : "0");
       } catch {
         // sessionStorage puede fallar en modo privado — no bloquea el toggle.
       }
@@ -395,10 +400,10 @@ function EnlacesRenovacion() {
         className="ease-spring flex w-full items-center gap-1.5 rounded-xl px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted transition hover:text-foreground"
       >
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${visibles ? "" : "-rotate-90"}`} strokeWidth={2} />
-        Enlaces de Renovación
+        {titulo}
       </button>
       {visibles &&
-        ENLACES_RENOVACION.map((e) => (
+        enlaces.map((e) => (
           <button
             key={e.url}
             onClick={() => copiar(e.url)}
@@ -414,6 +419,14 @@ function EnlacesRenovacion() {
         ))}
     </div>
   );
+}
+
+function EnlacesRenovacion() {
+  return <EnlacesCopiables titulo="Enlaces de Renovación" clave="crm-enlaces-renovacion-visibles" enlaces={ENLACES_RENOVACION_CLUB} />;
+}
+
+function EnlacesLegendaria() {
+  return <EnlacesCopiables titulo="Enlaces de Legendar-IA" clave="crm-enlaces-legendaria-visibles" enlaces={ENLACES_LEGENDARIA} />;
 }
 
 // Sin websockets todavía en el proyecto — este poll cada 30s (más una
@@ -863,6 +876,7 @@ export function Sidebar() {
           {workspaceActual === "captura-datos" && <RecientesCapturaDatos pathname={pathname} />}
         </nav>
         {workspaceActual === "club" && <EnlacesRenovacion />}
+        {workspaceActual === "certificaciones" && <EnlacesLegendaria />}
         <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
       </aside>
 
@@ -953,6 +967,7 @@ export function Sidebar() {
             )}
 
             {workspaceActual === "club" && <EnlacesRenovacion />}
+            {workspaceActual === "certificaciones" && <EnlacesLegendaria />}
             <CuentaFooter onAbrirPerfil={() => setMostrarPerfil(true)} />
           </div>
         </div>
