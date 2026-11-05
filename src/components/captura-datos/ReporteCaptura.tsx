@@ -19,7 +19,6 @@ interface Respuesta {
 
 const FILAS_POR_PAGINA = 15;
 
-/** Una sola línea: sin alertas, la alerta que hay, o "Varias alertas" (el desglose está en el detalle). */
 function Alertas({ f }: { f: ResumenCaptura }) {
   const desglose = [f.rapidas ? `${f.rapidas} muy rápidas` : "", f.sinCambios ? `${f.sinCambios} sin cambios` : ""].filter(Boolean);
   if (desglose.length > 1) return <span title={desglose.join(" · ")} className="font-semibold text-danger">⚠ Varias alertas</span>;

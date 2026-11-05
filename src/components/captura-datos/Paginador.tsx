@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const BOTON = "inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 text-sm disabled:opacity-50";
 
-/** Anterior / Siguiente con "Página x de y"; no se muestra si todo cabe en una página. */
 export function Paginador({ pagina, paginas, total, onCambio }: { pagina: number; paginas: number; total: number; onCambio: (pagina: number) => void }) {
   if (paginas <= 1) return null;
   return (

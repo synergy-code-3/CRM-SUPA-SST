@@ -8,7 +8,6 @@ import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 
 const esPdf = (h: HojaCaptura) => h.origen.rutaStorage?.endsWith(".pdf") || /\.pdf$/i.test(h.origen.nombreOriginal);
 
-/** Miniaturas de las hojas del evento; el círculo marca si ya se revisó (verde) o no (naranja) y las iniciales, quién la tiene. */
 export function TiraHojas({ hojas, actualId, usuarioId, nombres, onElegir }: { hojas: HojaCaptura[]; actualId: string; usuarioId?: string; nombres: NombresUsuarios; onElegir: (id: string) => void }) {
   const contenedor = useRef<HTMLUListElement>(null);
   // Completo, Apartado e Interesado, en ese orden (el sort es estable: dentro de cada grupo se respeta el orden original).

@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, Loader2, Sparkles, Undo2 } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { Modal } from "./Modal";
+import { mensajeLimite, useAvisoLimite } from "./useAvisoLimite";
 import { InsigniaEstatus } from "./InsigniaEstatus";
 import { TiraHojas } from "./TiraHojas";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
 import { urlDuplicado, type Duplicado } from "@/lib/captura-datos/enlaces";
+import { mensajeError } from "./mensajeError";
 import {
   EMPTY_FIELDS, LADAS, NOTAS_MAX, MEMBRESIAS, METODOS_PAGO, MARCAS_TARJETA, conNotaAMeses, formatCantidadInput, llevaPago, membresiaPorCantidad, normalizeFields,
   requiereTarjeta, sanitizeInput, sinNotaAMeses, validateFields,
@@ -67,11 +69,12 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
   const membresiaManual = useRef(!!inicial.campos?.membresia && inicial.campos.membresia !== membresiaPorCantidad(inicial.campos.cantidad ?? ""));
   // Una hoja ya confirmada (evento reabierto) no se autoguarda: los cambios solo se aplican al confirmar de nuevo.
   const reedicion = inicial.estado === "confirmada";
+  const { avisos, avisar } = useAvisoLimite();
   const trabajando = leyendo || confirmando || saliendo;
 
   const urlFoto = `/api/captura-datos/hojas/${inicial.id}/foto`;
   const esPdf = inicial.origen.rutaStorage?.endsWith(".pdf") || /\.pdf$/i.test(inicial.origen.nombreOriginal);
-  const errores = validateFields(normalizeFields(campos, inicial.estatus), inicial.estatus);
+  const errores = validateFields(normalizeFields(campos), inicial.estatus);
 
   const ejecutarGuardado = useCallback(async (): Promise<boolean> => {
     if (bloqueadaRef.current) return false;
@@ -91,7 +94,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     } catch (err) {
       sucio.current = true;
       setGuardado("error");
-      setError(err instanceof Error ? err.message : "No se pudo guardar.");
+      setError(mensajeError(err, "No se pudo guardar."));
       if (err instanceof ErrorApi && err.status === 409) {
         bloqueadaRef.current = true;
         setBloqueada(true);
@@ -100,7 +103,6 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     }
   }, [inicial.id, reedicion]);
 
-  /** Guarda lo pendiente encolando los PATCH (nunca dos a la vez); devuelve false si no se pudo guardar. */
   const guardar = useCallback((): Promise<boolean> => {
     cola.current = cola.current.then(ejecutarGuardado, ejecutarGuardado);
     return cola.current;
@@ -121,11 +123,10 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
       setError(null);
       setGuardado("guardado");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo recargar la hoja.");
+      setError(mensajeError(err, "No se pudo recargar la hoja."));
     }
   }
 
-  // Autoguardado con debounce.
   useEffect(() => {
     if (!sucio.current || bloqueada) return;
     const t = setTimeout(guardar, AUTOGUARDADO_MS);
@@ -169,6 +170,22 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     setVoucherBox(caja);
   }
 
+  function escribir(k: "folio" | "telefono" | "nombre" | "correo" | "tarjeta" | "notas", crudo: string, max: number, etiqueta: string, unidad?: string, esperado = crudo) {
+    const limpio = sanitizeInput(k, crudo);
+    const solo = k === "folio" || k === "telefono" || k === "tarjeta";
+    const digitos = crudo.replace(/\D/g, "");
+    avisar(k, solo ? (digitos.length > max ? `Máximo ${max} dígitos` : digitos !== crudo ? etiqueta : null) : mensajeLimite(esperado, limpio, max, etiqueta, unidad));
+    cambiar(k, limpio);
+  }
+
+  function escribirCantidad(mostrado: string) {
+    const crudo = mostrado.replace(/[$,]/g, "");
+    const limpio = sanitizeInput("cantidad", crudo);
+    const invalido = /[^\d.]/.test(crudo) || (crudo.match(/\./g) ?? []).length > 1;
+    avisar("cantidad", crudo === limpio ? null : invalido ? "Solo números y un punto" : "Máximo 7 enteros y 2 decimales");
+    cambiarCantidad(limpio);
+  }
+
   function cambiarCantidad(valor: string) {
     const plan = !membresiaManual.current ? membresiaPorCantidad(valor) : "";
     // La nota "Pago a meses" aparece (o se va) en Notas mientras se revisa la hoja, no hasta subirla a Drive.
@@ -194,7 +211,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
       sucio.current = false;
       setGuardado("guardado");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo leer la hoja.");
+      setError(mensajeError(err, "No se pudo leer la hoja."));
       if (err instanceof ErrorApi && err.status === 409 && !bloqueadaRef.current) setLeidaIa(true); // ya estaba leída o la tiene otra persona
       else if (!(err instanceof ErrorApi && err.status === 422)) setLeidaIa(!!inicial.origen.leidaIa); // la IA no contestó: se puede reintentar
       if (err instanceof ErrorApi && err.status === 422) await onSiguiente(); // no es una hoja de registro: ya quedó marcada
@@ -213,14 +230,14 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
       if (!(await guardar())) return;
       const consulta = new URLSearchParams(forzar ? { force: "1" } : {}).toString();
       await api(`/api/captura-datos/hojas/${inicial.id}${consulta ? `?${consulta}` : ""}`, {
-        method: "PATCH", json: { campos: normalizeFields(camposRef.current, inicial.estatus), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
+        method: "PATCH", json: { campos: normalizeFields(camposRef.current), voucherBox: voucherBoxRef.current, confirmar: true, version: versionRef.current },
       });
       await onSiguiente(); // se queda en esta hoja (con el aviso de trabajando) hasta que llegue la siguiente
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.duplicado) {
         setDuplicado({ mensaje: err.message, datos: err.datos.duplicado as unknown as Duplicado });
       } else {
-        setError(err instanceof Error ? err.message : "No se pudo confirmar.");
+        setError(mensajeError(err, "No se pudo confirmar."));
       }
     } finally {
       setConfirmando(false);
@@ -237,7 +254,6 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     onTerminar();
   }
 
-  /** Salta a otra hoja de la tira: guarda y suelta la actual antes. */
   async function irA(id: string) {
     if (trabajando) return;
     setSaliendo(true);
@@ -260,7 +276,6 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
 
   const hayDiferencia = (k: CampoComparable) => axis?.estado === "encontrado" && conciliacion?.[k] === "distinto" && !!valorDeAxis(axis.contacto, k);
 
-  /** Reemplaza un campo (nombre o correo) por el que trae Axis. */
   function usarDatoAxis(k: CampoComparable) {
     if (axis?.estado !== "encontrado") return;
     const valor = valorDeAxis(axis.contacto, k);
@@ -302,23 +317,23 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
 
         <fieldset disabled={trabajando || bloqueada} className="min-w-0 space-y-2.5">
           <div className="grid gap-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
-            <Campo etiqueta="Folio" requerido error={campo("folio")}><input value={campos.folio} onChange={(e) => cambiar("folio", sanitizeInput("folio", e.target.value))} maxLength={8} inputMode="numeric" className={CLASE_INPUT} /></Campo>
-            <Campo etiqueta="Teléfono" requerido error={campo("telefono") ?? campo("lada")}>
+            <Campo etiqueta="Folio" requerido error={campo("folio")} aviso={avisos.folio}><input value={campos.folio} onChange={(e) => escribir("folio", e.target.value, 8, "Solo números", "dígitos")} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+            <Campo etiqueta="Teléfono" requerido error={campo("telefono") ?? campo("lada")} aviso={avisos.telefono}>
               <div className="flex gap-1">
                 <select aria-label="Lada" value={campos.lada} onChange={(e) => cambiar("lada", e.target.value as SheetFields["lada"])} className="rounded-lg border border-silver bg-surface px-1 text-sm">
                   {LADAS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
-                <input aria-label="Teléfono (10 dígitos)" value={campos.telefono} onChange={(e) => cambiar("telefono", sanitizeInput("telefono", e.target.value))} maxLength={10} inputMode="tel" className={CLASE_INPUT} />
+                <input aria-label="Teléfono (10 dígitos)" value={campos.telefono} onChange={(e) => escribir("telefono", e.target.value, 10, "Solo números", "dígitos")} inputMode="tel" className={CLASE_INPUT} />
               </div>
             </Campo>
           </div>
 
           <div className="space-y-2.5">
-            <Campo etiqueta="Nombre" requerido error={campo("nombre")}>
-              <input value={campos.nombre} onChange={(e) => cambiar("nombre", sanitizeInput("nombre", e.target.value))} maxLength={80} className={claseAxis(conciliacion?.nombre)} />
+            <Campo etiqueta="Nombre" requerido error={campo("nombre")} aviso={avisos.nombre}>
+              <input value={campos.nombre} onChange={(e) => escribir("nombre", e.target.value, 80, "Solo letras", undefined, e.target.value.replace(/\s{2,}/g, " "))} className={claseAxis(conciliacion?.nombre)} />
             </Campo>
-            <Campo etiqueta="Correo" requerido error={campo("correo")}>
-              <input value={campos.correo} onChange={(e) => cambiar("correo", sanitizeInput("correo", e.target.value))} maxLength={80} type="email" className={claseAxis(conciliacion?.correo)} />
+            <Campo etiqueta="Correo" requerido error={campo("correo")} aviso={avisos.correo}>
+              <input value={campos.correo} onChange={(e) => escribir("correo", e.target.value, 80, "Caracteres no permitidos", undefined, e.target.value.toLowerCase())} type="email" className={claseAxis(conciliacion?.correo)} />
             </Campo>
           </div>
           {/* Espacio fijo: que Axis conteste no mueve el resto del formulario. Los botones siempre se ven; solo se activan si hay diferencia. */}
@@ -353,7 +368,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
                     {METODOS_PAGO.map((m) => <option key={m}>{m}</option>)}
                   </select>
                 </Campo>
-                <Campo etiqueta="Cantidad pagada" requerido={obligatorio} error={campo("cantidad")}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => cambiarCantidad(sanitizeInput("cantidad", e.target.value))} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
+                <Campo etiqueta="Cantidad pagada" requerido={obligatorio} error={campo("cantidad")} aviso={avisos.cantidad}><input value={formatCantidadInput(campos.cantidad)} onChange={(e) => escribirCantidad(e.target.value)} inputMode="decimal" placeholder="$0.00" className={CLASE_INPUT} /></Campo>
                 <Campo etiqueta="Membresía" requerido={inicial.estatus === "Completo"} error={campo("membresia")}>
                   <select value={campos.membresia} onChange={(e) => cambiar("membresia", e.target.value)} className={CLASE_INPUT}>
                     <option value="">Elige…</option>
@@ -369,12 +384,12 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
                       {MARCAS_TARJETA.map((m) => <option key={m}>{m}</option>)}
                     </select>
                   </Campo>
-                  <Campo etiqueta="Últimos 4 dígitos" requerido={obligatorio} error={campo("tarjeta")}><input value={campos.tarjeta} onChange={(e) => cambiar("tarjeta", sanitizeInput("tarjeta", e.target.value))} maxLength={4} inputMode="numeric" className={CLASE_INPUT} /></Campo>
+                  <Campo etiqueta="Últimos 4 dígitos" requerido={obligatorio} error={campo("tarjeta")} aviso={avisos.tarjeta}><input value={campos.tarjeta} onChange={(e) => escribir("tarjeta", e.target.value, 4, "Solo números", "dígitos")} inputMode="numeric" className={CLASE_INPUT} /></Campo>
               </div>
               )}
             </>
           )}
-          <Campo etiqueta="Notas" error={campo("notas")}><textarea value={campos.notas} onChange={(e) => cambiar("notas", sanitizeInput("notas", e.target.value))} maxLength={NOTAS_MAX} rows={3} className={`${CLASE_INPUT} resize-y`} /></Campo>
+          <Campo etiqueta="Notas" error={campo("notas")} aviso={avisos.notas}><textarea value={campos.notas} onChange={(e) => escribir("notas", e.target.value, NOTAS_MAX, "Caracteres no permitidos")} rows={3} className={`${CLASE_INPUT} resize-y`} /></Campo>
         </fieldset>
 
         {duplicado && (
@@ -405,12 +420,13 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
   );
 }
 
-function Campo({ etiqueta, requerido, error, children }: { etiqueta: string; requerido?: boolean; error?: string; children: React.ReactNode }) {
+function Campo({ etiqueta, requerido, error, aviso, children }: { etiqueta: string; requerido?: boolean; error?: string; aviso?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1 text-sm">
       <span className="text-muted">{etiqueta}{requerido && <span className="text-danger" aria-hidden="true"> *</span>}</span>
       {children}
       {error && <span className="block text-xs text-danger">{error}</span>}
+      {aviso && <span role="status" className="block text-xs text-amber-700">{aviso}</span>}
     </label>
   );
 }

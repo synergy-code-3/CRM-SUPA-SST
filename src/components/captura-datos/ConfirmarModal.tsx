@@ -6,21 +6,17 @@ import { Modal } from "./Modal";
 
 interface ConfirmarModalProps {
   titulo: string;
-  /** Lo que se le pregunta a la persona. */
   children: React.ReactNode;
   textoConfirmar: string;
   textoCancelar?: string;
-  /** Botón de confirmar en rojo: para acciones que descartan o destruyen algo. */
   peligro?: boolean;
   /** Etiqueta de un campo de texto obligatorio (p. ej. "Motivo"): el botón no se activa hasta escribirlo y se entrega a onConfirmar. */
   pedirMotivo?: string;
-  /** true mientras se ejecuta la acción confirmada: no se puede cerrar. */
   cargando?: boolean;
   onConfirmar: (motivo: string) => void;
   onCancelar: () => void;
 }
 
-/** Ventana emergente de confirmación (reemplaza a window.confirm / window.prompt y a los recuadros pegados al fondo de un formulario). */
 export function ConfirmarModal({ titulo, children, textoConfirmar, textoCancelar = "Cancelar", peligro, pedirMotivo, cargando, onConfirmar, onCancelar }: ConfirmarModalProps) {
   const [motivo, setMotivo] = useState("");
   const falta = pedirMotivo !== undefined && !motivo.trim();

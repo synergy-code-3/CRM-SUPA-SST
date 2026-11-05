@@ -13,7 +13,6 @@ interface Props {
   onLiberar: () => void;
 }
 
-/** Avance de cada persona en el evento, botón para soltar las hojas propias. */
 export function BarraColaboracion({ progreso, misEnEdicion, abierto, liberando, onLiberar }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">

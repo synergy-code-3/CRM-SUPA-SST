@@ -1,10 +1,4 @@
-// Esquemas de lo que la API acepta del navegador. Cualquier dato fuera de
-// forma se rechaza con 400 antes de tocar Supabase, Drive o la IA.
-//
-// Adaptado del proyecto original: ya no existe el "lote" (un escaneo = un
-// archivo en disco) — ahora cada evento y cada hoja son una fila (uuid) en
-// Supabase, así que los esquemas que dependían de archivos locales
-// (excelLocal, borrador, metaArchivo de reapertura local) no aplican.
+// Esquemas de lo que la API acepta del navegador. Cualquier dato fuera de forma se rechaza con 400 antes de tocar Supabase, Drive o la IA.
 import { z } from "zod";
 import { ESTATUS } from "./fields";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, idValido } from "./modelo";
@@ -16,11 +10,10 @@ const esFechaReal = (f: string) => {
   const fecha = new Date(`${f}T00:00:00Z`);
   return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === f;
 };
-const entero = (min: number, max: number) => z.number().int().min(min).max(max);
 const fraccion = z.number().finite().transform((n) => Math.min(1, Math.max(0, n)));
 
 export const idDrive = z.string().regex(/^[\w-]{10,200}$/);
-export const idUuid = z.string().refine((v) => {
+const idUuid = z.string().refine((v) => {
   try {
     idValido(v);
     return true;
@@ -31,7 +24,7 @@ export const idUuid = z.string().refine((v) => {
 const estatus = z.enum(ESTATUS.map((e) => e.value) as [string, ...string[]]);
 const origen = z.enum(["drive", "local"]);
 
-export const destino = z.object({
+const destino = z.object({
   id: idDrive,
   url: texto(500).regex(/^https:\/\/(drive|docs)\.google\.com\//),
   nombre: texto(300),
@@ -51,18 +44,7 @@ export const campos = z.object({
   notas: texto(2000).default(""),
 });
 
-export const caja = z.object({ x: fraccion, y: fraccion, w: fraccion, h: fraccion });
-
-export const fotoRef = z.object({
-  nombreOriginal: texto(500).default(""),
-  driveId: idDrive.optional(),
-  rutaStorage: texto(300).optional(),
-  nombreDrive: texto(300).optional(),
-  pagina: entero(1, 100_000).optional(),
-  paginas: entero(1, 100_000).optional(),
-  w: entero(0, 100_000).optional(),
-  h: entero(0, 100_000).optional(),
-});
+const caja = z.object({ x: fraccion, y: fraccion, w: fraccion, h: fraccion });
 
 export const crearEvento = z.object({
   nombre: texto(200),

@@ -11,7 +11,6 @@ interface ZonaArchivosProps {
   disabled?: boolean;
 }
 
-/** "Subir o arrastrar": agrega archivos (imágenes o PDF), permite quitar uno o toda la selección para elegir otra. */
 export function ZonaArchivos({ archivos, onCambio, disabled }: ZonaArchivosProps) {
   const entrada = useRef<HTMLInputElement>(null);
   const [arrastrando, setArrastrando] = useState(false);

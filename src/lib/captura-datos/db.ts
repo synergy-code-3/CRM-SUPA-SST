@@ -1,8 +1,4 @@
-// CRUD de Captura de Datos contra Supabase (cap_eventos / cap_hojas y
-// tablas relacionadas). Reemplaza al "almacen" + "escaneo.ts" del proyecto
-// original (un solo Escaneo guardado como JSON en disco) — aquí cada
-// evento y cada hoja son su propia fila, para que varias personas trabajen
-// el mismo evento en paralelo.
+// Acceso a Supabase de Captura de Datos (cap_eventos / cap_hojas y tablas relacionadas).
 import { supabase } from "@/lib/supabase";
 import type { Estatus, SheetFields } from "./fields";
 import { validateFields } from "./fields";
@@ -212,22 +208,6 @@ export async function obtenerEvento(id: string): Promise<EventoCaptura | null> {
   const { data, error } = await supabase.from("cap_eventos").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data ? filaAEvento(data as FilaEvento) : null;
-}
-
-export async function listarAsignaciones(eventoId: string): Promise<string[]> {
-  const { data, error } = await supabase.from("cap_evento_asignaciones").select("usuario_id").eq("evento_id", eventoId);
-  if (error) throw error;
-  return (data as { usuario_id: string }[]).map((a) => a.usuario_id);
-}
-
-export async function reemplazarAsignaciones(eventoId: string, usuariosAsignados: string[]): Promise<void> {
-  const { error: errBorrar } = await supabase.from("cap_evento_asignaciones").delete().eq("evento_id", eventoId);
-  if (errBorrar) throw errBorrar;
-  if (usuariosAsignados.length === 0) return;
-  const { error } = await supabase
-    .from("cap_evento_asignaciones")
-    .insert(usuariosAsignados.map((usuarioId) => ({ evento_id: eventoId, usuario_id: usuarioId })));
-  if (error) throw error;
 }
 
 export async function confirmarEvento(
@@ -488,7 +468,7 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
   return (data as { id: string }[]).length;
 }
 
-export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
+const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
 
 export class ErrorHojaOcupada extends Error {
   constructor() {
@@ -565,7 +545,7 @@ export class ErrorFolioDuplicado extends Error {
 }
 
 /** Hoja YA confirmada (en cualquier evento, no solo este) con el mismo folio — los folios son hojas impresas numeradas, un mismo número repetido es casi siempre un error de captura. */
-export async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promise<DuplicadoFolio | null> {
+async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promise<DuplicadoFolio | null> {
   if (!folio) return null;
   const { data, error } = await supabase
     .from("cap_hojas")
@@ -739,7 +719,7 @@ export async function siguientesHojasLibres(eventoId: string, cantidad: number, 
   return hojas;
 }
 
-export async function marcarNoValida(huella: string): Promise<void> {
+async function marcarNoValida(huella: string): Promise<void> {
   const { error } = await supabase.from("cap_imagenes_no_validas").upsert({ huella });
   if (error) throw error;
 }

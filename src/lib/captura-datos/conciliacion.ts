@@ -2,8 +2,7 @@
 // Sin dependencias de Node: corre igual en el servidor y en el navegador, para recalcular al editar.
 import { normalizeFolio, sanitizeInput, splitTelefono, type SheetFields } from "./fields";
 
-export const CAMPOS_COMPARABLES = ["nombre", "correo"] as const;
-export type CampoComparable = (typeof CAMPOS_COMPARABLES)[number];
+export type CampoComparable = "nombre" | "correo";
 
 /** ok: coincide · distinto: no coincide (o falta en la hoja) · sin_dato: Axis no tiene ese dato. */
 export type EstadoCampo = "ok" | "distinto" | "sin_dato";

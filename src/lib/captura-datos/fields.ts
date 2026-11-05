@@ -141,7 +141,7 @@ export function parseCantidad(v: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-export function normalizeFields(f: SheetFields, _estatus: Estatus = "Completo"): SheetFields {
+export function normalizeFields(f: SheetFields): SheetFields {
   const lada: Lada = LADAS.some((l) => l.value === f.lada) ? f.lada : "+52";
   const n = normalizeTodo(f, lada);
   return n;
@@ -165,12 +165,12 @@ function normalizeTodo(f: SheetFields, lada: Lada): SheetFields {
 }
 
 /** La marca tal como está en MARCAS_TARJETA (sin importar mayúsculas), o "" si no es una conocida. */
-export function marcaValida(v: string | undefined): string {
+function marcaValida(v: string | undefined): string {
   return MARCAS_TARJETA.find((m) => m.toLowerCase() === (v ?? "").trim().toLowerCase()) ?? "";
 }
 
 /** Lo que va en la celda #Tarjeta: "Visa 4821" (o solo la marca o solo los 4 dígitos si falta uno). */
-export const celdaTarjeta = (f: Pick<SheetFields, "marcaTarjeta" | "tarjeta">): string =>
+const celdaTarjeta = (f: Pick<SheetFields, "marcaTarjeta" | "tarjeta">): string =>
   [f.marcaTarjeta, f.tarjeta].filter(Boolean).join(" ");
 
 const MARGEN_A_MESES = 10;
@@ -194,7 +194,7 @@ export function formatCantidadInput(raw: string): string {
   return `$${conComas}${decimales !== undefined ? `.${decimales}` : ""}`;
 }
 
-export const NOTA_A_MESES = "Pago a meses";
+const NOTA_A_MESES = "Pago a meses";
 
 /** Quita la nota automática de pago a meses (al corregir la cantidad); una nota escrita a mano no se toca. */
 export function sinNotaAMeses(notas: string): string {
@@ -269,10 +269,6 @@ export function whatsappLink(lada: string, telefono: string): string {
   return digits.length > 10 ? `https://wa.me/${digits}` : "";
 }
 
-export function formatMXN(n: number): string {
-  return n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 });
-}
-
 export interface ComparacionPago {
   plan: (typeof MEMBRESIAS)[number];
   pagado: number;
@@ -323,32 +319,6 @@ export function toRecord(f: SheetFields, estatus: Estatus): SheetRecord {
   };
 }
 
-/** Inverso de toRecord: convierte una fila leída del Excel o de la Hoja de Google en campos de la app. */
-export function fromRecord(r: Partial<Record<keyof SheetRecord, string | number>>): SheetFields {
-  const txt = (v: unknown) => (v === undefined || v === null ? "" : String(v)).trim();
-  const ladaTxt = txt(r.lada).toUpperCase();
-  const telTxt = txt(r.telefono);
-  let lada: Lada = ladaTxt === "USA" || telTxt.startsWith("+1") ? "+1" : "+52";
-  let telefono = telTxt.replace(/\D/g, "");
-  if (telTxt.startsWith("+")) {
-    ({ lada, telefono } = splitTelefono(lada, telTxt));
-    if (telefono.length > 10) telefono = telefono.slice(-10);
-  }
-  return {
-    folio: normalizeFolio(txt(r.folio)),
-    nombre: txt(r.nombre),
-    correo: txt(r.correo).toLowerCase(),
-    lada,
-    telefono,
-    tarjeta: txt(r.tarjeta).replace(/\D/g, "").slice(-4),
-    marcaTarjeta: MARCAS_TARJETA.find((m) => txt(r.tarjeta).toLowerCase().includes(m.toLowerCase())) ?? "",
-    metodoPago: txt(r.metodoPago),
-    cantidad: normalizeCantidad(txt(r.cantidad)),
-    membresia: MEMBRESIAS.find((m) => m.value.toLowerCase() === txt(r.membresia).toLowerCase())?.value ?? "",
-    notas: txt(r.notas),
-  };
-}
-
 /** Nombre del archivo de la foto: "<folio>_<Nombre_sin_acentos>.jpg" (o "…_pago2.jpg" en un pago adicional de la misma ficha). */
 export function imageFileName(fields: SheetFields, pago?: number, extension: "jpg" | "pdf" = "jpg"): string {
   const safeName = fields.nombre
@@ -361,7 +331,7 @@ export function imageFileName(fields: SheetFields, pago?: number, extension: "jp
 }
 
 /** Renglones en blanco entre las secciones (Completos / Apartados / Interesados) de la Hoja de Drive y del Excel. */
-export const FILAS_ENTRE_SECCIONES = 4;
+const FILAS_ENTRE_SECCIONES = 4;
 
 /**
  * Ordena por sección (Completo, Apartado, Interesado) y deja FILAS_ENTRE_SECCIONES elementos `null` entre una

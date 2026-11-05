@@ -9,6 +9,7 @@ import { api } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache } from "@/lib/captura-datos/cache";
 import { useSesion } from "@/lib/session-context";
 import { ETIQUETA_ACCION, ETIQUETA_FILTRO_ACCION, lineasDeDetalle, type AccionAuditoria, type RegistroAuditoria } from "@/lib/captura-datos/historial";
+import { mensajeError } from "./mensajeError";
 
 interface HistorialModalProps {
   /** Si se indica, solo los movimientos de ese evento; si no, todos (incluidos los de eventos ya borrados). */
@@ -17,7 +18,6 @@ interface HistorialModalProps {
   onCerrar: () => void;
 }
 
-/** Cuando el historial vive en un modal, el título y el cierre los pone el modal. */
 export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: HistorialModalProps) {
   return (
     <Modal titulo={titulo} onCerrar={onCerrar} tamano="max-h-[85vh] sm:max-w-3xl">
@@ -26,7 +26,6 @@ export function HistorialModal({ eventoId, titulo = "Historial", onCerrar }: His
   );
 }
 
-/** Pestañas "Movimientos" y "Reporte de captura" (quién capturó, cuándo empezó y terminó, cuánto tardó). */
 export function HistorialConReporte({ eventoId }: { eventoId?: string }) {
   const [vista, setVista] = useState<"movimientos" | "reporte">("movimientos");
   const pestana = (v: typeof vista) => `rounded-lg px-3 py-1.5 text-sm ${vista === v ? "bg-primary text-white" : "border border-silver"}`;
@@ -70,8 +69,7 @@ interface HistorialGuardado {
   filtros: Filtros;
 }
 
-/** Lista de movimientos importantes de Captura de Datos (solo admin), por páginas: cada una se pide solo al navegar a ella. */
-export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: string; conFiltros?: boolean }) {
+function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: string; conFiltros?: boolean }) {
   const { usuario } = useSesion();
   const claveCache = `historial:${eventoId ?? "todos"}`;
   // Al volver a la pantalla se muestra lo último visto sin recargar; solo se pide de nuevo si hay un movimiento nuevo.
@@ -120,7 +118,7 @@ export function HistorialLista({ eventoId, conFiltros = false }: { eventoId?: st
         setPaginas(todas);
         setIndice(todas.length - 1);
       } catch (err) {
-        if (esta === peticion.current) setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
+        if (esta === peticion.current) setError(mensajeError(err, "No se pudo cargar el historial."));
       } finally {
         if (esta === peticion.current) setCargando(false);
       }

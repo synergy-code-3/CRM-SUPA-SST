@@ -23,12 +23,12 @@ import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 import { bloqueoVigente, misHojasEnEdicion, progresoPorPersona, type NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
+import { mensajeError } from "./mensajeError";
 
 const POLLING_MS = 10_000;
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
-/** Pregunta pendiente en una ventana emergente (guardar en Drive, cerrar, reabrir…). */
 interface Dialogo {
   titulo: string;
   mensaje: string;
@@ -72,7 +72,7 @@ export function EventoDetalle({ id }: { id: string }) {
       guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas, nombres: h.usuarios ?? {} });
       return h.hojas;
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
+      setMensaje(mensajeError(err, "No se pudo cargar el evento."));
       return null;
     }
   }, [id, usuario?.id]);
@@ -87,7 +87,7 @@ export function EventoDetalle({ id }: { id: string }) {
       setExito(r.liberadas === 1 ? "Se liberó 1 hoja: ya la puede tomar otra persona." : `Se liberaron ${r.liberadas} hojas: ya las puede tomar otra persona.`);
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudieron liberar tus hojas.");
+      setMensaje(mensajeError(err, "No se pudieron liberar tus hojas."));
     } finally {
       setOcupado(null);
     }
@@ -103,7 +103,7 @@ export function EventoDetalle({ id }: { id: string }) {
       else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
       return !!r.hoja;
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo tomar una hoja.");
+      setMensaje(mensajeError(err, "No se pudo tomar una hoja."));
       return false;
     } finally {
       setOcupado(null);
@@ -133,7 +133,7 @@ export function EventoDetalle({ id }: { id: string }) {
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${hojaId}/tomar`, { method: "POST" });
       setActual(r.hoja);
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo abrir la hoja.");
+      setMensaje(mensajeError(err, "No se pudo abrir la hoja."));
       await cargar(); // por si cambió de estado mientras tanto
     } finally {
       setOcupado(null);
@@ -146,7 +146,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await subirHojas(id, archivos, estatus);
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");
+      setMensaje(mensajeError(err, "No se pudieron subir las fotos."));
       throw err;
     }
   }
@@ -169,7 +169,7 @@ export function EventoDetalle({ id }: { id: string }) {
           alConfirmar: () => void guardarEvento(accion, { ...opciones, crearCarpeta: true }),
         });
       } else {
-        setMensaje(err instanceof Error ? err.message : "No se pudo guardar en Drive.");
+        setMensaje(mensajeError(err, "No se pudo guardar en Drive."));
       }
     } finally {
       setOcupado(null);
@@ -181,7 +181,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion: "reabrir", motivo } });
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo reabrir.");
+      setMensaje(mensajeError(err, "No se pudo reabrir."));
     }
   }
 
@@ -198,7 +198,6 @@ export function EventoDetalle({ id }: { id: string }) {
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
   const hayCaptura = conteo("confirmada") > 0;
-  /** La tiene otra persona ahora mismo: se puede ver, no editar. */
   async function borrarHoja(h: HojaCaptura) {
     setBorrandoHoja(true);
     try {
@@ -208,7 +207,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await cargar();
     } catch (err) {
       setHojaABorrar(null);
-      setMensaje(err instanceof Error ? err.message : "No se pudo borrar la hoja.");
+      setMensaje(mensajeError(err, "No se pudo borrar la hoja."));
     } finally {
       setBorrandoHoja(false);
     }
@@ -335,7 +334,6 @@ export function EventoDetalle({ id }: { id: string }) {
         />
       )}
 
-      {/* Completos, apartados e interesados van en secciones separadas. */}
       {hojas.length > 0 && (
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
@@ -381,7 +379,6 @@ function Boton({ onClick, cargando, icono, primario, peligro, className = "", ch
   );
 }
 
-/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive y confirma cuando terminó. */
 function SubiendoADrive({ subido, onCerrar }: { subido: string | null; onCerrar: () => void }) {
   if (subido) {
     return (

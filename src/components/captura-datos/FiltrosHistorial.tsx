@@ -36,7 +36,7 @@ export function FiltrosHistorial({ filtros, onCambio, sinEvento = false }: { fil
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted" />
-          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder={sinEvento ? "Buscar admin, folio, cliente…" : "Buscar evento, admin, folio, cliente…"} aria-label="Buscar en el historial" className={`${CAMPO} w-full pl-8`} />
+          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder={sinEvento ? "Buscar admin, folio, cliente…" : "Buscar evento, admin, folio, cliente…"} aria-label="Buscar en el historial" maxLength={100} className={`${CAMPO} w-full pl-8`} />
         </label>
         {!sinEvento && <SelectorLista valor={filtros.eventoId} onCambio={(eventoId) => cambiar({ eventoId })} opciones={opciones?.eventos ?? []} todas="Todos los eventos" etiqueta="Evento" />}
         <SelectorMultiple<AccionAuditoria> valores={filtros.acciones} onCambio={(acciones) => cambiar({ acciones })} opciones={ACCIONES_AUDITORIA.map((a) => ({ id: a, nombre: ETIQUETA_FILTRO_ACCION[a] }))} etiqueta="Movimientos" />

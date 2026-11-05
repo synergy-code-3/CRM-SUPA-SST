@@ -3,7 +3,7 @@
 import { Search, X } from "lucide-react";
 import type { EventoCaptura } from "@/lib/captura-datos/modelo";
 
-export type EstadoFiltro = "" | "abierto" | "confirmado" | "por_revisar";
+type EstadoFiltro = "" | "abierto" | "confirmado" | "por_revisar";
 
 export interface FiltrosEventosValor {
   q: string;
@@ -48,7 +48,7 @@ export function FiltrosEventos({ filtros, onCambio }: { filtros: FiltrosEventosV
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted" />
-          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder="Buscar evento…" aria-label="Buscar evento" className={`${CAMPO} w-full pl-8`} />
+          <input value={filtros.q} onChange={(e) => cambiar({ q: e.target.value })} placeholder="Buscar evento…" aria-label="Buscar evento" maxLength={100} className={`${CAMPO} w-full pl-8`} />
         </label>
         <label className="flex items-center gap-1 text-xs text-muted">
           Desde <input type="date" value={filtros.desde} max={filtros.hasta || undefined} onChange={(e) => cambiar({ desde: e.target.value })} className={CAMPO} />

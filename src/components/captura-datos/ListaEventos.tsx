@@ -13,6 +13,7 @@ import { usePolling } from "@/lib/captura-datos/usePolling";
 import { useSesion } from "@/lib/session-context";
 import type { ProgresoEvento } from "@/lib/captura-datos/db";
 import type { EventoCaptura } from "@/lib/captura-datos/modelo";
+import { mensajeError } from "./mensajeError";
 
 type EventoConAvance = EventoCaptura & { progreso: ProgresoEvento };
 const POLLING_MS = 15_000;
@@ -29,7 +30,7 @@ export function ListaEventos() {
   const cargar = useCallback(() => {
     api<{ eventos: EventoConAvance[] }>("/api/captura-datos/eventos")
       .then((r) => { setEventos(r.eventos); guardarCache(usuario?.id, "eventos", r.eventos); setError(null); })
-      .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar los eventos."));
+      .catch((err) => setError(mensajeError(err, "No se pudieron cargar los eventos.")));
   }, [usuario?.id]);
 
   usePolling(cargar, POLLING_MS);

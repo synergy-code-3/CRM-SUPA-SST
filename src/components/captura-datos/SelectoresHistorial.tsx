@@ -19,7 +19,6 @@ export function useOpcionesHistorial(): OpcionesHistorial | null {
   return useDatosEnCache<OpcionesHistorial>(usuario?.id, "historial:opciones", () => api<OpcionesHistorial>("/api/captura-datos/historial/opciones")).datos;
 }
 
-/** Lista desplegable de una sola opción; `valor` vacío = todas. */
 export function SelectorLista({ valor, onCambio, opciones, todas, etiqueta }: { valor: string; onCambio: (v: string) => void; opciones: { id: string; nombre: string }[]; todas: string; etiqueta: string }) {
   return (
     <select value={valor} onChange={(e) => onCambio(e.target.value)} aria-label={etiqueta} className={`${CAMPO} w-44 max-w-full`}>
@@ -29,7 +28,6 @@ export function SelectorLista({ valor, onCambio, opciones, todas, etiqueta }: { 
   );
 }
 
-/** Lista desplegable con casillas (varias opciones a la vez). */
 export function SelectorMultiple<T extends string>({ valores, onCambio, opciones, etiqueta }: { valores: T[]; onCambio: (v: T[]) => void; opciones: { id: T; nombre: string }[]; etiqueta: string }) {
   const alternar = (id: T) => onCambio(valores.includes(id) ? valores.filter((x) => x !== id) : [...valores, id]);
   const ref = useRef<HTMLDetailsElement>(null);

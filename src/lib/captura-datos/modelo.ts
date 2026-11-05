@@ -1,11 +1,4 @@
-// Modelo de datos de Captura de Datos. Sin dependencias de servidor: lo usan
-// las rutas, db.ts y los componentes del navegador.
-//
-// A diferencia del proyecto original ("Escaner de hojas", un solo operador,
-// todo vivía en un único "Escaneo" con su array de "registros" guardado como
-// JSON en disco), aquí cada evento y cada hoja son su propia fila en
-// Supabase (cap_eventos / cap_hojas) para que varias personas trabajen el
-// mismo evento en paralelo. Los tipos de abajo reflejan esas tablas.
+// Modelo de datos de Captura de Datos (filas de cap_eventos / cap_hojas). Sin dependencias de servidor: lo usan rutas, db.ts y el navegador.
 import type { Box, Estatus, SheetFields } from "./fields";
 
 const ID_RE = /^[0-9a-f-]{36}$/;

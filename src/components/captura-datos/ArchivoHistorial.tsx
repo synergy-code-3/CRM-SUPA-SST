@@ -5,13 +5,13 @@ import { Download } from "lucide-react";
 import { api } from "@/lib/captura-datos/cliente";
 import { useSesion } from "@/lib/session-context";
 import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
+import { mensajeError } from "./mensajeError";
 
 const URL_ARCHIVOS = "/api/captura-datos/historial/archivos";
 
 /** "historial_2026-01-02_a_2026-03-05.csv" → "2026-01-02 a 2026-03-05". */
 const periodo = (nombre: string) => nombre.replace(/^historial_/, "").replace(/\.csv$/, "").replace("_a_", " a ");
 
-/** CSV de los periodos que ya se borraron del historial (se guardan solos antes de borrar). */
 export function ArchivoHistorial() {
   const { usuario } = useSesion();
   const { datos, error } = useDatosEnCache<{ archivos: { nombre: string }[] }>(usuario?.id, "historial:archivos", () => api(URL_ARCHIVOS));
@@ -25,7 +25,7 @@ export function ArchivoHistorial() {
       const { url } = await api<{ url: string }>(`${URL_ARCHIVOS}?nombre=${encodeURIComponent(nombre)}`);
       window.location.assign(url);
     } catch (e) {
-      setFallo(e instanceof Error ? e.message : "No se pudo descargar.");
+      setFallo(mensajeError(e, "No se pudo descargar."));
     } finally {
       setDescargando(null);
     }

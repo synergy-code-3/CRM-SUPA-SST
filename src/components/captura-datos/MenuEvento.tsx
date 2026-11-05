@@ -9,12 +9,12 @@ import { HistorialModal } from "./HistorialModal";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
 import type { EventoCaptura } from "@/lib/captura-datos/modelo";
+import { mensajeError } from "./mensajeError";
 
 type Modo = "drive" | "carpeta" | "historial" | "borrar" | null;
 
 const ITEM = "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-silver/40";
 
-/** Menú de tres puntos de la tarjeta de un evento: Guardar en Drive, Excel, Historial y Borrar. */
 export function MenuEvento({ evento, porRevisar, onCambio }: { evento: EventoCaptura; porRevisar: number; onCambio: () => void }) {
   const [abierto, setAbierto] = useState(false);
   const [modo, setModo] = useState<Modo>(null);
@@ -43,7 +43,7 @@ export function MenuEvento({ evento, porRevisar, onCambio }: { evento: EventoCap
       onCambio();
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.faltaCarpeta) setModo("carpeta");
-      else setAviso({ texto: err instanceof Error ? err.message : "No se pudo guardar en Drive.", peligro: true });
+      else setAviso({ texto: mensajeError(err, "No se pudo guardar en Drive."), peligro: true });
     } finally {
       setGuardando(false);
     }

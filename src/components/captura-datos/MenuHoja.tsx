@@ -14,7 +14,6 @@ interface Props {
   deshabilitado?: boolean;
 }
 
-/** Menú de tres puntos de la tarjeta de una hoja: Ver, Editar y Borrar. */
 export function MenuHoja({ onVer, onEditar, onBorrar, deshabilitado }: Props) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);

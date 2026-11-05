@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Modal } from "./Modal";
 import { api } from "@/lib/captura-datos/cliente";
+import { mensajeError } from "./mensajeError";
 
-/** Borrado con doble confirmación: primero el motivo y luego escribir el nombre del evento. Queda en el historial. */
 export function BorrarEventoModal({ eventoId, nombre, onCerrar, onBorrado }: { eventoId: string; nombre: string; onCerrar: () => void; onBorrado: () => void }) {
   const [paso, setPaso] = useState<1 | 2>(1);
   const [motivo, setMotivo] = useState("");
@@ -20,7 +20,7 @@ export function BorrarEventoModal({ eventoId, nombre, onCerrar, onBorrado }: { e
       await api(`/api/captura-datos/eventos/${eventoId}`, { method: "DELETE", json: { motivo } });
       onBorrado();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo borrar el evento.");
+      setError(mensajeError(err, "No se pudo borrar el evento."));
       setBorrando(false);
     }
   }
@@ -37,7 +37,7 @@ export function BorrarEventoModal({ eventoId, nombre, onCerrar, onBorrado }: { e
         ) : (
           <>
             <p className="text-sm text-foreground">Esta acción no se puede deshacer. Para confirmar, escribe el nombre del evento: <strong className="break-words">{nombre}</strong></p>
-            <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} aria-label="Nombre del evento" autoFocus className="w-full rounded-lg border border-silver bg-surface px-3 py-2 text-sm" />
+            <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} aria-label="Nombre del evento" maxLength={nombre.length} autoFocus className="w-full rounded-lg border border-silver bg-surface px-3 py-2 text-sm" />
           </>
         )}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}

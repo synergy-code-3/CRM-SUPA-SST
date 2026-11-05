@@ -14,6 +14,7 @@ import { paginar } from "@/lib/captura-datos/paginacion";
 import { abrirInforme } from "@/lib/captura-datos/pdf-captura";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 import type { RegistroAuditoria } from "@/lib/captura-datos/historial";
+import { mensajeError } from "./mensajeError";
 
 type Filtro = "todas" | "rapidas" | "sinCambios" | "otros";
 const FILTROS: [Filtro, string][] = [["todas", "Todas"], ["rapidas", "Muy rápidas"], ["sinCambios", "Sin cambios"], ["otros", "Otros movimientos"]];
@@ -26,7 +27,6 @@ interface Props {
   onCerrar: () => void;
 }
 
-/** Detalle hoja por hoja de lo que una persona capturó en un evento, con descarga en PDF. */
 export function DetalleCapturaModal({ fila, onCerrar }: Props) {
   const { usuario } = useSesion();
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function DetalleCapturaModal({ fila, onCerrar }: Props) {
     try {
       setViendo((await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${id}`)).hoja);
     } catch (e) {
-      setAvisoLocal(e instanceof Error ? e.message : "No se pudo abrir la hoja.");
+      setAvisoLocal(mensajeError(e, "No se pudo abrir la hoja."));
     } finally {
       setAbriendo(null);
     }

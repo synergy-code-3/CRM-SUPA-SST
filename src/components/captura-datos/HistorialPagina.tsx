@@ -8,7 +8,6 @@ import { useSesion } from "@/lib/session-context";
 
 const MESES_DE_HISTORIAL = Math.round(RETENCION_AUDITORIA_DIAS / 30);
 
-/** Página "Historial" de la barra lateral de Captura de Datos: todos los movimientos importantes, solo para admins. */
 export function HistorialPagina() {
   const { usuario } = useSesion();
 
