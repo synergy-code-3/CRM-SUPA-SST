@@ -30,6 +30,27 @@ export function hojaPerteneceACliente(hoja: Pick<HojaCaptura, "estado" | "campos
   return !!tel && hoja.campos.telefono === tel;
 }
 
+interface HojaConCorreo {
+  id: string;
+  campos: { correo?: string | null } | null;
+}
+
+const correoDeHoja = (h: HojaConCorreo): string => (h.campos?.correo ?? "").trim().toLowerCase();
+
+/**
+ * Las hojas del cliente: primero las de su teléfono. Si ese teléfono sale con correos distintos (duplicado) se
+ * quedan las que además coinciden por correo; si ninguna coincide, se muestran todas las del teléfono. Sin teléfono
+ * en las hojas, se usan las del correo.
+ */
+export function hojasDelCliente<T extends HojaConCorreo>(porTelefono: T[], porCorreo: T[]): T[] {
+  if (!porTelefono.length) return porCorreo;
+  const correos = new Set(porTelefono.map(correoDeHoja).filter(Boolean));
+  if (correos.size <= 1) return porTelefono;
+  const idsPorCorreo = new Set(porCorreo.map((h) => h.id));
+  const afinadas = porTelefono.filter((h) => idsPorCorreo.has(h.id));
+  return afinadas.length ? afinadas : porTelefono;
+}
+
 /** Decodifica el id de la URL; un `%` mal formado se trata como un cliente que no existe (404), no como error del servidor. */
 export function decodificar(id: string): string {
   try {

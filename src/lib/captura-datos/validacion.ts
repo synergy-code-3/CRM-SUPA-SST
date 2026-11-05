@@ -82,3 +82,5 @@ export const patchEvento = z.object({
 });
 
 export const borradoEvento = z.object({ motivo: texto(500) }); // se exige no vacío en borrarEventoDirecto
+
+export const tomarHojaBody = z.object({ estatus: z.enum(["Completo", "Apartado", "Interesado"]) });

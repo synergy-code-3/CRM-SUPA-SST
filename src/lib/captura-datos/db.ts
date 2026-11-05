@@ -5,7 +5,7 @@ import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
 import { ErrorPeticion } from "./errores";
-import { correosDeCliente, hojaPerteneceACliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
+import { correosDeCliente, hojaPerteneceACliente, hojasDelCliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
 
 type FilaEvento = {
   id: string;
@@ -331,7 +331,7 @@ type FilaHojaDeCliente = {
 
 const COLUMNAS_HOJA_DE_CLIENTE = "id, folio, origen, campos, confirmada_en, cap_eventos(nombre, fecha)";
 
-/** Hojas confirmadas cuyo correo o teléfono es el del cliente (no hay llave directa), la más reciente primero. */
+/** Hojas confirmadas del cliente (no hay llave directa): por teléfono y, si hay duplicados, por correo; la más reciente primero. */
 export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCliente[]> {
   const base = () => supabase.from("cap_hojas").select(COLUMNAS_HOJA_DE_CLIENTE).eq("estado", "confirmada");
   const correos = correosDeCliente(c);
@@ -342,9 +342,8 @@ export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCl
   ]);
   if (porCorreo.error) throw porCorreo.error;
   if (porTelefono.error) throw porTelefono.error;
-  const unicas = new Map<string, FilaHojaDeCliente>();
-  for (const f of [...(porCorreo.data ?? []), ...(porTelefono.data ?? [])] as unknown as FilaHojaDeCliente[]) unicas.set(f.id, f);
-  return [...unicas.values()]
+  const elegidas = hojasDelCliente((porTelefono.data ?? []) as unknown as FilaHojaDeCliente[], (porCorreo.data ?? []) as unknown as FilaHojaDeCliente[]);
+  return elegidas
     .filter((f) => hojaPerteneceACliente({ estado: "confirmada", campos: f.campos }, c))
     .sort((a, b) => (b.confirmada_en ?? "").localeCompare(a.confirmada_en ?? ""))
     .map((f) => ({
@@ -381,15 +380,15 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
   return data ? filaAHoja(data as FilaHoja) : null;
 }
 
-const MENSAJE_EVENTO_LLENO = "Este evento ya lo están capturando dos personas. Puedes ver las hojas, pero no capturar hasta que alguna termine o libere las suyas.";
+const MENSAJE_EVENTO_LLENO = "Ese estado ya lo están capturando cuatro personas. Puedes capturar otro estado o esperar a que alguien termine o libere sus hojas.";
 
 /**
  * Registra a la persona como capturista del evento (máximo dos: una desde el inicio y otra desde el final) y devuelve
  * si le toca ir desde el final. Una tercera persona recibe 409. Si la base aún no tiene la función (falta correr
  * schema.sql), no se limita a nadie y se captura como antes.
  */
-export async function registrarCapturista(eventoId: string, usuarioId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId });
+export async function registrarCapturista(eventoId: string, usuarioId: string, estatus: Estatus): Promise<boolean> {
+  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
   if (error?.code === "PGRST202") return false;
   if (error) throw error;
   if (data === "lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
@@ -400,8 +399,8 @@ export async function registrarCapturista(eventoId: string, usuarioId: string): 
  * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). La base decide
  * el sentido: la primera persona va desde el inicio y la segunda desde el final; una tercera recibe 409.
  */
-export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
-  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+export async function tomarHojaLibre(eventoId: string, usuarioId: string, estatus: Estatus): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
   if (error?.message === "evento_lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   if (error) throw error;
   const fila = data as FilaHoja | null;
@@ -696,27 +695,19 @@ export async function guardarLecturaAdelantada(id: string, campos: SheetFields, 
   return !!data;
 }
 
-const ORDEN_ESTATUS: Estatus[] = ["Completo", "Apartado", "Interesado"];
-
-/** Las próximas `cantidad` hojas libres del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
-export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso = false): Promise<HojaCaptura[]> {
-  const ahora = new Date().toISOString();
-  const hojas: HojaCaptura[] = [];
-  for (const estatus of inverso ? [...ORDEN_ESTATUS].reverse() : ORDEN_ESTATUS) {
-    if (hojas.length >= cantidad) break;
-    const { data, error } = await supabase
-      .from("cap_hojas")
-      .select("*")
-      .eq("evento_id", eventoId)
-      .eq("estatus", estatus)
-      .in("estado", ["pendiente", "leida"])
-      .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${ahora}`)
-      .order("id", { ascending: !inverso })
-      .limit(cantidad - hojas.length);
-    if (error) throw error;
-    hojas.push(...(data as FilaHoja[]).map(filaAHoja));
-  }
-  return hojas;
+/** Las próximas `cantidad` hojas libres de un estado del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
+export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso: boolean, estatus: Estatus): Promise<HojaCaptura[]> {
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .select("*")
+    .eq("evento_id", eventoId)
+    .eq("estatus", estatus)
+    .in("estado", ["pendiente", "leida"])
+    .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${new Date().toISOString()}`)
+    .order("id", { ascending: !inverso })
+    .limit(cantidad);
+  if (error) throw error;
+  return (data as FilaHoja[]).map(filaAHoja);
 }
 
 async function marcarNoValida(huella: string): Promise<void> {

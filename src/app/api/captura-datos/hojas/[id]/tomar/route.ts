@@ -13,7 +13,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const previa = await requerirHoja(permiso.usuario, id);
     if (previa.estado === "confirmada" && (await obtenerEvento(previa.eventoId))?.estado !== "abierto") throw new ErrorEstadoHoja();
-    await registrarCapturista(previa.eventoId, permiso.usuario.id);
+    await registrarCapturista(previa.eventoId, permiso.usuario.id, previa.estatus);
     const hoja = await tomarHojaPorId(id, permiso.usuario.id);
     return NextResponse.json({ hoja });
   } catch (err) {

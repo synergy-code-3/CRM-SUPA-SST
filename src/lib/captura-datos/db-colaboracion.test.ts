@@ -98,48 +98,50 @@ describe("cerrarEventoAbierto", () => {
 describe("registrarCapturista", () => {
   it("devuelve false para el orden normal y true para el inverso", async () => {
     falso.estado.respuestas.push({ data: "normal", error: null }, { data: "inverso", error: null });
-    expect(await registrarCapturista("e1", "u1")).toBe(false);
-    expect(await registrarCapturista("e1", "u2")).toBe(true);
-    expect(falso.estado.rpc[0]).toEqual(["registrar_capturista", { p_evento: "e1", p_usuario: "u1" }]);
+    expect(await registrarCapturista("e1", "u1", "Completo")).toBe(false);
+    expect(await registrarCapturista("e1", "u2", "Completo")).toBe(true);
+    expect(falso.estado.rpc[0]).toEqual(["registrar_capturista", { p_evento: "e1", p_usuario: "u1", p_estatus: "Completo" }]);
   });
 
-  it("una tercera persona recibe 409", async () => {
+  it("una quinta persona en el mismo estado recibe 409", async () => {
     falso.estado.respuestas.push({ data: "lleno", error: null });
-    await expect(registrarCapturista("e1", "u3")).rejects.toMatchObject({ status: 409 });
+    await expect(registrarCapturista("e1", "u5", "Apartado")).rejects.toMatchObject({ status: 409 });
   });
 
   it("si la base aún no tiene la función, no limita a nadie", async () => {
     falso.estado.respuestas.push({ data: null, error: { code: "PGRST202" } });
-    expect(await registrarCapturista("e1", "u1")).toBe(false);
+    expect(await registrarCapturista("e1", "u1", "Completo")).toBe(false);
   });
 });
 
 describe("tomarHojaLibre", () => {
-  it("llama a la función con solo evento y usuario: la base decide el sentido", async () => {
-    falso.estado.respuestas.push({ data: filaHoja("h1"), error: null });
-    expect((await tomarHojaLibre("e1", "u1"))?.id).toBe("h1");
-    expect(falso.estado.rpc[0]).toEqual(["tomar_hoja_libre", { p_evento: "e1", p_usuario: "u1" }]);
+  it("llama a la función con el estado elegido: la base decide el sentido", async () => {
+    falso.estado.respuestas.push({ data: filaHoja("h1", "Apartado"), error: null });
+    expect((await tomarHojaLibre("e1", "u1", "Apartado"))?.id).toBe("h1");
+    expect(falso.estado.rpc[0]).toEqual(["tomar_hoja_libre", { p_evento: "e1", p_usuario: "u1", p_estatus: "Apartado" }]);
   });
 
-  it("una tercera persona recibe 409", async () => {
+  it("una quinta persona en el mismo estado recibe 409", async () => {
     falso.estado.respuestas.push({ data: null, error: { code: "P0001", message: "evento_lleno" } });
-    await expect(tomarHojaLibre("e1", "u3")).rejects.toMatchObject({ status: 409 });
+    await expect(tomarHojaLibre("e1", "u5", "Completo")).rejects.toMatchObject({ status: 409 });
   });
 });
 
 describe("siguientesHojasLibres", () => {
-  it("en orden normal recorre Completo → Apartado → Interesado por id ascendente", async () => {
-    falso.estado.respuestas.push({ data: [filaHoja("a")], error: null }, { data: [], error: null }, { data: [], error: null });
-    await siguientesHojasLibres("e1", 3);
-    expect(falso.estado.llamadas.map((l) => l.find((c) => c[0] === "eq" && c[1] === "estatus")?.[2])).toEqual(["Completo", "Apartado", "Interesado"]);
+  it("en orden normal consulta solo el estado pedido por id ascendente", async () => {
+    falso.estado.respuestas.push({ data: [filaHoja("a")], error: null });
+    const hojas = await siguientesHojasLibres("e1", 3, false, "Completo");
+    expect(hojas.map((h) => h.id)).toEqual(["a"]);
+    expect(falso.estado.llamadas).toHaveLength(1);
+    expect(falso.estado.llamadas[0]).toContainEqual(["eq", "estatus", "Completo"]);
     expect(falso.estado.llamadas[0]).toContainEqual(["order", "id", { ascending: true }]);
   });
 
-  it("desde el final recorre Interesado → Apartado → Completo por id descendente", async () => {
-    falso.estado.respuestas.push({ data: [filaHoja("z", "Interesado")], error: null }, { data: [], error: null }, { data: [], error: null });
-    const hojas = await siguientesHojasLibres("e1", 3, true);
+  it("desde el final ordena por id descendente", async () => {
+    falso.estado.respuestas.push({ data: [filaHoja("z", "Interesado")], error: null });
+    const hojas = await siguientesHojasLibres("e1", 3, true, "Interesado");
     expect(hojas.map((h) => h.id)).toEqual(["z"]);
-    expect(falso.estado.llamadas.map((l) => l.find((c) => c[0] === "eq" && c[1] === "estatus")?.[2])).toEqual(["Interesado", "Apartado", "Completo"]);
+    expect(falso.estado.llamadas[0]).toContainEqual(["eq", "estatus", "Interesado"]);
     expect(falso.estado.llamadas[0]).toContainEqual(["order", "id", { ascending: false }]);
   });
 });

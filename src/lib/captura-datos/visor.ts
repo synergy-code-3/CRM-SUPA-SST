@@ -12,6 +12,9 @@ export const CAJA_DATOS: Box = { x: 0, y: 0, w: 0.7, h: 0.35 };
 /** A dónde apunta el botón "Voucher" cuando aún no hay recuadro (sin IA): la mitad superior derecha, donde suele ir pegado. */
 export const CAJA_VOUCHER_PREDETERMINADA: Box = { x: 0.5, y: 0, w: 0.5, h: 0.5 };
 
+/** Vista inicial al abrir una hoja: la esquina superior derecha (≈2x). */
+export const CAJA_ESQUINA_SUPERIOR_DERECHA: Box = { x: 0.5, y: 0, w: 0.5, h: 0.5 };
+
 const MARGEN = 0.95; // deja un borde alrededor de la zona ampliada
 const LADO_MINIMO = 0.02; // fracción mínima de la imagen para considerar que se dibujó un recuadro
 

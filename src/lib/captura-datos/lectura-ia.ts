@@ -4,7 +4,7 @@
 import { ErrorPeticion } from "./errores";
 import { devolverLecturaIa, esNoValida, guardarLecturaAdelantada, marcarHojaNoValida, reclamarLecturaIa, siguientesHojasLibres } from "./db";
 import { extractFromImage } from "./extract";
-import { EMPTY_FIELDS, membresiaPorCantidad, type Box, type Extraction, type SheetFields } from "./fields";
+import { EMPTY_FIELDS, membresiaPorCantidad, type Box, type Estatus, type Extraction, type SheetFields } from "./fields";
 import { descargarArchivo } from "./google";
 import { huellaImagen } from "./huella";
 import type { FotoRef, HojaCaptura } from "./modelo";
@@ -67,10 +67,10 @@ async function leerHojaAdelantada(hoja: HojaCaptura): Promise<void> {
  * Se asegura de que las próximas `cuantas` hojas libres del evento (en el orden en que se entregan) ya estén leídas con IA.
  * Solo toca hojas pendientes y sin datos; si la IA falla se detiene (no insiste con las demás). Nunca lanza.
  */
-export async function adelantarLecturas(eventoId: string, cuantas: number, inverso = false): Promise<void> {
+export async function adelantarLecturas(eventoId: string, cuantas: number, inverso: boolean, estatus: Estatus): Promise<void> {
   const inicio = Date.now();
   try {
-    for (const hoja of await siguientesHojasLibres(eventoId, cuantas, inverso)) {
+    for (const hoja of await siguientesHojasLibres(eventoId, cuantas, inverso, estatus)) {
       if (hoja.estado !== "pendiente" || hoja.origen.leidaIa) continue;
       if (Date.now() - inicio > PRESUPUESTO_ADELANTO_MS) return;
       await leerHojaAdelantada(hoja);

@@ -49,7 +49,7 @@ export function EventoDetalle({ id }: { id: string }) {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [subiendoFotos, setSubiendoFotos] = useState(false);
-  const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
+  const [alternadas, setAlternadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
   const [driveSubido, setDriveSubido] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
@@ -93,14 +93,14 @@ export function EventoDetalle({ id }: { id: string }) {
     }
   }
 
-  async function tomarSiguiente(silencioso = false): Promise<boolean> {
+  async function tomarSiguiente(estatus: Estatus, silencioso = false): Promise<boolean> {
     setOcupado("tomar");
     setMensaje(null);
     try {
       abiertaDesdeEvento.current = false;
-      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { json: { estatus } });
       if (r.hoja) setActual(r.hoja);
-      else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+      else if (!silencioso) setMensaje(`No quedan hojas libres de ${estatus}: están confirmadas o las tiene otra persona.`);
       return !!r.hoja;
     } catch (err) {
       setMensaje(mensajeError(err, "No se pudo tomar una hoja."));
@@ -118,11 +118,11 @@ export function EventoDetalle({ id }: { id: string }) {
       setActual(null);
       return;
     }
-    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(true), cargar()]);
+    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(hojaTerminada.estatus, true), cargar()]);
     if (hayOtra) return;
     setActual(null);
     if (actualizadas?.length && actualizadas.every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito("¡Listo! Se completaron todas las hojas del evento.");
-    else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+    else setMensaje(`No quedan hojas libres de ${hojaTerminada.estatus}: ya puedes capturar otro estado.`);
   }
 
   async function abrirHoja(hojaId: string, desdeEvento = true) {
@@ -186,18 +186,21 @@ export function EventoDetalle({ id }: { id: string }) {
   }
 
   function alternarSeccion(estatus: Estatus) {
-    setColapsadas((previas) => {
+    setAlternadas((previas) => {
       const nuevas = new Set(previas);
       if (!nuevas.delete(estatus)) nuevas.add(estatus);
       return nuevas;
     });
   }
 
+  // Un estado con todas sus hojas confirmadas (o no válidas) arranca colapsado; tocar el encabezado invierte lo que se ve.
+  const estaCompleto = (lista: HojaCaptura[]) => lista.every((h) => h.estado === "confirmada" || h.estado === "no_valida") && lista.some((h) => h.estado === "confirmada");
+  const estaColapsada = (estatus: Estatus, lista: HojaCaptura[]) => estaCompleto(lista) !== alternadas.has(estatus);
+
   if (!evento) return <p className="py-12 text-center text-sm text-muted">{mensaje ?? "Cargando…"}</p>;
 
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
-  const hayCaptura = conteo("confirmada") > 0;
   async function borrarHoja(h: HojaCaptura) {
     setBorrandoHoja(true);
     try {
@@ -242,7 +245,16 @@ export function EventoDetalle({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-2">
         {evento.estado === "abierto" && (
           <>
-            <Boton onClick={() => void tomarSiguiente()} cargando={ocupado === "tomar"} icono={<PlayCircle className="h-4 w-4" />} primario>{hayCaptura ? "Seguir capturando" : "Empezar a Capturar"}</Boton>
+            {ESTATUS.map((e) => {
+              const delEstado = hojas.filter((h) => h.estatus === e.value);
+              const porCapturar = delEstado.filter((h) => h.estado === "pendiente" || h.estado === "leida").length;
+              const empezada = delEstado.some((h) => h.estado === "confirmada");
+              return (
+                <Boton key={e.value} onClick={() => void tomarSiguiente(e.value)} cargando={ocupado === "tomar"} deshabilitado={porCapturar === 0} icono={<PlayCircle className="h-4 w-4" />} primario>
+                  {empezada ? "Seguir capturando" : "Empezar a capturar"} {e.value}s ({porCapturar})
+                </Boton>
+              );
+            })}
             <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
         )}
@@ -339,11 +351,12 @@ export function EventoDetalle({ id }: { id: string }) {
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
             <section key={e.value} aria-label={e.carpeta} className={`space-y-3 rounded-xl border p-3 ${ESTILO_ESTATUS[e.value].seccion}`}>
               <h2 className="text-sm font-semibold text-foreground">
-                <button onClick={() => alternarSeccion(e.value)} aria-expanded={!colapsadas.has(e.value)} className="flex w-full items-center gap-2 text-left">
-                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                <button onClick={() => alternarSeccion(e.value)} aria-expanded={!estaColapsada(e.value, lista)} className="flex w-full items-center gap-2 text-left">
+                  <ChevronDown className={`h-4 w-4 text-muted transition ${estaColapsada(e.value, lista) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                  {estaCompleto(lista) && <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>}
                 </button>
               </h2>
-              {!colapsadas.has(e.value) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {!estaColapsada(e.value, lista) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lista.map((h) => (
                   <li key={h.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
                     <span className="min-w-0 flex-1 basis-40 space-y-1">
@@ -370,10 +383,10 @@ export function EventoDetalle({ id }: { id: string }) {
   );
 }
 
-function Boton({ onClick, cargando, icono, primario, peligro, className = "", children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; peligro?: boolean; className?: string; children: React.ReactNode }) {
+function Boton({ onClick, cargando, deshabilitado, icono, primario, peligro, className = "", children }: { onClick: () => void; cargando?: boolean; deshabilitado?: boolean; icono: React.ReactNode; primario?: boolean; peligro?: boolean; className?: string; children: React.ReactNode }) {
   const variante = primario ? "bg-primary text-white" : peligro ? "border border-danger text-danger" : "border border-silver";
   return (
-    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${variante} ${className}`}>
+    <button onClick={onClick} disabled={cargando || deshabilitado} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${variante} ${className}`}>
       {cargando ? <Loader2 className="h-4 w-4 animate-spin" /> : icono} {children}
     </button>
   );
