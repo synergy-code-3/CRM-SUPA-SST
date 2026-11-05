@@ -19,7 +19,7 @@ import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/c
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
-import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
+import { carpetaDeEstatus, ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 import { bloqueoVigente, misHojasEnEdicion, progresoPorPersona, type NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
@@ -122,7 +122,8 @@ export function EventoDetalle({ id }: { id: string }) {
     if (hayOtra) return;
     setActual(null);
     if (actualizadas?.length && actualizadas.every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito("¡Listo! Se completaron todas las hojas del evento.");
-    else setMensaje(`No quedan hojas libres de ${hojaTerminada.estatus}: ya puedes capturar otro estado.`);
+    else if (actualizadas?.filter((h) => h.estatus === hojaTerminada.estatus).every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito(`Ya están confirmadas todas las hojas de ${carpetaDeEstatus(hojaTerminada.estatus)}.`);
+    else setMensaje(`No quedan hojas libres de ${carpetaDeEstatus(hojaTerminada.estatus)}: las demás las tiene otra persona.`);
   }
 
   async function abrirHoja(hojaId: string, desdeEvento = true) {
@@ -222,7 +223,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas.filter((h) => h.estatus === actual.estatus)} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
