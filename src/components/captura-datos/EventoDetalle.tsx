@@ -348,7 +348,7 @@ export function EventoDetalle({ id }: { id: string }) {
                   </button>
                 </h2>
                 {evento.estado === "abierto" && lista.some((h) => h.estado === "pendiente" || h.estado === "leida") && (
-                  <button onClick={() => void tomarSiguiente(e.value)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-silver bg-white px-2 py-1 text-xs font-medium text-foreground hover:bg-silver/30 disabled:opacity-50">
+                  <button onClick={() => void tomarSiguiente(e.value)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary-deep disabled:opacity-50">
                     {ocupado === "tomar" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />} {lista.some((h) => h.estado === "confirmada") ? "Seguir" : "Capturar"}
                   </button>
                 )}
