@@ -245,16 +245,6 @@ export function EventoDetalle({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-2">
         {evento.estado === "abierto" && (
           <>
-            {ESTATUS.map((e) => {
-              const delEstado = hojas.filter((h) => h.estatus === e.value);
-              const porCapturar = delEstado.filter((h) => h.estado === "pendiente" || h.estado === "leida").length;
-              const empezada = delEstado.some((h) => h.estado === "confirmada");
-              return (
-                <Boton key={e.value} onClick={() => void tomarSiguiente(e.value)} cargando={ocupado === "tomar"} deshabilitado={porCapturar === 0} icono={<PlayCircle className="h-4 w-4" />} primario>
-                  {empezada ? "Seguir capturando" : "Empezar a capturar"} {e.value}s ({porCapturar})
-                </Boton>
-              );
-            })}
             <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
         )}
@@ -350,12 +340,19 @@ export function EventoDetalle({ id }: { id: string }) {
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
             <section key={e.value} aria-label={e.carpeta} className={`space-y-3 rounded-xl border p-3 ${ESTILO_ESTATUS[e.value].seccion}`}>
-              <h2 className="text-sm font-semibold text-foreground">
-                <button onClick={() => alternarSeccion(e.value)} aria-expanded={!estaColapsada(e.value, lista)} className="flex w-full items-center gap-2 text-left">
-                  <ChevronDown className={`h-4 w-4 text-muted transition ${estaColapsada(e.value, lista) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
-                  {estaCompleto(lista) && <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>}
-                </button>
-              </h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+                  <button onClick={() => alternarSeccion(e.value)} aria-expanded={!estaColapsada(e.value, lista)} className="flex w-full flex-wrap items-center gap-2 text-left">
+                    <ChevronDown className={`h-4 w-4 text-muted transition ${estaColapsada(e.value, lista) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                    {estaCompleto(lista) && <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>}
+                  </button>
+                </h2>
+                {evento.estado === "abierto" && lista.some((h) => h.estado === "pendiente" || h.estado === "leida") && (
+                  <button onClick={() => void tomarSiguiente(e.value)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-silver bg-white px-2 py-1 text-xs font-medium text-foreground hover:bg-silver/30 disabled:opacity-50">
+                    {ocupado === "tomar" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />} {lista.some((h) => h.estado === "confirmada") ? "Seguir" : "Capturar"}
+                  </button>
+                )}
+              </div>
               {!estaColapsada(e.value, lista) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lista.map((h) => (
                   <li key={h.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
@@ -383,10 +380,10 @@ export function EventoDetalle({ id }: { id: string }) {
   );
 }
 
-function Boton({ onClick, cargando, deshabilitado, icono, primario, peligro, className = "", children }: { onClick: () => void; cargando?: boolean; deshabilitado?: boolean; icono: React.ReactNode; primario?: boolean; peligro?: boolean; className?: string; children: React.ReactNode }) {
+function Boton({ onClick, cargando, icono, primario, peligro, className = "", children }: { onClick: () => void; cargando?: boolean; icono: React.ReactNode; primario?: boolean; peligro?: boolean; className?: string; children: React.ReactNode }) {
   const variante = primario ? "bg-primary text-white" : peligro ? "border border-danger text-danger" : "border border-silver";
   return (
-    <button onClick={onClick} disabled={cargando || deshabilitado} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${variante} ${className}`}>
+    <button onClick={onClick} disabled={cargando} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${variante} ${className}`}>
       {cargando ? <Loader2 className="h-4 w-4 animate-spin" /> : icono} {children}
     </button>
   );

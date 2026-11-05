@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { FileText, Loader2, ReceiptText, SquareDashedMousePointer, TextSelect, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { Box } from "@/lib/captura-datos/fields";
-import { ajustarImagen, CAJA_DATOS, CAJA_ESQUINA_SUPERIOR_DERECHA, CAJA_VOUCHER_PREDETERMINADA, cajaDesdePuntos, transformParaCaja, type Punto, type Tamano } from "@/lib/captura-datos/visor";
+import { ajustarImagen, CAJA_DATOS, CAJA_VOUCHER_PREDETERMINADA, cajaDesdePuntos, transformParaCaja, type Punto, type Tamano } from "@/lib/captura-datos/visor";
 
 const ZOOM_MAXIMO = 8;
 const PASO_ZOOM = 0.5;
@@ -49,10 +49,10 @@ export function VisorHoja({ url, esPdf, voucherBox, onVoucherBox, soloLectura = 
     zoom.current?.setTransform(t.x, t.y, t.scale, ANIMACION_MS);
   }
 
-  // Al abrir una hoja se acerca sola a la esquina superior derecha.
+  // Al abrir una hoja se acerca sola a la zona de datos.
   useEffect(() => {
     if (!listo) return;
-    const t = setTimeout(() => ampliar(CAJA_ESQUINA_SUPERIOR_DERECHA), 0);
+    const t = setTimeout(() => ampliar(CAJA_DATOS), 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listo]);
