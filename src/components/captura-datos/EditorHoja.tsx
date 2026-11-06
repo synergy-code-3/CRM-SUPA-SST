@@ -21,6 +21,7 @@ import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 import type { NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 
 const AUTOGUARDADO_MS = 1500;
+const RENOVAR_REEDICION_MS = 4 * 60 * 1000; // una hoja confirmada no se autoguarda: se renueva el bloqueo aparte
 const AVISO_BLOQUEO_MS = 8 * 60 * 1000; // el bloqueo dura 10 min y se renueva con cada guardado
 const CLASE_INPUT = "w-full rounded-lg border border-silver bg-surface px-2.5 py-1.5 text-sm outline-none ring-primary/30 focus:ring-2";
 // Nombre y correo se pintan según coincidan o no con Axis; sin dato de Axis (o sin comparar) quedan neutros.
@@ -51,7 +52,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
   const [confirmando, setConfirmando] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
   const [cambiando, setCambiando] = useState(false); // saltando a otra hoja desde la tira
-  const [duplicado, setDuplicado] = useState<{ mensaje: string; datos: Duplicado | null } | null>(null);
+  const [duplicado, setDuplicado] = useState<{ mensaje: string; datos: Duplicado | null; forzable: boolean } | null>(null);
   const [axis, setAxis] = useState<ResultadoAxis | null>(null);
   const [intentoConfirmar, setIntentoConfirmar] = useState(false);
   const [lockPorVencer, setLockPorVencer] = useState(false);
@@ -133,11 +134,23 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     return () => clearTimeout(t);
   }, [campos, voucherBox, guardar, bloqueada]);
 
+  // Corrigiendo una hoja confirmada no hay autoguardado que renueve el bloqueo: se renueva solo; si ya es de otra persona, se detiene.
+  useEffect(() => {
+    if (!reedicion) return;
+    const t = setInterval(() => {
+      api(`/api/captura-datos/hojas/${inicial.id}/tomar`, { method: "POST" }).catch((err) => {
+        if (err instanceof ErrorApi && err.status === 409) { bloqueadaRef.current = true; setBloqueada(true); }
+      });
+    }, RENOVAR_REEDICION_MS);
+    return () => clearInterval(t);
+  }, [reedicion, inicial.id]);
+
   // Aviso si pasa mucho tiempo sin guardar (el bloqueo de 10 min está por vencer).
   useEffect(() => {
+    if (reedicion) return;
     const t = setInterval(() => setLockPorVencer(!avisoBloqueoDescartado.current && Date.now() - ultimoGuardado.current > AVISO_BLOQUEO_MS), 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, [reedicion]);
 
   // Consulta a Axis cuando el teléfono está completo.
   const telefono = telefonoConsultable(campos);
@@ -235,7 +248,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
       await onSiguiente(); // se queda en esta hoja (con el aviso de trabajando) hasta que llegue la siguiente
     } catch (err) {
       if (err instanceof ErrorApi && err.status === 409 && err.datos.duplicado) {
-        setDuplicado({ mensaje: err.message, datos: err.datos.duplicado as unknown as Duplicado });
+        setDuplicado({ mensaje: err.message, datos: err.datos.duplicado as unknown as Duplicado, forzable: err.datos.forzable !== false });
       } else {
         setError(mensajeError(err, "No se pudo confirmar."));
       }
@@ -401,9 +414,11 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
               </p>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button onClick={() => setDuplicado(null)} disabled={confirmando} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-silver/40 disabled:opacity-50">Cancelar</button>
-                <button onClick={() => { setDuplicado(null); void confirmar(true); }} disabled={confirmando} className="inline-flex items-center justify-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-                  Confirmar de todos modos
-                </button>
+                {duplicado.forzable && (
+                  <button onClick={() => { setDuplicado(null); void confirmar(true); }} disabled={confirmando} className="inline-flex items-center justify-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    Confirmar de todos modos
+                  </button>
+                )}
               </div>
             </div>
           </Modal>

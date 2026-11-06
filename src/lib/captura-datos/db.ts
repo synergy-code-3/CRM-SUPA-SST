@@ -383,13 +383,12 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
 const MENSAJE_EVENTO_LLENO = "Ese estado ya lo están capturando cuatro personas. Puedes capturar otro estado o esperar a que alguien termine o libere sus hojas.";
 
 /**
- * Registra a la persona como capturista del evento (máximo dos: una desde el inicio y otra desde el final) y devuelve
- * si le toca ir desde el final. Una tercera persona recibe 409. Si la base aún no tiene la función (falta correr
- * schema.sql), no se limita a nadie y se captura como antes.
+ * Registra a la persona como capturista del estado (máximo cuatro por estado: dos desde el inicio y dos desde el final)
+ * y devuelve si le toca ir desde el final. Una quinta persona recibe 409. Si falta la función en la base (falta correr
+ * schema.sql) el error se propaga: no se captura sin límite en silencio.
  */
 export async function registrarCapturista(eventoId: string, usuarioId: string, estatus: Estatus): Promise<boolean> {
   const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
-  if (error?.code === "PGRST202") return false;
   if (error) throw error;
   if (data === "lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   return data === "inverso";
@@ -397,7 +396,7 @@ export async function registrarCapturista(eventoId: string, usuarioId: string, e
 
 /**
  * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). La base decide
- * el sentido: la primera persona va desde el inicio y la segunda desde el final; una tercera recibe 409.
+ * el sentido (dos personas desde el inicio y dos desde el final por estado); una quinta recibe 409.
  */
 export async function tomarHojaLibre(eventoId: string, usuarioId: string, estatus: Estatus): Promise<HojaCaptura | null> {
   const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
@@ -453,7 +452,7 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
     .update({ bloqueada_por: null, bloqueada_hasta: null })
     .eq("evento_id", eventoId)
     .eq("bloqueada_por", usuarioId)
-    .in("estado", ["pendiente", "leida"])
+    .in("estado", ["pendiente", "leida", "confirmada"]) // una confirmada que se está corrigiendo también cuenta como tomada
     .gt("bloqueada_hasta", new Date().toISOString()) // las vencidas ya están libres: así cuenta lo mismo que el botón
     .select("id");
   if (error) throw error;
@@ -465,6 +464,24 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
     .eq("usuario_id", usuarioId);
   if (errorCupo && errorCupo.code !== "42P01" && errorCupo.code !== "PGRST205") throw errorCupo;
   return (data as { id: string }[]).length;
+}
+
+/** Una hoja ya confirmada solo se corrige con el evento abierto (reábrelo primero). */
+export async function exigirEventoAbiertoSiConfirmada(hoja: HojaCaptura): Promise<void> {
+  if (hoja.estado === "confirmada" && (await obtenerEvento(hoja.eventoId))?.estado !== "abierto") throw new ErrorEstadoHoja();
+}
+
+/** Al pasar a otro estado se sueltan las hojas vigentes que la persona tenía en los demás (igual que tomar_hoja_libre). */
+export async function liberarHojasDeOtroEstatus(eventoId: string, usuarioId: string, estatus: Estatus): Promise<void> {
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("evento_id", eventoId)
+    .eq("bloqueada_por", usuarioId)
+    .neq("estatus", estatus)
+    .in("estado", ["pendiente", "leida"])
+    .gt("bloqueada_hasta", new Date().toISOString());
+  if (error) throw error;
 }
 
 const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
@@ -538,7 +555,8 @@ export async function actualizarCamposHoja(
 export type DuplicadoFolio = { hojaId: string; eventoId: string; eventoNombre: string };
 
 export class ErrorFolioDuplicado extends Error {
-  constructor(public duplicado: DuplicadoFolio) {
+  /** `forzable` es false si el duplicado está en este mismo evento: el índice único lo impide aunque se fuerce. */
+  constructor(public duplicado: DuplicadoFolio, public forzable = true) {
     super(`El folio ya está registrado en "${duplicado.eventoNombre}"`);
   }
 }
@@ -560,6 +578,35 @@ async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promi
   return { hojaId: data.id, eventoId: data.evento_id, eventoNombre: evento?.nombre ?? "otro evento" };
 }
 
+/** Un folio ya confirmado en este mismo evento nunca se puede forzar (lo impide el índice único); en otro evento sí. */
+function errorPorFolio(duplicado: DuplicadoFolio, eventoId: string): ErrorFolioDuplicado {
+  return new ErrorFolioDuplicado(duplicado, duplicado.eventoId !== eventoId);
+}
+
+interface HojaPorConfirmar { estatus: string; estado: string; version: number; evento_id: string; campos: SheetFields | null }
+
+/** Lee la hoja y comprueba que `usuarioId` pueda confirmarla ahora (no inválida, versión vista, sin dueño ajeno vigente). */
+async function leerHojaPorConfirmar(id: string, usuarioId: string, versionEsperada?: number): Promise<HojaPorConfirmar> {
+  const { data: actual, error } = await supabase
+    .from("cap_hojas")
+    .select("estatus, estado, version, evento_id, bloqueada_por, bloqueada_hasta, campos")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
+  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
+  if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
+  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+  return actual as HojaPorConfirmar;
+}
+
+/** El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado. */
+async function registrarCorreccion(id: string, usuarioId: string, antes: SheetFields | null, despues: SheetFields): Promise<void> {
+  const { error } = await supabase.from("cap_hojas_historial").insert({ hoja_id: id, usuario_id: usuarioId, antes, despues });
+  if (error) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, error);
+}
+
 /** Confirma una hoja: valida los campos según su estatus y marca confirmada_por/en. */
 export async function confirmarHoja(
   id: string,
@@ -568,17 +615,7 @@ export async function confirmarHoja(
   voucherBox: Box | null,
   opts: { forzarDuplicado?: boolean; versionEsperada?: number } = {}
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase
-    .from("cap_hojas")
-    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta, campos")
-    .eq("id", id)
-    .maybeSingle();
-  if (errLectura) throw errLectura;
-  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
-  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
-  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
-  if (opts.versionEsperada !== undefined && actual.version !== opts.versionEsperada) throw new ErrorVersion();
-  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+  const actual = await leerHojaPorConfirmar(id, usuarioId, opts.versionEsperada);
 
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
@@ -587,9 +624,7 @@ export async function confirmarHoja(
 
   if (!opts.forzarDuplicado) {
     const duplicado = await buscarFolioDuplicado(campos.folio, id);
-    if (duplicado) {
-      throw new ErrorFolioDuplicado(duplicado);
-    }
+    if (duplicado) throw errorPorFolio(duplicado, actual.evento_id);
   }
 
   const { data, error } = await supabase
@@ -607,18 +642,19 @@ export async function confirmarHoja(
     .eq("id", id)
     .eq("version", actual.version)
     .in("estado", ["pendiente", "leida", "confirmada"])
+    // El bloqueo también va en el UPDATE: si otra persona tomó la hoja justo después de leerla, no se le pisa.
+    .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${new Date().toISOString()}`)
     .select("*")
     .maybeSingle();
+  if (error?.code === "23505") {
+    // Otra persona confirmó el mismo folio entre la comprobación y el guardado: lo frena el índice único.
+    const duplicado = await buscarFolioDuplicado(campos.folio, id);
+    if (duplicado) throw errorPorFolio(duplicado, actual.evento_id);
+  }
   if (error) throw error;
   if (!data) throw new ErrorVersion();
 
-  // El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado.
-  if (actual.estado === "confirmada") {
-    const { error: errHistorial } = await supabase
-      .from("cap_hojas_historial")
-      .insert({ hoja_id: id, usuario_id: usuarioId, antes: actual.campos ?? null, despues: campos });
-    if (errHistorial) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, errHistorial);
-  }
+  if (actual.estado === "confirmada") await registrarCorreccion(id, usuarioId, actual.campos, campos);
   return filaAHoja(data as FilaHoja);
 }
 
@@ -675,11 +711,12 @@ export async function finalizarLecturaIa(id: string, origen: FotoRef): Promise<v
 }
 
 /**
- * Guarda una lectura adelantada solo si nadie tocó la hoja mientras la IA leía (sigue pendiente y sin datos);
+ * Guarda una lectura adelantada solo si nadie tocó la hoja mientras la IA leía (sigue pendiente, sin datos y sin dueño);
  * así nunca pisa lo que alguien ya estaba escribiendo. Devuelve false si no se guardó.
  */
 export async function guardarLecturaAdelantada(id: string, campos: SheetFields, voucherBox: Box | null, origen: FotoRef): Promise<boolean> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version").eq("id", id).eq("estado", "pendiente").is("campos", null).maybeSingle();
+  const libre = `bloqueada_hasta.is.null,bloqueada_hasta.lt.${new Date().toISOString()}`; // si alguien la tomó mientras la IA leía, es suya
+  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version").eq("id", id).eq("estado", "pendiente").is("campos", null).or(libre).maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) return false;
   const { data, error } = await supabase
@@ -689,6 +726,7 @@ export async function guardarLecturaAdelantada(id: string, campos: SheetFields, 
     .eq("version", actual.version)
     .eq("estado", "pendiente")
     .is("campos", null)
+    .or(libre)
     .select("id")
     .maybeSingle();
   if (error) throw error;

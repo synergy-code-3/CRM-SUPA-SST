@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EMPTY_FIELDS } from "./fields";
 
 type Llamada = [string, ...unknown[]];
 type Respuesta = { data: unknown; error: unknown };
@@ -15,7 +16,7 @@ const falso = vi.hoisted(() => {
       maybeSingle: () => resolver(),
       single: () => resolver(),
     };
-    for (const m of ["select", "update", "eq", "in", "or", "order", "limit", "lt", "gt", "not"]) {
+    for (const m of ["select", "update", "eq", "neq", "in", "or", "order", "limit", "lt", "gt", "not", "is"]) {
       cadena[m] = (...args: unknown[]) => { llamadas.push([m, ...args]); return cadena; };
     }
     return cadena;
@@ -28,7 +29,7 @@ const falso = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase", () => ({ supabase: falso.cliente }));
 
-import { cerrarEventoAbierto, liberarHojasDeUsuario, nombresDeUsuarios, registrarCapturista, siguientesHojasLibres, tomarHojaLibre } from "./db";
+import { cerrarEventoAbierto, confirmarHoja, guardarLecturaAdelantada, ErrorEstadoHoja, exigirEventoAbiertoSiConfirmada, liberarHojasDeOtroEstatus, liberarHojasDeUsuario, nombresDeUsuarios, registrarCapturista, siguientesHojasLibres, tomarHojaLibre } from "./db";
 
 const filaHoja = (id: string, estatus = "Completo") => ({
   id, evento_id: "e1", estatus, origen: { nombreOriginal: `${id}.jpg` }, estado: "pendiente", bloqueada_por: null, bloqueada_hasta: null,
@@ -56,14 +57,14 @@ describe("nombresDeUsuarios", () => {
 });
 
 describe("liberarHojasDeUsuario", () => {
-  it("suelta solo las hojas de esa persona en ese evento, sin tocar las confirmadas, y devuelve cuántas", async () => {
+  it("suelta solo las hojas de esa persona en ese evento, incluida una confirmada en corrección, y devuelve cuántas", async () => {
     falso.estado.respuestas.push({ data: [{ id: "h1" }, { id: "h2" }], error: null });
     expect(await liberarHojasDeUsuario("e1", "u1")).toBe(2);
     const llamadas = falso.estado.llamadas[0];
     expect(llamadas).toContainEqual(["update", { bloqueada_por: null, bloqueada_hasta: null }]);
     expect(llamadas).toContainEqual(["eq", "evento_id", "e1"]);
     expect(llamadas).toContainEqual(["eq", "bloqueada_por", "u1"]);
-    expect(llamadas).toContainEqual(["in", "estado", ["pendiente", "leida"]]);
+    expect(llamadas).toContainEqual(["in", "estado", ["pendiente", "leida", "confirmada"]]);
     // Solo los bloqueos vigentes: el mismo criterio que el contador del botón (los vencidos ya están libres).
     expect(llamadas.find((c) => c[0] === "gt")?.[1]).toBe("bloqueada_hasta");
   });
@@ -108,9 +109,9 @@ describe("registrarCapturista", () => {
     await expect(registrarCapturista("e1", "u5", "Apartado")).rejects.toMatchObject({ status: 409 });
   });
 
-  it("si la base aún no tiene la función, no limita a nadie", async () => {
+  it("si la base no tiene la función falla en voz alta en vez de dejar de limitar a todos", async () => {
     falso.estado.respuestas.push({ data: null, error: { code: "PGRST202" } });
-    expect(await registrarCapturista("e1", "u1", "Completo")).toBe(false);
+    await expect(registrarCapturista("e1", "u1", "Completo")).rejects.toMatchObject({ code: "PGRST202" });
   });
 });
 
@@ -143,5 +144,78 @@ describe("siguientesHojasLibres", () => {
     expect(hojas.map((h) => h.id)).toEqual(["z"]);
     expect(falso.estado.llamadas[0]).toContainEqual(["eq", "estatus", "Interesado"]);
     expect(falso.estado.llamadas[0]).toContainEqual(["order", "id", { ascending: false }]);
+  });
+});
+
+const hojaModelo = (estado: string) => ({ id: "h1", eventoId: "e1", estado }) as never;
+
+describe("exigirEventoAbiertoSiConfirmada", () => {
+  it("una hoja pendiente no consulta el evento", async () => {
+    await exigirEventoAbiertoSiConfirmada(hojaModelo("pendiente"));
+    expect(falso.estado.llamadas).toHaveLength(0);
+  });
+
+  it("rechaza una hoja confirmada cuyo evento ya está cerrado", async () => {
+    falso.estado.respuestas.push({ data: filaEvento, error: null });
+    await expect(exigirEventoAbiertoSiConfirmada(hojaModelo("confirmada"))).rejects.toBeInstanceOf(ErrorEstadoHoja);
+  });
+
+  it("permite corregir una hoja confirmada con el evento abierto", async () => {
+    falso.estado.respuestas.push({ data: { ...filaEvento, estado: "abierto" }, error: null });
+    await expect(exigirEventoAbiertoSiConfirmada(hojaModelo("confirmada"))).resolves.toBeUndefined();
+  });
+});
+
+describe("liberarHojasDeOtroEstatus", () => {
+  it("suelta solo las hojas vigentes de esa persona en los demás estados del evento", async () => {
+    await liberarHojasDeOtroEstatus("e1", "u1", "Apartado");
+    const llamadas = falso.estado.llamadas[0];
+    expect(llamadas).toContainEqual(["update", { bloqueada_por: null, bloqueada_hasta: null }]);
+    expect(llamadas).toContainEqual(["eq", "evento_id", "e1"]);
+    expect(llamadas).toContainEqual(["eq", "bloqueada_por", "u1"]);
+    expect(llamadas).toContainEqual(["neq", "estatus", "Apartado"]);
+    expect(llamadas).toContainEqual(["in", "estado", ["pendiente", "leida"]]);
+  });
+});
+
+describe("confirmarHoja con folio repetido en carrera", () => {
+  const campos = { ...EMPTY_FIELDS, folio: "12", nombre: "Ana Lopez", correo: "ana@mail.com", telefono: "3312345678" };
+  const actual = { estatus: "Interesado", estado: "pendiente", version: 1, evento_id: "e1", bloqueada_por: null, bloqueada_hasta: null, campos: null };
+  const choque = { data: null, error: { code: "23505" } };
+
+  it("si el índice único rechaza el folio de otro evento, responde con ese duplicado", async () => {
+    falso.estado.respuestas.push({ data: actual, error: null }, { data: null, error: null }, choque, { data: { id: "h9", evento_id: "e2", cap_eventos: { nombre: "Otro" } }, error: null });
+    await expect(confirmarHoja("h1", "u1", campos, null)).rejects.toMatchObject({ forzable: true });
+  });
+
+  it("si el duplicado está en este mismo evento, responde con ese duplicado sin ofrecer forzarlo", async () => {
+    falso.estado.respuestas.push({ data: actual, error: null }, { data: null, error: null }, choque, { data: { id: "h9", evento_id: "e1", cap_eventos: { nombre: "Este" } }, error: null });
+    await expect(confirmarHoja("h1", "u1", campos, null)).rejects.toMatchObject({ forzable: false });
+  });
+
+  it("un duplicado del mismo evento detectado antes del update tampoco se puede forzar", async () => {
+    falso.estado.respuestas.push({ data: actual, error: null }, { data: { id: "h9", evento_id: "e1", cap_eventos: { nombre: "Este" } }, error: null });
+    await expect(confirmarHoja("h1", "u1", campos, null)).rejects.toMatchObject({ forzable: false });
+  });
+});
+
+describe("guardarLecturaAdelantada", () => {
+  it("no guarda si alguien tomó la hoja mientras la IA leía (select y update exigen que siga libre)", async () => {
+    falso.estado.respuestas.push({ data: { version: 1 }, error: null }, { data: { id: "h1" }, error: null });
+    expect(await guardarLecturaAdelantada("h1", EMPTY_FIELDS, null, { nombreOriginal: "a.jpg" })).toBe(true);
+    for (const llamadas of falso.estado.llamadas) {
+      expect(llamadas.find((c) => c[0] === "or")?.[1]).toMatch(/^bloqueada_hasta\.is\.null,bloqueada_hasta\.lt\./);
+    }
+  });
+});
+
+describe("confirmarHoja: el bloqueo también va en el UPDATE", () => {
+  it("no pisa a quien tomó la hoja entre la lectura y el guardado", async () => {
+    const campos = { ...EMPTY_FIELDS, folio: "12", nombre: "Ana Lopez", correo: "ana@mail.com", telefono: "3312345678" };
+    const actual = { estatus: "Interesado", estado: "pendiente", version: 1, evento_id: "e1", bloqueada_por: null, bloqueada_hasta: null, campos: null };
+    falso.estado.respuestas.push({ data: actual, error: null }, { data: null, error: null }, { data: filaHoja("h1", "Interesado"), error: null });
+    await confirmarHoja("h1", "u1", campos, null);
+    const update = falso.estado.llamadas[2];
+    expect(update.find((c) => c[0] === "or")?.[1]).toMatch(/bloqueada_por\.is\.null,bloqueada_por\.eq\.u1,bloqueada_hasta\.lt\./);
   });
 });

@@ -3,7 +3,7 @@ import { requerirHoja } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
 import { registrarAuditoria, registrarConfirmacionDeHoja } from "@/lib/captura-datos/auditoria";
 import { cerrarEventoSiCompleto } from "@/lib/captura-datos/cierre";
-import { actualizarCamposHoja, confirmarHoja, eliminarHoja, obtenerEvento, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, registrarCapturista } from "@/lib/captura-datos/db";
+import { actualizarCamposHoja, confirmarHoja, eliminarHoja, exigirEventoAbiertoSiConfirmada, obtenerEvento, ErrorEstadoHoja, ErrorFolioDuplicado, ErrorHojaOcupada, ErrorVersion, registrarCapturista } from "@/lib/captura-datos/db";
 import { adelantarLecturas } from "@/lib/captura-datos/lectura-ia";
 import { bloqueoVigente } from "@/lib/captura-datos/colaboracion";
 import { ErrorPeticion } from "@/lib/captura-datos/errores";
@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const b = await leerJson(req, patchHoja);
 
     if (b.confirmar) {
+      await exigirEventoAbiertoSiConfirmada(previa);
       if (!b.campos) return NextResponse.json({ error: "Faltan los datos de la hoja" }, { status: 400 });
       const forzar = new URL(req.url).searchParams.get("force") === "1";
       try {
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ hoja, eventoCerrado });
       } catch (err) {
         if (err instanceof ErrorFolioDuplicado) {
-          return NextResponse.json({ error: err.message, duplicado: err.duplicado }, { status: 409 });
+          return NextResponse.json({ error: err.message, duplicado: err.duplicado, forzable: err.forzable }, { status: 409 });
         }
         throw err;
       }
