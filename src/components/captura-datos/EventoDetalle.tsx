@@ -345,10 +345,11 @@ export function EventoDetalle({ id }: { id: string }) {
                 <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
                   <button onClick={() => alternarSeccion(e.value)} aria-expanded={!estaColapsada(e.value, lista)} className="flex w-full flex-wrap items-center gap-2 text-left">
                     <ChevronDown className={`h-4 w-4 text-muted transition ${estaColapsada(e.value, lista) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
-                    {estaCompleto(lista) && <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>}
                   </button>
                 </h2>
-                {evento.estado === "abierto" && lista.some((h) => h.estado === "pendiente" || h.estado === "leida") && (
+                {estaCompleto(lista) ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>
+                ) : evento.estado === "abierto" && lista.some((h) => h.estado === "pendiente" || h.estado === "leida") && (
                   <button onClick={() => void tomarSiguiente(e.value)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary-deep disabled:opacity-50">
                     {ocupado === "tomar" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />} {lista.some((h) => h.estado === "confirmada") ? "Seguir" : "Capturar"}
                   </button>
