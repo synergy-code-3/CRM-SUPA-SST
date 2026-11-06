@@ -35,6 +35,10 @@ function useCerrarAlClicFuera() {
   return ref;
 }
 
+const enfocarBuscador = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
+  if (e.currentTarget.open) e.currentTarget.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+};
+
 function Buscador({ valor, onCambio }: { valor: string; onCambio: (v: string) => void }) {
   return (
     <input
@@ -67,7 +71,7 @@ export function SelectorLista({ valor, onCambio, opciones, todas, etiqueta }: { 
   };
   const actual = opciones.find((o) => o.id === valor)?.nombre ?? todas;
   return (
-    <details ref={ref} className="group relative w-44 max-w-full">
+    <details ref={ref} onToggle={enfocarBuscador} className="group relative w-44 max-w-full">
       <summary className={`${CAMPO} flex cursor-pointer list-none items-center justify-between gap-2`} aria-label={etiqueta}>
         <span className="truncate">{actual}</span>
         <ChevronDown className="h-4 w-4 shrink-0 text-muted transition group-open:rotate-180" />
@@ -90,7 +94,7 @@ export function SelectorMultiple<T extends string>({ valores, onCambio, opciones
   const [texto, setTexto] = useState("");
   const visibles = filtrarPorTexto(opciones, texto);
   return (
-    <details ref={ref} className="group relative">
+    <details ref={ref} onToggle={enfocarBuscador} className="group relative">
       <summary className={`${CAMPO} flex cursor-pointer list-none items-center gap-2`} aria-label={etiqueta}>
         {valores.length ? `${etiqueta} (${valores.length})` : etiqueta}
         <ChevronDown className="h-4 w-4 text-muted transition group-open:rotate-180" />
