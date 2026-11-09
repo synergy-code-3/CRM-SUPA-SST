@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodificar, correosDeCliente, hojaPerteneceACliente, telefonoDe10 } from "./cliente-hojas";
+import { decodificar, correosDeCliente, hojaPerteneceACliente, hojasDelCliente, telefonoDe10 } from "./cliente-hojas";
 
 const cliente = { id: "viejo@x.com", email: "Nuevo@X.com", telefono: "+5215512345678" };
 const hoja = (campos: object | null, estado = "confirmada") => ({ estado, campos }) as never;
@@ -54,5 +54,25 @@ describe("hojaPerteneceACliente", () => {
   });
   it("hoja sin campos no coincide", () => {
     expect(hojaPerteneceACliente(hoja(null), cliente)).toBe(false);
+  });
+});
+
+describe("hojasDelCliente", () => {
+  const h = (id: string, correo: string) => ({ id, campos: { correo } });
+
+  it("sin hojas por teléfono usa las del correo", () => {
+    expect(hojasDelCliente([], [h("c", "a@x.com")]).map((x) => x.id)).toEqual(["c"]);
+  });
+
+  it("si el teléfono solo trae un correo, usa las del teléfono", () => {
+    expect(hojasDelCliente([h("a", "a@x.com"), h("b", "a@x.com")], [h("z", "a@x.com")]).map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("con teléfono duplicado entre correos distintos, afina por correo", () => {
+    expect(hojasDelCliente([h("a", "a@x.com"), h("b", "b@x.com")], [h("b", "b@x.com")]).map((x) => x.id)).toEqual(["b"]);
+  });
+
+  it("si ninguna coincide por correo, deja todas las del teléfono", () => {
+    expect(hojasDelCliente([h("a", "a@x.com"), h("b", "b@x.com")], []).map((x) => x.id)).toEqual(["a", "b"]);
   });
 });

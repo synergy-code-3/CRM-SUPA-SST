@@ -3,7 +3,7 @@ import { htmlInforme } from "./pdf-captura";
 import type { HojaDeCaptura } from "./historial";
 
 const hoja = (sobre: Partial<HojaDeCaptura> = {}): HojaDeCaptura => ({
-  hojaId: "h1", folio: "4476", inicio: "2026-10-28T11:59:54.000Z", fin: "2026-10-28T12:00:00.000Z", segundos: 6, guardados: 0, rapida: true, sinCambios: true, desdeAnteriorSegundos: null, foto: "IMG_1.jpg", ...sobre,
+  hojaId: "h1", folio: "4476", inicio: "2026-10-28T11:59:54.000Z", fin: "2026-10-28T12:00:00.000Z", segundos: 6, guardados: 0, rapida: true, sinCambios: true, desdeAnteriorSegundos: null, foto: "IMG_1.jpg", tipo: "confirmada", ...sobre,
 });
 
 describe("htmlInforme", () => {

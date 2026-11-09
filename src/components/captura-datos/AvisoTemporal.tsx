@@ -28,7 +28,6 @@ interface AvisoTemporalProps {
   /** El aviso se quita solo; se llama con él al terminar el tiempo o al darle a la X. */
   onCerrar: () => void;
   peligro?: boolean;
-  /** Aviso de éxito (verde). */
   positivo?: boolean;
   duracionMs?: number;
   children: React.ReactNode;

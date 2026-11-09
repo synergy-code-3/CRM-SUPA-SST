@@ -10,6 +10,7 @@ import "./_env";
 const BUCKETS = [
   { name: "cap-fotos", file_size_limit: "15MB" },
   { name: "cap-excel", file_size_limit: "20MB" },
+  { name: "cap-historial", file_size_limit: "20MB" },
 ];
 
 async function main() {

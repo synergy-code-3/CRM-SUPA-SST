@@ -31,19 +31,36 @@ const cliente = { id: "a@x.com", email: "a@x.com", telefono: "+525512345678" };
 beforeEach(() => { falso.estado.llamadas = []; falso.estado.respuestas = []; });
 
 describe("listarHojasDeCliente", () => {
-  it("busca hojas confirmadas por correo y por teléfono, y las junta sin repetir, la más reciente primero", async () => {
+  it("busca primero por teléfono (el correo solo afina duplicados), la más reciente primero", async () => {
     falso.estado.respuestas = [
       { data: [fila("1", "2026-10-01"), fila("2", "2026-10-05")], error: null },
       { data: [fila("2", "2026-10-05"), fila("3", "2026-09-01", { nombreOriginal: "x.pdf" })], error: null },
     ];
     const r = await listarHojasDeCliente(cliente);
-    expect(r.map((h) => h.id)).toEqual(["2", "1", "3"]);
+    expect(r.map((h) => h.id)).toEqual(["2", "3"]);
     expect(r[0]).toMatchObject({ folio: "F2", eventoNombre: "Evento 2", eventoFecha: "2026-10-01", esPdf: false });
-    expect(r[2].esPdf).toBe(true);
+    expect(r[1].esPdf).toBe(true);
     const filtros = falso.estado.llamadas.map((l) => l.filter(([m]) => m === "eq" || m === "in"));
     expect(filtros[0]).toContainEqual(["in", "campos->>correo", ["a@x.com"]]);
     expect(filtros[1]).toContainEqual(["eq", "campos->>telefono", "5512345678"]);
     expect(falso.estado.llamadas.every((l) => l.some(([m, c, v]) => m === "eq" && c === "estado" && v === "confirmada"))).toBe(true);
+  });
+
+  it("con el teléfono duplicado en correos distintos se queda con las que coinciden por correo", async () => {
+    const otra = { correo: "otro@x.com", telefono: "5512345678" };
+    falso.estado.respuestas = [
+      { data: [fila("1", "2026-10-01")], error: null },
+      { data: [fila("1", "2026-10-01"), fila("2", "2026-10-05", undefined, otra)], error: null },
+    ];
+    expect((await listarHojasDeCliente(cliente)).map((h) => h.id)).toEqual(["1"]);
+  });
+
+  it("si el teléfono no encuentra nada, usa las del correo", async () => {
+    falso.estado.respuestas = [
+      { data: [fila("1", "2026-10-01")], error: null },
+      { data: [], error: null },
+    ];
+    expect((await listarHojasDeCliente(cliente)).map((h) => h.id)).toEqual(["1"]);
   });
 
   it("descarta filas que no coinciden con el cliente aunque la base las devuelva", async () => {

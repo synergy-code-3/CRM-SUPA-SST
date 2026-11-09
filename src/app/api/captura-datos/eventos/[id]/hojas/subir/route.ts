@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
+import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
 import { crearHojas, obtenerEvento } from "@/lib/captura-datos/db";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
 import { carpetaDeFotos, subirArchivoADrive } from "@/lib/captura-datos/google";
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       metas.data.map((m, i) => ({ origen: { nombreOriginal: m.nombreOriginal, pagina: m.pagina, paginas: m.paginas, driveId: driveIds[i], nombreDrive: nombres[i] } }))
     );
 
+    await registrarAuditoria({ usuario: permiso.usuario, accion: "hojas_agregadas", eventoId: id, eventoNombre: evento.nombre, detalle: { cantidad: hojas.length, origen: "local" } });
     return NextResponse.json({ hojas });
   } catch (err) {
     return respuestaError(err, "captura-datos/eventos/[id]/hojas/subir POST");

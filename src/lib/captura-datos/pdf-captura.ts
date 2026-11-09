@@ -13,22 +13,30 @@ const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;"
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ESCAPES[c]);
 const seg = (s: number | null) => (s === null ? "—" : duracionLegible(s));
 
+function filaMovimientoHtml(h: HojaDeCaptura): string {
+  const etiqueta = h.tipo === "borrada" ? "Borrada" : "Modificado";
+  const detalle = (h.cambios ?? []).map((c) => `<br>${esc(c)}`).join("");
+  return `<tr class="movimiento"><td>${esc(h.foto ?? "No disponible")}</td><td>${esc(h.folio || "—")}</td><td>—</td><td>${esc(fechaHoraCompleta(h.fin))}</td><td>—</td><td>—</td><td>—</td><td><b>${etiqueta}</b>${detalle}</td></tr>`;
+}
+
 function filaHtml(h: HojaDeCaptura): string {
+  if (h.tipo !== "confirmada") return filaMovimientoHtml(h);
   const alertas = [h.rapida ? "Muy rápida" : "", h.sinCambios ? "Sin cambios" : "", h.segundos === null ? "Sin medición" : ""].filter(Boolean).join(", ");
   return `<tr class="${h.rapida || h.sinCambios ? "alerta" : ""}"><td>${esc(h.foto ?? "No disponible")}</td><td>${esc(h.folio || "—")}</td><td>${h.inicio ? esc(fechaHoraCompleta(h.inicio)) : "—"}</td><td>${esc(fechaHoraCompleta(h.fin))}</td><td>${seg(h.segundos)}</td><td>${h.guardados ?? "—"}</td><td>${seg(h.desdeAnteriorSegundos)}</td><td>${esc(alertas)}</td></tr>`;
 }
 
 export function htmlInforme(d: DatosInforme): string {
-  const e = estadisticasDeCaptura(d.hojas);
+  const confirmadas = d.hojas.filter((h) => h.tipo === "confirmada");
+  const e = estadisticasDeCaptura(confirmadas);
   const rapidas = d.hojas.filter((h) => h.rapida).length;
   const sinCambios = d.hojas.filter((h) => h.sinCambios).length;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de captura - ${esc(d.usuario)}</title><style>
 body{font-family:system-ui,sans-serif;font-size:11px;color:#111;margin:24px}h1{font-size:18px;margin:0 0 4px}p{margin:2px 0}
 table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f0f0f0}
-tr.alerta td{background:#fff3e0}@media print{@page{size:landscape;margin:12mm}}</style></head><body>
+tr.alerta td{background:#fff3e0}tr.movimiento td{background:#e8f0fe}thead{display:table-header-group}tr{page-break-inside:avoid}@media print{@page{size:landscape;margin:12mm}}</style></head><body>
 <h1>Reporte de captura: ${esc(d.usuario)}</h1>
 <p>Evento: ${esc(d.evento)} · Periodo: ${esc(d.periodo)}</p>
-<p>Hojas: ${d.hojas.length} · Medidas: ${e.medidas} · Mínimo ${seg(e.minimo)} · Mediana ${seg(e.mediana)} · Máximo ${seg(e.maximo)}</p>
+<p>Hojas: ${confirmadas.length}${d.hojas.length > confirmadas.length ? ` · Modificaciones o borrados: ${d.hojas.length - confirmadas.length}` : ""} · Medidas: ${e.medidas} · Mínimo ${seg(e.minimo)} · Mediana ${seg(e.mediana)} · Máximo ${seg(e.maximo)}</p>
 <p>Muy rápidas (menos de ${SEGUNDOS_CAPTURA_RAPIDA} s): ${rapidas} · Sin cambios guardados: ${sinCambios}</p>
 <table><thead><tr><th>Foto</th><th>Folio</th><th>Inició</th><th>Terminó</th><th>Duración</th><th>Guardados</th><th>Desde la anterior</th><th>Alertas</th></tr></thead><tbody>${d.hojas.map(filaHtml).join("")}</tbody></table>
 </body></html>`;

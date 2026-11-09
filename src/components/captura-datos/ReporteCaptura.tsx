@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ListChecks, RefreshCw } from "lucide-react";
 import { DetalleCapturaModal } from "./DetalleCapturaModal";
+import { Paginador } from "./Paginador";
+import { SelectorLista, useOpcionesHistorial } from "./SelectoresHistorial";
+import { paginar } from "@/lib/captura-datos/paginacion";
 import { api } from "@/lib/captura-datos/cliente";
 import { useSesion } from "@/lib/session-context";
 import { useDatosEnCache } from "@/lib/captura-datos/useDatosEnCache";
@@ -13,10 +16,9 @@ interface Respuesta {
   truncado: boolean;
 }
 
-const dia = (d: string, fin: boolean) => new Date(`${d}T${fin ? "23:59:59.999" : "00:00:00"}`).toISOString();
-const CAMPO = "rounded-lg border border-silver bg-surface px-3 py-1.5 text-sm";
 
-/** Una sola línea: sin alertas, la alerta que hay, o "Varias alertas" (el desglose está en el detalle). */
+const FILAS_POR_PAGINA = 15;
+
 function Alertas({ f }: { f: ResumenCaptura }) {
   const desglose = [f.rapidas ? `${f.rapidas} muy rápidas` : "", f.sinCambios ? `${f.sinCambios} sin cambios` : ""].filter(Boolean);
   if (desglose.length > 1) return <span title={desglose.join(" · ")} className="font-semibold text-danger">⚠ Varias alertas</span>;
@@ -25,38 +27,37 @@ function Alertas({ f }: { f: ResumenCaptura }) {
 }
 
 /** Quién capturó qué: inicio, fin y ritmo por persona y evento, para detectar a quien confirma sin leer. */
-export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
-  const [desde, setDesde] = useState("");
-  const [hasta, setHasta] = useState("");
+export function ReporteCaptura({ eventoId: eventoFijo }: { eventoId?: string }) {
   const { usuario } = useSesion();
+  const opciones = useOpcionesHistorial();
+  const [eventoElegido, setEventoElegido] = useState("");
+  const [admin, setAdmin] = useState("");
+  const eventoId = eventoFijo ?? (eventoElegido || undefined);
   const [detalle, setDetalle] = useState<ResumenCaptura | null>(null);
-  const fechas = useMemo(() => {
-    const p = new URLSearchParams();
-    if (desde) p.set("fechaDesde", dia(desde, false));
-    if (hasta) p.set("fechaHasta", dia(hasta, true));
-    return p;
-  }, [desde, hasta]);
-  const periodo = desde || hasta ? `${desde || "inicio"} a ${hasta || "hoy"}` : "Todo el tiempo";
-
-  const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}:${fechas}`, () => {
-    const params = new URLSearchParams(fechas);
+  const [pagina, setPagina] = useState(0);
+  const { datos, error, recargar } = useDatosEnCache<Respuesta>(usuario?.id, `reporte:${eventoId ?? "todos"}:${admin || "todos"}`, () => {
+    const params = new URLSearchParams();
     if (eventoId) params.set("eventoId", eventoId);
+    if (admin) params.set("admin", admin);
     return api<Respuesta>(`/api/captura-datos/historial/reporte?${params}`);
   });
 
+  const { items: filas, pagina: paginaActual, paginas } = paginar(datos?.filas ?? [], pagina, FILAS_POR_PAGINA);
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <label className="flex items-center gap-1">Desde <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={CAMPO} /></label>
-        <label className="flex items-center gap-1">Hasta <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={CAMPO} /></label>
+      <div className="flex flex-wrap items-center gap-2 border-t border-silver pt-3 text-sm">
+        <h3 className="text-base font-semibold text-foreground">Reporte de captura</h3>
+        <SelectorLista valor={admin} onCambio={(v) => { setAdmin(v); setPagina(0); }} opciones={opciones?.admins ?? []} todas="Todos los admins" etiqueta="Admin" />
+        {!eventoFijo && <SelectorLista valor={eventoElegido} onCambio={(v) => { setEventoElegido(v); setPagina(0); }} opciones={opciones?.eventos ?? []} todas="Todos los eventos" etiqueta="Evento" />}
         <button onClick={recargar} disabled={!datos && !error} title="Volver a pedir los datos (lo ya visto se guarda mientras la pestaña esté abierta)" className="ml-auto inline-flex items-center gap-1 rounded-lg border border-silver px-3 py-1.5 hover:bg-silver/40 disabled:opacity-50">
           <RefreshCw className="h-4 w-4" /> Actualizar
         </button>
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {!datos && !error && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
-      {datos?.filas.length === 0 && <p className="py-6 text-center text-sm text-muted">No hay hojas confirmadas en este periodo.</p>}
-      {datos?.truncado && <p className="text-xs text-warning">Hay demasiadas hojas: el reporte solo cubre las más recientes. Acota las fechas.</p>}
+      {datos?.filas.length === 0 && <p className="py-6 text-center text-sm text-muted">{admin || eventoId ? "Ninguna hoja confirmada con esos filtros." : "Todavía no hay hojas confirmadas."}</p>}
+      {datos?.truncado && <p className="text-xs text-warning">Hay demasiadas hojas: el reporte solo cubre las más recientes.</p>}
       {datos && datos.filas.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
@@ -73,7 +74,7 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-silver/60">
-              {datos.filas.map((f) => (
+              {filas.map((f) => (
                 <tr key={`${f.eventoId}|${f.usuarioId ?? f.usuario}`} className="align-middle">
                   <td className="py-2 pr-3 font-medium text-foreground">{f.usuario}</td>
                   {!eventoId && <td className="pr-3">{f.eventoNombre ?? "Evento borrado"}</td>}
@@ -95,7 +96,8 @@ export function ReporteCaptura({ eventoId }: { eventoId?: string }) {
           </table>
         </div>
       )}
-      {detalle && <DetalleCapturaModal fila={detalle} params={fechas} periodo={periodo} onCerrar={() => setDetalle(null)} />}
+      {datos && <Paginador pagina={paginaActual} paginas={paginas} total={datos.filas.length} onCambio={setPagina} />}
+      {detalle && <DetalleCapturaModal fila={detalle} onCerrar={() => setDetalle(null)} />}
     </div>
   );
 }

@@ -1,15 +1,11 @@
-// CRUD de Captura de Datos contra Supabase (cap_eventos / cap_hojas y
-// tablas relacionadas). Reemplaza al "almacen" + "escaneo.ts" del proyecto
-// original (un solo Escaneo guardado como JSON en disco) — aquí cada
-// evento y cada hoja son su propia fila, para que varias personas trabajen
-// el mismo evento en paralelo.
+// Acceso a Supabase de Captura de Datos (cap_eventos / cap_hojas y tablas relacionadas).
 import { supabase } from "@/lib/supabase";
 import type { Estatus, SheetFields } from "./fields";
 import { validateFields } from "./fields";
 import type { Adjunta, Destino, EstadoEvento, EstadoHoja, EventoCaptura, FotoRef, HojaCaptura, OrigenEvento } from "./modelo";
 import type { Box } from "./fields";
 import { ErrorPeticion } from "./errores";
-import { correosDeCliente, hojaPerteneceACliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
+import { correosDeCliente, hojaPerteneceACliente, hojasDelCliente, telefonoDe10, type ContactoCliente } from "./cliente-hojas";
 
 type FilaEvento = {
   id: string;
@@ -214,22 +210,6 @@ export async function obtenerEvento(id: string): Promise<EventoCaptura | null> {
   return data ? filaAEvento(data as FilaEvento) : null;
 }
 
-export async function listarAsignaciones(eventoId: string): Promise<string[]> {
-  const { data, error } = await supabase.from("cap_evento_asignaciones").select("usuario_id").eq("evento_id", eventoId);
-  if (error) throw error;
-  return (data as { usuario_id: string }[]).map((a) => a.usuario_id);
-}
-
-export async function reemplazarAsignaciones(eventoId: string, usuariosAsignados: string[]): Promise<void> {
-  const { error: errBorrar } = await supabase.from("cap_evento_asignaciones").delete().eq("evento_id", eventoId);
-  if (errBorrar) throw errBorrar;
-  if (usuariosAsignados.length === 0) return;
-  const { error } = await supabase
-    .from("cap_evento_asignaciones")
-    .insert(usuariosAsignados.map((usuarioId) => ({ evento_id: eventoId, usuario_id: usuarioId })));
-  if (error) throw error;
-}
-
 export async function confirmarEvento(
   id: string,
   usuarioId: string,
@@ -325,6 +305,12 @@ export async function crearHojas(
   return (data as FilaHoja[]).map(filaAHoja);
 }
 
+/** Borra una hoja (y su historial de cambios, en cascada). */
+export async function eliminarHoja(id: string): Promise<void> {
+  const { error } = await supabase.from("cap_hojas").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export interface HojaDeCliente {
   id: string;
   folio: string | null;
@@ -345,7 +331,7 @@ type FilaHojaDeCliente = {
 
 const COLUMNAS_HOJA_DE_CLIENTE = "id, folio, origen, campos, confirmada_en, cap_eventos(nombre, fecha)";
 
-/** Hojas confirmadas cuyo correo o teléfono es el del cliente (no hay llave directa), la más reciente primero. */
+/** Hojas confirmadas del cliente (no hay llave directa): por teléfono y, si hay duplicados, por correo; la más reciente primero. */
 export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCliente[]> {
   const base = () => supabase.from("cap_hojas").select(COLUMNAS_HOJA_DE_CLIENTE).eq("estado", "confirmada");
   const correos = correosDeCliente(c);
@@ -356,9 +342,8 @@ export async function listarHojasDeCliente(c: ContactoCliente): Promise<HojaDeCl
   ]);
   if (porCorreo.error) throw porCorreo.error;
   if (porTelefono.error) throw porTelefono.error;
-  const unicas = new Map<string, FilaHojaDeCliente>();
-  for (const f of [...(porCorreo.data ?? []), ...(porTelefono.data ?? [])] as unknown as FilaHojaDeCliente[]) unicas.set(f.id, f);
-  return [...unicas.values()]
+  const elegidas = hojasDelCliente((porTelefono.data ?? []) as unknown as FilaHojaDeCliente[], (porCorreo.data ?? []) as unknown as FilaHojaDeCliente[]);
+  return elegidas
     .filter((f) => hojaPerteneceACliente({ estado: "confirmada", campos: f.campos }, c))
     .sort((a, b) => (b.confirmada_en ?? "").localeCompare(a.confirmada_en ?? ""))
     .map((f) => ({
@@ -395,16 +380,15 @@ export async function obtenerHoja(id: string): Promise<HojaCaptura | null> {
   return data ? filaAHoja(data as FilaHoja) : null;
 }
 
-const MENSAJE_EVENTO_LLENO = "Este evento ya lo están capturando dos personas. Puedes ver las hojas, pero no capturar hasta que alguna termine o libere las suyas.";
+const MENSAJE_EVENTO_LLENO = "Ese estado ya lo están capturando cuatro personas. Puedes capturar otro estado o esperar a que alguien termine o libere sus hojas.";
 
 /**
- * Registra a la persona como capturista del evento (máximo dos: una desde el inicio y otra desde el final) y devuelve
- * si le toca ir desde el final. Una tercera persona recibe 409. Si la base aún no tiene la función (falta correr
- * schema.sql), no se limita a nadie y se captura como antes.
+ * Registra a la persona como capturista del estado (máximo cuatro por estado: dos desde el inicio y dos desde el final)
+ * y devuelve si le toca ir desde el final. Una quinta persona recibe 409. Si falta la función en la base (falta correr
+ * schema.sql) el error se propaga: no se captura sin límite en silencio.
  */
-export async function registrarCapturista(eventoId: string, usuarioId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId });
-  if (error?.code === "PGRST202") return false;
+export async function registrarCapturista(eventoId: string, usuarioId: string, estatus: Estatus): Promise<boolean> {
+  const { data, error } = await supabase.rpc("registrar_capturista", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
   if (error) throw error;
   if (data === "lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   return data === "inverso";
@@ -412,10 +396,10 @@ export async function registrarCapturista(eventoId: string, usuarioId: string): 
 
 /**
  * Toma la siguiente hoja libre del evento (bloqueo con skip-locked, ver tomar_hoja_libre en schema.sql). La base decide
- * el sentido: la primera persona va desde el inicio y la segunda desde el final; una tercera recibe 409.
+ * el sentido (dos personas desde el inicio y dos desde el final por estado); una quinta recibe 409.
  */
-export async function tomarHojaLibre(eventoId: string, usuarioId: string): Promise<HojaCaptura | null> {
-  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId });
+export async function tomarHojaLibre(eventoId: string, usuarioId: string, estatus: Estatus): Promise<HojaCaptura | null> {
+  const { data, error } = await supabase.rpc("tomar_hoja_libre", { p_evento: eventoId, p_usuario: usuarioId, p_estatus: estatus });
   if (error?.message === "evento_lleno") throw new ErrorPeticion(409, MENSAJE_EVENTO_LLENO);
   if (error) throw error;
   const fila = data as FilaHoja | null;
@@ -468,7 +452,7 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
     .update({ bloqueada_por: null, bloqueada_hasta: null })
     .eq("evento_id", eventoId)
     .eq("bloqueada_por", usuarioId)
-    .in("estado", ["pendiente", "leida"])
+    .in("estado", ["pendiente", "leida", "confirmada"]) // una confirmada que se está corrigiendo también cuenta como tomada
     .gt("bloqueada_hasta", new Date().toISOString()) // las vencidas ya están libres: así cuenta lo mismo que el botón
     .select("id");
   if (error) throw error;
@@ -482,7 +466,25 @@ export async function liberarHojasDeUsuario(eventoId: string, usuarioId: string)
   return (data as { id: string }[]).length;
 }
 
-export const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
+/** Una hoja ya confirmada solo se corrige con el evento abierto (reábrelo primero). */
+export async function exigirEventoAbiertoSiConfirmada(hoja: HojaCaptura): Promise<void> {
+  if (hoja.estado === "confirmada" && (await obtenerEvento(hoja.eventoId))?.estado !== "abierto") throw new ErrorEstadoHoja();
+}
+
+/** Al pasar a otro estado se sueltan las hojas vigentes que la persona tenía en los demás (igual que tomar_hoja_libre). */
+export async function liberarHojasDeOtroEstatus(eventoId: string, usuarioId: string, estatus: Estatus): Promise<void> {
+  const { error } = await supabase
+    .from("cap_hojas")
+    .update({ bloqueada_por: null, bloqueada_hasta: null })
+    .eq("evento_id", eventoId)
+    .eq("bloqueada_por", usuarioId)
+    .neq("estatus", estatus)
+    .in("estado", ["pendiente", "leida"])
+    .gt("bloqueada_hasta", new Date().toISOString());
+  if (error) throw error;
+}
+
+const BLOQUEO_MS = 10 * 60 * 1000; // igual que el intervalo de tomar_hoja_libre
 
 export class ErrorHojaOcupada extends Error {
   constructor() {
@@ -553,13 +555,14 @@ export async function actualizarCamposHoja(
 export type DuplicadoFolio = { hojaId: string; eventoId: string; eventoNombre: string };
 
 export class ErrorFolioDuplicado extends Error {
-  constructor(public duplicado: DuplicadoFolio) {
+  /** `forzable` es false si el duplicado está en este mismo evento: el índice único lo impide aunque se fuerce. */
+  constructor(public duplicado: DuplicadoFolio, public forzable = true) {
     super(`El folio ya está registrado en "${duplicado.eventoNombre}"`);
   }
 }
 
 /** Hoja YA confirmada (en cualquier evento, no solo este) con el mismo folio — los folios son hojas impresas numeradas, un mismo número repetido es casi siempre un error de captura. */
-export async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promise<DuplicadoFolio | null> {
+async function buscarFolioDuplicado(folio: string, excluirHojaId: string): Promise<DuplicadoFolio | null> {
   if (!folio) return null;
   const { data, error } = await supabase
     .from("cap_hojas")
@@ -575,6 +578,35 @@ export async function buscarFolioDuplicado(folio: string, excluirHojaId: string)
   return { hojaId: data.id, eventoId: data.evento_id, eventoNombre: evento?.nombre ?? "otro evento" };
 }
 
+/** Un folio ya confirmado en este mismo evento nunca se puede forzar (lo impide el índice único); en otro evento sí. */
+function errorPorFolio(duplicado: DuplicadoFolio, eventoId: string): ErrorFolioDuplicado {
+  return new ErrorFolioDuplicado(duplicado, duplicado.eventoId !== eventoId);
+}
+
+interface HojaPorConfirmar { estatus: string; estado: string; version: number; evento_id: string; campos: SheetFields | null }
+
+/** Lee la hoja y comprueba que `usuarioId` pueda confirmarla ahora (no inválida, versión vista, sin dueño ajeno vigente). */
+async function leerHojaPorConfirmar(id: string, usuarioId: string, versionEsperada?: number): Promise<HojaPorConfirmar> {
+  const { data: actual, error } = await supabase
+    .from("cap_hojas")
+    .select("estatus, estado, version, evento_id, bloqueada_por, bloqueada_hasta, campos")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
+  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
+  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
+  if (versionEsperada !== undefined && actual.version !== versionEsperada) throw new ErrorVersion();
+  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+  return actual as HojaPorConfirmar;
+}
+
+/** El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado. */
+async function registrarCorreccion(id: string, usuarioId: string, antes: SheetFields | null, despues: SheetFields): Promise<void> {
+  const { error } = await supabase.from("cap_hojas_historial").insert({ hoja_id: id, usuario_id: usuarioId, antes, despues });
+  if (error) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, error);
+}
+
 /** Confirma una hoja: valida los campos según su estatus y marca confirmada_por/en. */
 export async function confirmarHoja(
   id: string,
@@ -583,17 +615,7 @@ export async function confirmarHoja(
   voucherBox: Box | null,
   opts: { forzarDuplicado?: boolean; versionEsperada?: number } = {}
 ): Promise<HojaCaptura> {
-  const { data: actual, error: errLectura } = await supabase
-    .from("cap_hojas")
-    .select("estatus, estado, version, bloqueada_por, bloqueada_hasta, campos")
-    .eq("id", id)
-    .maybeSingle();
-  if (errLectura) throw errLectura;
-  if (!actual) throw new ErrorPeticion(404, "Hoja no encontrada");
-  if (actual.estado === "no_valida") throw new ErrorEstadoHoja();
-  // Con la versión que vio el editor: un confirmar con datos viejos (tras expirar el bloqueo) no pisa un guardado más reciente.
-  if (opts.versionEsperada !== undefined && actual.version !== opts.versionEsperada) throw new ErrorVersion();
-  if (actual.bloqueada_hasta && new Date(actual.bloqueada_hasta) > new Date() && actual.bloqueada_por !== usuarioId) throw new ErrorHojaOcupada();
+  const actual = await leerHojaPorConfirmar(id, usuarioId, opts.versionEsperada);
 
   const errores = validateFields(campos, actual.estatus as Estatus);
   if (Object.keys(errores).length > 0) {
@@ -602,9 +624,7 @@ export async function confirmarHoja(
 
   if (!opts.forzarDuplicado) {
     const duplicado = await buscarFolioDuplicado(campos.folio, id);
-    if (duplicado) {
-      throw new ErrorFolioDuplicado(duplicado);
-    }
+    if (duplicado) throw errorPorFolio(duplicado, actual.evento_id);
   }
 
   const { data, error } = await supabase
@@ -622,18 +642,19 @@ export async function confirmarHoja(
     .eq("id", id)
     .eq("version", actual.version)
     .in("estado", ["pendiente", "leida", "confirmada"])
+    // El bloqueo también va en el UPDATE: si otra persona tomó la hoja justo después de leerla, no se le pisa.
+    .or(`bloqueada_por.is.null,bloqueada_por.eq.${usuarioId},bloqueada_hasta.lt.${new Date().toISOString()}`)
     .select("*")
     .maybeSingle();
+  if (error?.code === "23505") {
+    // Otra persona confirmó el mismo folio entre la comprobación y el guardado: lo frena el índice único.
+    const duplicado = await buscarFolioDuplicado(campos.folio, id);
+    if (duplicado) throw errorPorFolio(duplicado, actual.evento_id);
+  }
   if (error) throw error;
   if (!data) throw new ErrorVersion();
 
-  // El historial se escribe DESPUÉS del update: si este falla (versión distinta), no queda un cambio falso registrado.
-  if (actual.estado === "confirmada") {
-    const { error: errHistorial } = await supabase
-      .from("cap_hojas_historial")
-      .insert({ hoja_id: id, usuario_id: usuarioId, antes: actual.campos ?? null, despues: campos });
-    if (errHistorial) console.error("captura-datos: no se pudo registrar el historial de la hoja", id, errHistorial);
-  }
+  if (actual.estado === "confirmada") await registrarCorreccion(id, usuarioId, actual.campos, campos);
   return filaAHoja(data as FilaHoja);
 }
 
@@ -690,11 +711,12 @@ export async function finalizarLecturaIa(id: string, origen: FotoRef): Promise<v
 }
 
 /**
- * Guarda una lectura adelantada solo si nadie tocó la hoja mientras la IA leía (sigue pendiente y sin datos);
+ * Guarda una lectura adelantada solo si nadie tocó la hoja mientras la IA leía (sigue pendiente, sin datos y sin dueño);
  * así nunca pisa lo que alguien ya estaba escribiendo. Devuelve false si no se guardó.
  */
 export async function guardarLecturaAdelantada(id: string, campos: SheetFields, voucherBox: Box | null, origen: FotoRef): Promise<boolean> {
-  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version").eq("id", id).eq("estado", "pendiente").is("campos", null).maybeSingle();
+  const libre = `bloqueada_hasta.is.null,bloqueada_hasta.lt.${new Date().toISOString()}`; // si alguien la tomó mientras la IA leía, es suya
+  const { data: actual, error: errLectura } = await supabase.from("cap_hojas").select("version").eq("id", id).eq("estado", "pendiente").is("campos", null).or(libre).maybeSingle();
   if (errLectura) throw errLectura;
   if (!actual) return false;
   const { data, error } = await supabase
@@ -704,36 +726,29 @@ export async function guardarLecturaAdelantada(id: string, campos: SheetFields, 
     .eq("version", actual.version)
     .eq("estado", "pendiente")
     .is("campos", null)
+    .or(libre)
     .select("id")
     .maybeSingle();
   if (error) throw error;
   return !!data;
 }
 
-const ORDEN_ESTATUS: Estatus[] = ["Completo", "Apartado", "Interesado"];
-
-/** Las próximas `cantidad` hojas libres del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
-export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso = false): Promise<HojaCaptura[]> {
-  const ahora = new Date().toISOString();
-  const hojas: HojaCaptura[] = [];
-  for (const estatus of inverso ? [...ORDEN_ESTATUS].reverse() : ORDEN_ESTATUS) {
-    if (hojas.length >= cantidad) break;
-    const { data, error } = await supabase
-      .from("cap_hojas")
-      .select("*")
-      .eq("evento_id", eventoId)
-      .eq("estatus", estatus)
-      .in("estado", ["pendiente", "leida"])
-      .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${ahora}`)
-      .order("id", { ascending: !inverso })
-      .limit(cantidad - hojas.length);
-    if (error) throw error;
-    hojas.push(...(data as FilaHoja[]).map(filaAHoja));
-  }
-  return hojas;
+/** Las próximas `cantidad` hojas libres de un estado del evento, en el mismo orden en que las entrega tomar_hoja_libre (no las bloquea). */
+export async function siguientesHojasLibres(eventoId: string, cantidad: number, inverso: boolean, estatus: Estatus): Promise<HojaCaptura[]> {
+  const { data, error } = await supabase
+    .from("cap_hojas")
+    .select("*")
+    .eq("evento_id", eventoId)
+    .eq("estatus", estatus)
+    .in("estado", ["pendiente", "leida"])
+    .or(`bloqueada_hasta.is.null,bloqueada_hasta.lt.${new Date().toISOString()}`)
+    .order("id", { ascending: !inverso })
+    .limit(cantidad);
+  if (error) throw error;
+  return (data as FilaHoja[]).map(filaAHoja);
 }
 
-export async function marcarNoValida(huella: string): Promise<void> {
+async function marcarNoValida(huella: string): Promise<void> {
   const { error } = await supabase.from("cap_imagenes_no_validas").upsert({ huella });
   if (error) throw error;
 }

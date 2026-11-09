@@ -9,6 +9,7 @@ import { api, subirHojas } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
+import { mensajeError } from "./mensajeError";
 
 const CLASE_INPUT = "w-full rounded-lg border border-silver bg-surface px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2";
 const CLASE_BOTON = "inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50";
@@ -43,7 +44,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
       setEnlaceBuscado(enlace);
     } catch (err) {
       setInfo(null);
-      setError(err instanceof Error ? err.message : "No se pudo leer la carpeta.");
+      setError(mensajeError(err, "No se pudo leer la carpeta."));
     } finally {
       setCargando(false);
     }
@@ -67,7 +68,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
       }
       onCreado(evento);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el evento.");
+      setError(mensajeError(err, "No se pudo crear el evento."));
       setCargando(false);
     }
   }
@@ -89,7 +90,7 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Carpeta de Drive del evento</span>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <input value={enlace} onChange={(e) => { setEnlace(e.target.value); setInfo(null); }} placeholder="https://drive.google.com/drive/folders/…" className={CLASE_INPUT} />
+            <input value={enlace} onChange={(e) => { setEnlace(e.target.value); setInfo(null); }} placeholder="https://drive.google.com/drive/folders/…" maxLength={500} className={CLASE_INPUT} />
             <button onClick={buscarCarpeta} disabled={!enlace.trim() || cargando} className={CLASE_BOTON}>
               {cargando && !info ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
             </button>

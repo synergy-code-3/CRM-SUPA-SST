@@ -2,8 +2,8 @@
 // navegador (HistorialModal), por eso no importa nada de Supabase.
 import type { SheetFields } from "./fields";
 
-/** Cuánto se conserva el historial; el cron semanal /api/cron/purgar-auditoria borra lo más viejo (ver auditoria.ts). */
-export const RETENCION_AUDITORIA_DIAS = 365;
+/** Cuánto se conserva el historial (6 meses); el cron semanal /api/cron/purgar-auditoria guarda un CSV de lo más viejo y lo borra (ver auditoria.ts). */
+export const RETENCION_AUDITORIA_DIAS = 180;
 
 export type AccionAuditoria =
   | "evento_creado"
@@ -12,8 +12,10 @@ export type AccionAuditoria =
   | "evento_cerrado_auto"
   | "evento_reabierto"
   | "evento_borrado"
+  | "hojas_agregadas"
   | "hoja_confirmada"
-  | "hoja_corregida";
+  | "hoja_corregida"
+  | "hoja_borrada";
 
 export interface RegistroAuditoria {
   id: number;
@@ -36,8 +38,10 @@ export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   evento_cerrado_auto: "El evento se cerró solo (todas las hojas confirmadas)",
   evento_reabierto: "Reabrió el evento",
   evento_borrado: "Borró el evento",
+  hojas_agregadas: "Agregó hojas al evento",
   hoja_confirmada: "Confirmó una hoja",
-  hoja_corregida: "Corrigió una hoja ya confirmada",
+  hoja_corregida: "Modificó una hoja ya confirmada",
+  hoja_borrada: "Borró una hoja",
 };
 
 export const ACCIONES_AUDITORIA = Object.keys(ETIQUETA_ACCION) as AccionAuditoria[];
@@ -50,8 +54,10 @@ export const ETIQUETA_FILTRO_ACCION: Record<AccionAuditoria, string> = {
   evento_cerrado_auto: "Cerrado solo",
   evento_reabierto: "Reabierto",
   evento_borrado: "Borrado",
+  hojas_agregadas: "Hojas agregadas",
   hoja_confirmada: "Hoja confirmada",
-  hoja_corregida: "Hoja corregida",
+  hoja_corregida: "Hoja modificada",
+  hoja_borrada: "Hoja borrada",
 };
 
 const ETIQUETA_CAMPO: Record<string, string> = {
@@ -125,6 +131,10 @@ export interface HojaDeCaptura {
   desdeAnteriorSegundos: number | null;
   /** Nombre del archivo de la foto (se completa en el servidor si la hoja aún existe). */
   foto?: string;
+  /** "corregida" = edición posterior a la confirmación; "borrada" = se eliminó la hoja (ninguna cuenta en tiempos ni alertas). */
+  tipo: "confirmada" | "corregida" | "borrada";
+  /** Solo en correcciones: qué cambió; en borradas, el motivo/estado en que estaba. */
+  cambios?: string[];
 }
 
 /** Agrupa las hojas confirmadas por evento y persona. `rapidas` = confirmadas en menos de SEGUNDOS_CAPTURA_RAPIDA; `sinCambios` = sin ningún guardado desde que se tomó. */
@@ -154,20 +164,47 @@ export function resumirCaptura(registros: RegistroAuditoria[]): ResumenCaptura[]
   return [...grupos.values()].map(({ resumen, suma, medidas }) => ({ ...resumen, promedioSegundos: medidas ? Math.round(suma / medidas) : null }));
 }
 
-/** Cada hoja de las confirmaciones dadas, de la más antigua a la más reciente. */
+/** Cada hoja confirmada, modificada o borrada de los registros dados, de la más antigua a la más reciente. Otras acciones se ignoran. */
 export function detalleDeCaptura(registros: RegistroAuditoria[]): HojaDeCaptura[] {
-  const orden = [...registros].sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
+  const orden = registros.filter((r) => r.accion === "hoja_confirmada" || r.accion === "hoja_corregida" || r.accion === "hoja_borrada").sort((a, b) => a.en.localeCompare(b.en) || a.id - b.id);
   let anterior: string | null = null;
-  return orden.map((r) => {
+  const filas = orden.map((r) => {
+    if (r.accion === "hoja_borrada") {
+      const cambios = [texto(r.detalle?.foto) && `Foto: ${texto(r.detalle?.foto)}`, texto(r.detalle?.estado) && `Estaba ${texto(r.detalle?.estado).replace("_", " ")}`].filter((x): x is string => !!x);
+      return { hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: null, fin: r.en, segundos: null, guardados: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null, tipo: "borrada" as const, cambios };
+    }
+    if (r.accion === "hoja_corregida") {
+      const cambios = Object.entries((r.detalle?.cambios ?? {}) as Record<string, CambioCampo>).map(([campo, c]) => `${ETIQUETA_CAMPO[campo] ?? campo}: «${c.antes}» → «${c.despues}»`);
+      return { hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: null, fin: r.en, segundos: null, guardados: null, rapida: false, sinCambios: false, desdeAnteriorSegundos: null, tipo: "corregida" as const, cambios };
+    }
     const c = datosCaptura(r.detalle);
     const desdeAnteriorSegundos = anterior ? Math.max(0, Math.round((new Date(r.en).getTime() - new Date(anterior).getTime()) / 1000)) : null;
     anterior = r.en;
     return {
       hojaId: r.hojaId, folio: texto(r.detalle?.folio), inicio: c?.inicio ?? null, fin: r.en, segundos: c?.segundos ?? null, guardados: c?.guardados ?? null,
-      rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos,
+      rapida: !!c && c.segundos < SEGUNDOS_CAPTURA_RAPIDA, sinCambios: !!c && c.guardados === 0, desdeAnteriorSegundos, tipo: "confirmada" as const,
     };
   });
+  return agruparBajoSuHoja(filas);
 }
+
+/** Las modificaciones y borrados de una hoja van justo debajo de su confirmación; los que no tienen la confirmación en la lista quedan en su sitio cronológico. */
+function agruparBajoSuHoja(filas: HojaDeCaptura[]): HojaDeCaptura[] {
+  const confirmadas = new Set(filas.filter((f) => f.tipo === "confirmada" && f.hojaId).map((f) => f.hojaId));
+  const resultado: HojaDeCaptura[] = [];
+  for (const f of filas) {
+    if (f.tipo !== "confirmada") {
+      if (!f.hojaId || !confirmadas.has(f.hojaId)) resultado.push(f);
+      continue;
+    }
+    resultado.push(f, ...filas.filter((x) => x.tipo !== "confirmada" && x.hojaId && x.hojaId === f.hojaId));
+  }
+  return resultado;
+}
+
+/** Movimientos que no son de hojas (crear evento, subir a Drive, cerrar, etc.), del más reciente al más antiguo. */
+export const otrosMovimientos = (registros: RegistroAuditoria[]): RegistroAuditoria[] =>
+  registros.filter((r) => r.accion !== "hoja_confirmada" && r.accion !== "hoja_corregida" && r.accion !== "hoja_borrada").sort((a, b) => b.en.localeCompare(a.en) || b.id - a.id);
 
 export function estadisticasDeCaptura(hojas: Pick<HojaDeCaptura, "segundos">[]): { medidas: number; minimo: number | null; mediana: number | null; maximo: number | null } {
   const v = hojas.flatMap((h) => (h.segundos === null ? [] : [h.segundos])).sort((a, b) => a - b);
@@ -194,6 +231,11 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (d.origen === "drive") lineas.push("Fotos desde una carpeta de Drive");
       if (d.origen === "local") lineas.push("Fotos subidas desde la computadora");
       break;
+    case "hojas_agregadas":
+      if (typeof d.cantidad === "number") lineas.push(`${d.cantidad} ${d.cantidad === 1 ? "hoja nueva" : "hojas nuevas"}`);
+      if (d.origen === "drive") lineas.push("Desde una carpeta de Drive");
+      if (d.origen === "local") lineas.push("Subidas desde la computadora");
+      break;
     case "evento_reabierto":
       if (texto(d.motivo)) lineas.push(`Motivo: ${texto(d.motivo)}`);
       break;
@@ -206,6 +248,11 @@ export function lineasDeDetalle(r: RegistroAuditoria): string[] {
       if (r.clienteNombre) lineas.push(`Nombre: ${r.clienteNombre}`);
       if (d.duplicadoForzado === true) lineas.push("Se confirmó aunque el folio ya existía en otro evento");
       lineas.push(...lineasDeCaptura(r));
+      break;
+    case "hoja_borrada":
+      if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
+      if (texto(d.foto)) lineas.push(`Foto: ${texto(d.foto)}`);
+      if (texto(d.estado)) lineas.push(`Estaba ${texto(d.estado).replace("_", " ")}`);
       break;
     case "hoja_corregida": {
       if (texto(d.folio)) lineas.push(`Folio ${texto(d.folio)}`);
@@ -231,4 +278,12 @@ function lineasDeCaptura(r: RegistroAuditoria): string[] {
     `Duración: ${duracionLegible(c.segundos)}${rapida}`,
     c.guardados === 0 ? "Sin cambios guardados mientras la tenía" : `${c.guardados} ${c.guardados === 1 ? "cambio guardado" : "cambios guardados"} mientras la tenía`,
   ];
+}
+
+const celdaCsv = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** CSV (con BOM para que Excel lo abra con acentos) de movimientos del historial: fecha, admin, evento, acción y detalle. */
+export function csvDeRegistros(registros: RegistroAuditoria[]): string {
+  const filas = registros.map((r) => [r.en, r.usuarioNombre ?? "", r.eventoNombre ?? "", ETIQUETA_ACCION[r.accion] ?? r.accion, lineasDeDetalle(r).join(" | ")]);
+  return "\uFEFF" + [["Fecha", "Admin", "Evento", "Acción", "Detalle"], ...filas].map((f) => f.map(celdaCsv).join(",")).join("\r\n") + "\r\n";
 }

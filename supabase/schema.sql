@@ -1094,8 +1094,9 @@ alter table certificaciones_clientes add column if not exists revocado boolean n
 alter table certificaciones_clientes add column if not exists fecha_revocacion timestamptz;
 alter table certificaciones_clientes add column if not exists motivo_revocacion text;
 
--- Captura de Datos: máximo dos personas capturando un evento abierto, cada una desde un extremo.
--- cap_evento_capturistas guarda quién captura el evento y en qué sentido (inverso = desde la última hoja).
+-- Captura de Datos: máximo cuatro personas por estado (Completo, Apartado, Interesado) en un evento abierto:
+-- dos desde el inicio y dos desde el final de las hojas de ese estado. Cada persona captura un estado a la vez.
+-- cap_evento_capturistas guarda quién captura, en qué estado y en qué sentido (inverso = desde la última hoja).
 -- Se considera activa a la persona con actividad en los últimos 15 minutos o con una hoja tomada y vigente.
 create table if not exists cap_evento_capturistas (
   evento_id uuid not null references cap_eventos (id) on delete cascade,
@@ -1104,27 +1105,29 @@ create table if not exists cap_evento_capturistas (
   ultima_actividad timestamptz not null default now(),
   primary key (evento_id, usuario_id)
 );
+alter table cap_evento_capturistas add column if not exists estatus text;
 alter table cap_evento_capturistas enable row level security;
 create index if not exists idx_cap_evento_capturistas_usuario on cap_evento_capturistas (usuario_id);
 
--- Registra (o renueva) a la persona como capturista del evento y devuelve su sentido: 'normal' | 'inverso' | 'lleno'.
--- Quien ya capturaba conserva su sentido; la primera persona va desde el inicio y la segunda desde el final;
--- una tercera recibe 'lleno'. Un evento ya cerrado no limita a nadie. El candado serializa llegadas simultáneas.
 -- En una transacción: las funciones nuevas nunca quedan visibles con el EXECUTE por defecto (antes del revoke).
 begin;
--- Reporte de captura: cuándo tomó la hoja la persona actual y cuántos autoguardados lleva (se reinician en cada toma nueva).
 alter table cap_hojas add column if not exists tomada_en timestamptz;
 alter table cap_hojas add column if not exists guardados_toma int not null default 0;
 drop function if exists tomar_hoja_libre(uuid, uuid, boolean);
 drop function if exists tomar_hoja_libre(uuid, uuid);
+drop function if exists registrar_capturista(uuid, uuid);
 
-create or replace function registrar_capturista(p_evento uuid, p_usuario uuid)
+-- Registra (o renueva) a la persona como capturista del estado y devuelve su sentido: 'normal' | 'inverso' | 'lleno'.
+-- Quien ya capturaba ese estado conserva su sentido; si cambia de estado se reasigna. Nuevos: hasta 2 normales y 2 inversos
+-- (se reparte al sentido con menos gente, empatando va 'normal'); una quinta persona recibe 'lleno'.
+-- Un evento ya cerrado no limita a nadie. El candado serializa llegadas simultáneas.
+create or replace function registrar_capturista(p_evento uuid, p_usuario uuid, p_estatus text)
 returns text
 language plpgsql
 as $$
 declare
-  v_otros int;
-  v_otro_inverso boolean;
+  v_normales int;
+  v_inversos int;
   v_mio boolean;
   v_inverso boolean;
 begin
@@ -1135,7 +1138,7 @@ begin
 
   with activos as (
     select c.usuario_id, c.inverso from cap_evento_capturistas c
-    where c.evento_id = p_evento
+    where c.evento_id = p_evento and c.estatus = p_estatus
       and (
         c.ultima_actividad > now() - interval '15 minutes'
         or exists (
@@ -1146,40 +1149,38 @@ begin
       )
   )
   select
-    count(*) filter (where usuario_id <> p_usuario),
-    bool_or(inverso) filter (where usuario_id <> p_usuario),
+    count(*) filter (where usuario_id <> p_usuario and not inverso),
+    count(*) filter (where usuario_id <> p_usuario and inverso),
     (array_agg(inverso) filter (where usuario_id = p_usuario))[1]
-  into v_otros, v_otro_inverso, v_mio
+  into v_normales, v_inversos, v_mio
   from activos;
 
   if v_mio is not null then
     v_inverso := v_mio;
-  elsif v_otros >= 2 then
+  elsif v_normales >= 2 and v_inversos >= 2 then
     return 'lleno';
-  elsif v_otros = 1 then
-    v_inverso := not v_otro_inverso;
-  else
+  elsif v_normales >= 2 then
+    v_inverso := true;
+  elsif v_inversos >= 2 then
     v_inverso := false;
+  else
+    v_inverso := v_inversos < v_normales;
   end if;
 
-  insert into cap_evento_capturistas (evento_id, usuario_id, inverso, ultima_actividad)
-  values (p_evento, p_usuario, v_inverso, now())
-  on conflict (evento_id, usuario_id) do update set inverso = excluded.inverso, ultima_actividad = excluded.ultima_actividad;
+  insert into cap_evento_capturistas (evento_id, usuario_id, inverso, ultima_actividad, estatus)
+  values (p_evento, p_usuario, v_inverso, now(), p_estatus)
+  on conflict (evento_id, usuario_id) do update
+    set inverso = excluded.inverso, ultima_actividad = excluded.ultima_actividad, estatus = excluded.estatus;
   return case when v_inverso then 'inverso' else 'normal' end;
 end;
 $$;
 
--- Toma la siguiente hoja libre de un evento sin que dos personas tomen la
--- misma ("for update skip locked" — la segunda persona que llama al mismo
--- tiempo simplemente salta a la siguiente fila disponible en vez de
--- esperar). El bloqueo expira solo a los 10 minutos si nadie la confirma ni
--- la libera a mano (ver POST /api/captura-datos/hojas/[id]/liberar).
--- Si la persona ya tiene una hoja vigente en el evento, se la devuelve (renovando el bloqueo) en vez de bloquear otra.
--- Orden = el de la pantalla (Completos, Apartados, Interesados; dentro de cada uno, por id); la lectura adelantada
--- (siguientesHojasLibres en captura-datos/db.ts) usa ese mismo orden. Si registrar_capturista la manda desde el final
--- el orden es el contrario (de la última Interesada a la primera Completa): las dos personas avanzan una hacia la otra.
--- Una tercera persona recibe el error 'evento_lleno'.
-create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid)
+-- Toma la siguiente hoja libre de un estado del evento sin que dos personas tomen la misma ("for update skip locked").
+-- El bloqueo expira solo a los 10 minutos si nadie la confirma ni la libera a mano.
+-- Si la persona ya tiene una hoja vigente de ese estado, se la devuelve (renovando el bloqueo). Las que tuviera
+-- vigentes de otro estado se sueltan. Orden = el de la pantalla (por id); si registrar_capturista la manda desde el final,
+-- el contrario. Una quinta persona en el mismo estado recibe el error 'evento_lleno'.
+create or replace function tomar_hoja_libre(p_evento uuid, p_usuario uuid, p_estatus text)
 returns cap_hojas
 language plpgsql
 as $$
@@ -1188,22 +1189,22 @@ declare
   v_modo text;
   v_inverso boolean;
 begin
-  v_modo := registrar_capturista(p_evento, p_usuario);
+  v_modo := registrar_capturista(p_evento, p_usuario, p_estatus);
   if v_modo = 'lleno' then
     raise exception 'evento_lleno';
   end if;
   v_inverso := v_modo = 'inverso';
 
+  update cap_hojas set bloqueada_por = null, bloqueada_hasta = null
+  where evento_id = p_evento and bloqueada_por = p_usuario and estatus <> p_estatus
+    and estado in ('pendiente', 'leida') and bloqueada_hasta > now();
+
   update cap_hojas set bloqueada_hasta = now() + interval '10 minutes'
   where id = (
     select id from cap_hojas
-    where evento_id = p_evento and estado in ('pendiente', 'leida')
+    where evento_id = p_evento and estatus = p_estatus and estado in ('pendiente', 'leida')
       and bloqueada_por = p_usuario and bloqueada_hasta > now()
-    order by
-      case when not v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
-      case when not v_inverso then id end,
-      case when v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
-      case when v_inverso then id end desc
+    order by case when v_inverso then null else id end, case when v_inverso then id end desc
     limit 1
     for update skip locked
   )
@@ -1215,13 +1216,9 @@ begin
   update cap_hojas set bloqueada_por = p_usuario, bloqueada_hasta = now() + interval '10 minutes', tomada_en = now(), guardados_toma = 0
   where id = (
     select id from cap_hojas
-    where evento_id = p_evento and estado in ('pendiente', 'leida')
+    where evento_id = p_evento and estatus = p_estatus and estado in ('pendiente', 'leida')
       and (bloqueada_hasta is null or bloqueada_hasta < now())
-    order by
-      case when not v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end,
-      case when not v_inverso then id end,
-      case when v_inverso then case estatus when 'Completo' then 1 when 'Apartado' then 2 else 3 end end desc,
-      case when v_inverso then id end desc
+    order by case when v_inverso then null else id end, case when v_inverso then id end desc
     limit 1
     for update skip locked
   )
@@ -1231,10 +1228,10 @@ end;
 $$;
 
 -- Postgres da EXECUTE a PUBLIC por defecto: solo la secret key del servidor (service_role) debe poder llamarlas.
-revoke execute on function registrar_capturista(uuid, uuid) from public, anon, authenticated;
-grant execute on function registrar_capturista(uuid, uuid) to service_role;
-revoke execute on function tomar_hoja_libre(uuid, uuid) from public, anon, authenticated;
-grant execute on function tomar_hoja_libre(uuid, uuid) to service_role;
+revoke execute on function registrar_capturista(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function registrar_capturista(uuid, uuid, text) to service_role;
+revoke execute on function tomar_hoja_libre(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function tomar_hoja_libre(uuid, uuid, text) to service_role;
 commit;
 -- PostgREST guarda en caché las firmas de las funciones: se recarga para que vea las nuevas sin esperar.
 notify pgrst, 'reload schema';
@@ -1323,7 +1320,8 @@ create index if not exists idx_cap_hojas_cliente_telefono on cap_hojas ((campos 
 insert into storage.buckets (id, name, public)
 values ('comprobantes-pago', 'comprobantes-pago', false),
        ('cap-fotos', 'cap-fotos', false),
-       ('cap-excel', 'cap-excel', false)
+       ('cap-excel', 'cap-excel', false),
+       ('cap-historial', 'cap-historial', false)
 on conflict (id) do nothing;
 
 analyze clientes;

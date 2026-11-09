@@ -1,9 +1,4 @@
-// Genera el Excel descargable de un evento (con el formato de la plantilla),
-// para el botón "Descargar" — la Hoja de Google es la que de verdad importa
-// (la escribe lib/google.ts directo vía Apps Script); este Excel es una
-// copia de cortesía. A diferencia del proyecto original, siempre parte de
-// la plantilla fresca (no reconcilia con un Excel local anterior — aquí la
-// base de datos real ya es Supabase, no un archivo).
+// Excel descargable de un evento con el formato de la plantilla: copia de cortesía, la Hoja de Google es la fuente real.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ExcelJS from "exceljs";
@@ -108,7 +103,7 @@ export async function generarExcelEvento(hojas: HojaCaptura[]): Promise<Buffer> 
   for (let i = 0; i < Math.max(n, previas); i++) {
     const row = i + 2;
     const hoja = i < n ? confirmadas[i] : null;
-    const r: Partial<SheetRecord> = hoja ? toRecord(normalizeFields(hoja.campos!, hoja.estatus), hoja.estatus) : {};
+    const r: Partial<SheetRecord> = hoja ? toRecord(normalizeFields(hoja.campos!), hoja.estatus) : {};
     for (const [clave, col] of Object.entries(map) as [Clave, number][]) {
       const cell = ws.getCell(row, col);
       const v = r[clave];

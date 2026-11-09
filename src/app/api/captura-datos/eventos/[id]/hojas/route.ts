@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requerirEvento } from "@/lib/captura-datos/acceso";
 import { requerirPermiso } from "@/lib/auth";
+import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
 import { crearHojas, listarHojasDeEvento, nombresDeUsuarios, obtenerEvento } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { idDrive } from "@/lib/captura-datos/validacion";
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       b.estatus as (typeof ESTATUS)[number]["value"],
       b.archivos.map((a) => ({ origen: { nombreOriginal: a.nombreOriginal, driveId: a.driveId } }))
     );
+    await registrarAuditoria({ usuario: permiso.usuario, accion: "hojas_agregadas", eventoId: id, eventoNombre: evento.nombre, detalle: { cantidad: hojas.length, origen: "drive" } });
     return NextResponse.json({ hojas });
   } catch (err) {
     return respuestaError(err, "captura-datos/eventos/[id]/hojas POST");

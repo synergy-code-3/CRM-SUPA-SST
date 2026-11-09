@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bloqueoVigente, iniciales, misHojasEnEdicion, progresoPorPersona } from "./colaboracion";
+import { bloqueadaPorOtra, bloqueoVigente, iniciales, misHojasEnEdicion, progresoPorPersona } from "./colaboracion";
 import type { HojaCaptura } from "./modelo";
 
 const AHORA = new Date("2026-11-02T12:00:00.000Z");
@@ -19,8 +19,9 @@ describe("bloqueoVigente", () => {
     expect(bloqueoVigente(hoja({}), AHORA)).toBe(false);
   });
 
-  it("una hoja confirmada nunca cuenta como en edición", () => {
-    expect(bloqueoVigente(hoja({ estado: "confirmada", bloqueadaPorId: "u", bloqueadaHasta: FUTURO }), AHORA)).toBe(false);
+  it("una hoja confirmada con bloqueo vigente está en corrección (confirmar y no válida ya limpian el bloqueo)", () => {
+    expect(bloqueoVigente(hoja({ estado: "confirmada", bloqueadaPorId: "u", bloqueadaHasta: FUTURO }), AHORA)).toBe(true);
+    expect(bloqueoVigente(hoja({ estado: "confirmada" }), AHORA)).toBe(false);
   });
 });
 
@@ -70,5 +71,18 @@ describe("progresoPorPersona", () => {
       { id: "b", nombre: "Otra persona", confirmadas: 2 },
       { id: "a", nombre: "Ana", confirmadas: 1 },
     ]);
+  });
+});
+
+describe("bloqueadaPorOtra", () => {
+  it("es true solo si otra persona tiene un bloqueo vigente", () => {
+    expect(bloqueadaPorOtra(hoja({ bloqueadaPorId: "otra", bloqueadaHasta: FUTURO }), "yo", AHORA)).toBe(true);
+    expect(bloqueadaPorOtra(hoja({ bloqueadaPorId: "yo", bloqueadaHasta: FUTURO }), "yo", AHORA)).toBe(false);
+    expect(bloqueadaPorOtra(hoja({ bloqueadaPorId: "otra", bloqueadaHasta: PASADO }), "yo", AHORA)).toBe(false);
+    expect(bloqueadaPorOtra(hoja({}), "yo", AHORA)).toBe(false);
+  });
+
+  it("también cuenta en una hoja confirmada que otra persona está corrigiendo", () => {
+    expect(bloqueadaPorOtra(hoja({ estado: "confirmada", bloqueadaPorId: "otra", bloqueadaHasta: FUTURO }), "yo", AHORA)).toBe(true);
   });
 });

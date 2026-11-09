@@ -11,9 +11,14 @@ export interface ProgresoPersonas {
   pendientes: number;
 }
 
-/** La hoja la tiene alguien ahora mismo (una confirmada ya no está en edición). */
+/** La hoja la tiene alguien ahora mismo. Confirmar y marcar no válida limpian el bloqueo, así que una confirmada con bloqueo está en corrección. */
 export function bloqueoVigente(h: HojaCaptura, ahora: Date = new Date()): boolean {
-  return h.estado !== "confirmada" && !!h.bloqueadaPorId && !!h.bloqueadaHasta && new Date(h.bloqueadaHasta) > ahora;
+  return !!h.bloqueadaPorId && !!h.bloqueadaHasta && new Date(h.bloqueadaHasta) > ahora;
+}
+
+/** Otra persona tiene la hoja con un bloqueo vigente (incluye una confirmada que está corrigiendo). */
+export function bloqueadaPorOtra(h: HojaCaptura, usuarioId: string, ahora: Date = new Date()): boolean {
+  return !!h.bloqueadaPorId && h.bloqueadaPorId !== usuarioId && !!h.bloqueadaHasta && new Date(h.bloqueadaHasta) > ahora;
 }
 
 export function iniciales(nombre: string): string {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, Eye, History, Loader2, Pencil, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronDown, CheckCircle2, CloudUpload, Lock, Download, History, Loader2, PlayCircle, RotateCcw, Trash2, Upload } from "lucide-react";
 import { AvisoTemporal } from "./AvisoTemporal";
 import { BarraColaboracion } from "./BarraColaboracion";
 import { ConfirmarModal } from "./ConfirmarModal";
@@ -14,20 +14,21 @@ import { Modal } from "./Modal";
 import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
 import { VerHojaModal } from "./VerHojaModal";
+import { MenuHoja } from "./MenuHoja";
 import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
-import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
+import { carpetaDeEstatus, ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
 import { bloqueoVigente, misHojasEnEdicion, progresoPorPersona, type NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 import { useSesion } from "@/lib/session-context";
 import type { EventoCaptura, HojaCaptura } from "@/lib/captura-datos/modelo";
+import { mensajeError } from "./mensajeError";
 
 const POLLING_MS = 10_000;
 const BORDE_ESTADO = { pendiente: "border-l-silver", leida: "border-l-amber-500", confirmada: "border-l-success", no_valida: "border-l-danger" } as const;
 const INSIGNIA_ESTADO = { pendiente: "bg-silver/50 text-muted", leida: "bg-amber-500/15 text-amber-700", confirmada: "bg-success/15 text-success", no_valida: "bg-danger/15 text-danger" } as const;
 
-/** Pregunta pendiente en una ventana emergente (guardar en Drive, cerrar, reabrir…). */
 interface Dialogo {
   titulo: string;
   mensaje: string;
@@ -48,13 +49,15 @@ export function EventoDetalle({ id }: { id: string }) {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [subiendoFotos, setSubiendoFotos] = useState(false);
-  const [colapsadas, setColapsadas] = useState<ReadonlySet<Estatus>>(new Set());
+  const [alternadas, setAlternadas] = useState<ReadonlySet<Estatus>>(new Set());
   const [exito, setExito] = useState<string | null>(null);
   const [driveSubido, setDriveSubido] = useState<string | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const [hojaABorrar, setHojaABorrar] = useState<HojaCaptura | null>(null);
+  const [borrandoHoja, setBorrandoHoja] = useState(false);
   const abiertaDesdeEvento = useRef(false);
 
   const cargar = useCallback(async (): Promise<HojaCaptura[] | null> => {
@@ -69,7 +72,7 @@ export function EventoDetalle({ id }: { id: string }) {
       guardarCache(usuario?.id, `evento:${id}`, { evento: e.evento, hojas: h.hojas, nombres: h.usuarios ?? {} });
       return h.hojas;
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo cargar el evento.");
+      setMensaje(mensajeError(err, "No se pudo cargar el evento."));
       return null;
     }
   }, [id, usuario?.id]);
@@ -84,23 +87,23 @@ export function EventoDetalle({ id }: { id: string }) {
       setExito(r.liberadas === 1 ? "Se liberó 1 hoja: ya la puede tomar otra persona." : `Se liberaron ${r.liberadas} hojas: ya las puede tomar otra persona.`);
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudieron liberar tus hojas.");
+      setMensaje(mensajeError(err, "No se pudieron liberar tus hojas."));
     } finally {
       setOcupado(null);
     }
   }
 
-  async function tomarSiguiente(silencioso = false): Promise<boolean> {
+  async function tomarSiguiente(estatus: Estatus, silencioso = false): Promise<boolean> {
     setOcupado("tomar");
     setMensaje(null);
     try {
       abiertaDesdeEvento.current = false;
-      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { method: "POST" });
+      const r = await api<{ hoja: HojaCaptura | null }>(`/api/captura-datos/eventos/${id}/tomar-hoja`, { json: { estatus } });
       if (r.hoja) setActual(r.hoja);
-      else if (!silencioso) setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+      else if (!silencioso) setMensaje(`No quedan hojas libres de ${estatus}: están confirmadas o las tiene otra persona.`);
       return !!r.hoja;
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo tomar una hoja.");
+      setMensaje(mensajeError(err, "No se pudo tomar una hoja."));
       return false;
     } finally {
       setOcupado(null);
@@ -115,11 +118,12 @@ export function EventoDetalle({ id }: { id: string }) {
       setActual(null);
       return;
     }
-    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(true), cargar()]);
+    const [hayOtra, actualizadas] = await Promise.all([tomarSiguiente(hojaTerminada.estatus, true), cargar()]);
     if (hayOtra) return;
     setActual(null);
     if (actualizadas?.length && actualizadas.every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito("¡Listo! Se completaron todas las hojas del evento.");
-    else setMensaje("No quedan hojas libres: están confirmadas o las tiene otra persona.");
+    else if (actualizadas?.filter((h) => h.estatus === hojaTerminada.estatus).every((h) => h.estado === "confirmada" || h.estado === "no_valida")) setExito(`Ya están confirmadas todas las hojas de ${carpetaDeEstatus(hojaTerminada.estatus)}.`);
+    else setMensaje(`No quedan hojas libres de ${carpetaDeEstatus(hojaTerminada.estatus)}: las demás las tiene otra persona.`);
   }
 
   async function abrirHoja(hojaId: string, desdeEvento = true) {
@@ -130,7 +134,7 @@ export function EventoDetalle({ id }: { id: string }) {
       const r = await api<{ hoja: HojaCaptura }>(`/api/captura-datos/hojas/${hojaId}/tomar`, { method: "POST" });
       setActual(r.hoja);
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo abrir la hoja.");
+      setMensaje(mensajeError(err, "No se pudo abrir la hoja."));
       await cargar(); // por si cambió de estado mientras tanto
     } finally {
       setOcupado(null);
@@ -143,7 +147,7 @@ export function EventoDetalle({ id }: { id: string }) {
       await subirHojas(id, archivos, estatus);
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudieron subir las fotos.");
+      setMensaje(mensajeError(err, "No se pudieron subir las fotos."));
       throw err;
     }
   }
@@ -166,7 +170,7 @@ export function EventoDetalle({ id }: { id: string }) {
           alConfirmar: () => void guardarEvento(accion, { ...opciones, crearCarpeta: true }),
         });
       } else {
-        setMensaje(err instanceof Error ? err.message : "No se pudo guardar en Drive.");
+        setMensaje(mensajeError(err, "No se pudo guardar en Drive."));
       }
     } finally {
       setOcupado(null);
@@ -178,31 +182,48 @@ export function EventoDetalle({ id }: { id: string }) {
       await api(`/api/captura-datos/eventos/${id}`, { method: "PATCH", json: { accion: "reabrir", motivo } });
       await cargar();
     } catch (err) {
-      setMensaje(err instanceof Error ? err.message : "No se pudo reabrir.");
+      setMensaje(mensajeError(err, "No se pudo reabrir."));
     }
   }
 
   function alternarSeccion(estatus: Estatus) {
-    setColapsadas((previas) => {
+    setAlternadas((previas) => {
       const nuevas = new Set(previas);
       if (!nuevas.delete(estatus)) nuevas.add(estatus);
       return nuevas;
     });
   }
 
+  // Un estado con todas sus hojas confirmadas (o no válidas) arranca colapsado; tocar el encabezado invierte lo que se ve.
+  const estaCompleto = (lista: HojaCaptura[]) => lista.every((h) => h.estado === "confirmada" || h.estado === "no_valida") && lista.some((h) => h.estado === "confirmada");
+  const estaColapsada = (estatus: Estatus, lista: HojaCaptura[]) => estaCompleto(lista) !== alternadas.has(estatus);
+
   if (!evento) return <p className="py-12 text-center text-sm text-muted">{mensaje ?? "Cargando…"}</p>;
 
   const conteo = (e: HojaCaptura["estado"]) => hojas.filter((h) => h.estado === e).length;
   const porRevisar = conteo("pendiente") + conteo("leida");
-  const hayCaptura = conteo("confirmada") > 0;
-  /** La tiene otra persona ahora mismo: se puede ver, no editar. */
+  async function borrarHoja(h: HojaCaptura) {
+    setBorrandoHoja(true);
+    try {
+      await api(`/api/captura-datos/hojas/${h.id}`, { method: "DELETE" });
+      setHojaABorrar(null);
+      setExito("Se borró la hoja.");
+      await cargar();
+    } catch (err) {
+      setHojaABorrar(null);
+      setMensaje(mensajeError(err, "No se pudo borrar la hoja."));
+    } finally {
+      setBorrandoHoja(false);
+    }
+  }
+
   const deOtra = (h: HojaCaptura) => bloqueoVigente(h) && h.bloqueadaPorId !== usuario?.id;
   const quienEdita = (h: HojaCaptura) => (h.bloqueadaPorId === usuario?.id ? "Tú" : nombres[h.bloqueadaPorId ?? ""] ?? "Otra persona");
 
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas.filter((h) => h.estatus === actual.estatus)} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
       </div>
     );
   }
@@ -225,7 +246,6 @@ export function EventoDetalle({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-2">
         {evento.estado === "abierto" && (
           <>
-            <Boton onClick={() => void tomarSiguiente()} cargando={ocupado === "tomar"} icono={<PlayCircle className="h-4 w-4" />} primario>{hayCaptura ? "Seguir capturando" : "Empezar a Capturar"}</Boton>
             <Boton onClick={() => setSubiendoFotos(true)} icono={<Upload className="h-4 w-4" />}>Subir fotos o PDF</Boton>
           </>
         )}
@@ -283,6 +303,11 @@ export function EventoDetalle({ id }: { id: string }) {
         />
       )}
       {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} onEditar={evento.estado === "abierto" && viendo.estado !== "no_valida" && !deOtra(viendo) ?() => { const hojaId = viendo.id; setViendo(null); void abrirHoja(hojaId); } : undefined} />}
+      {hojaABorrar && (
+        <ConfirmarModal titulo="Borrar hoja" textoConfirmar="Borrar hoja" peligro cargando={borrandoHoja} onCancelar={() => setHojaABorrar(null)} onConfirmar={() => void borrarHoja(hojaABorrar)}>
+          ¿Borrar la hoja {hojaABorrar.folio ? `con folio ${hojaABorrar.folio}` : hojaABorrar.origen.nombreOriginal}? Se quitará del evento y no se puede deshacer.
+        </ConfirmarModal>
+      )}
       {verHistorial && <HistorialModal eventoId={id} titulo={`Historial de ${evento.nombre}`} onCerrar={() => setVerHistorial(false)} />}
       {dialogo && (
         <ConfirmarModal
@@ -312,17 +337,25 @@ export function EventoDetalle({ id }: { id: string }) {
         />
       )}
 
-      {/* Completos, apartados e interesados van en secciones separadas. */}
       {hojas.length > 0 && (
         <div className="space-y-6 rounded-2xl border border-silver bg-white p-3 shadow-sm sm:p-5">
           {ESTATUS.map((e) => ({ e, lista: hojas.filter((h) => h.estatus === e.value) })).filter(({ lista }) => lista.length > 0).map(({ e, lista }) => (
             <section key={e.value} aria-label={e.carpeta} className={`space-y-3 rounded-xl border p-3 ${ESTILO_ESTATUS[e.value].seccion}`}>
-              <h2 className="text-sm font-semibold text-foreground">
-                <button onClick={() => alternarSeccion(e.value)} aria-expanded={!colapsadas.has(e.value)} className="flex w-full items-center gap-2 text-left">
-                  <ChevronDown className={`h-4 w-4 text-muted transition ${colapsadas.has(e.value) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
-                </button>
-              </h2>
-              {!colapsadas.has(e.value) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+                  <button onClick={() => alternarSeccion(e.value)} aria-expanded={!estaColapsada(e.value, lista)} className="flex w-full flex-wrap items-center gap-2 text-left">
+                    <ChevronDown className={`h-4 w-4 text-muted transition ${estaColapsada(e.value, lista) ? "-rotate-90" : ""}`} /> <InsigniaEstatus estatus={e.value} texto={e.carpeta} /> <span className="rounded-full bg-silver/40 px-2 py-0.5 text-xs font-medium text-muted">{lista.length}</span>
+                  </button>
+                </h2>
+                {estaCompleto(lista) ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><CheckCircle2 className="h-3.5 w-3.5" /> Todo confirmado</span>
+                ) : evento.estado === "abierto" && lista.some((h) => h.estado === "pendiente" || h.estado === "leida") && (
+                  <button onClick={() => void tomarSiguiente(e.value)} disabled={ocupado !== null} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary-deep disabled:opacity-50">
+                    {ocupado === "tomar" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />} {lista.some((h) => h.estado === "confirmada") ? "Seguir" : "Capturar"}
+                  </button>
+                )}
+              </div>
+              {!estaColapsada(e.value, lista) && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lista.map((h) => (
                   <li key={h.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-l-4 border-silver bg-white px-3.5 py-3 text-xs shadow-sm transition hover:shadow-md ${BORDE_ESTADO[h.estado]}`}>
                     <span className="min-w-0 flex-1 basis-40 space-y-1">
@@ -332,18 +365,12 @@ export function EventoDetalle({ id }: { id: string }) {
                         {bloqueoVigente(h) && <span className="text-muted">{quienEdita(h)} · en edición</span>}
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1">
-                      {evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) && (
-                        <button onClick={() => abrirHoja(h.id)} disabled={ocupado !== null} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50">
-                          {ocupado === h.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : h.estado === "confirmada" ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {h.estado === "confirmada" ? "Editar" : "Abrir"}
-                        </button>
-                      )}
-                      {(evento.estado !== "abierto" || h.estado === "confirmada" || h.estado === "no_valida" || deOtra(h)) && (
-                        <button onClick={() => setViendo(h)} className="inline-flex items-center gap-1 rounded-lg border border-silver bg-surface px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary hover:text-primary">
-                          <Eye className="h-3.5 w-3.5" /> Ver
-                        </button>
-                      )}
-                    </span>
+                    <MenuHoja
+                      deshabilitado={ocupado !== null}
+                      onVer={() => setViendo(h)}
+                      onEditar={evento.estado === "abierto" && h.estado !== "no_valida" && !deOtra(h) ? () => void abrirHoja(h.id) : undefined}
+                      onBorrar={evento.estado === "abierto" && usuario?.rol === "admin" && !deOtra(h) ? () => setHojaABorrar(h) : undefined}
+                    />
                   </li>
                 ))}
               </ul>}
@@ -364,7 +391,6 @@ function Boton({ onClick, cargando, icono, primario, peligro, className = "", ch
   );
 }
 
-/** Cuadro que bloquea la pantalla mientras se sube el evento a Drive y confirma cuando terminó. */
 function SubiendoADrive({ subido, onCerrar }: { subido: string | null; onCerrar: () => void }) {
   if (subido) {
     return (

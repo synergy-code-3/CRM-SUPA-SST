@@ -95,7 +95,7 @@ describe("normalizadores", () => {
   it("normalizeFields limpia datos y conserva el pago en Interesado", () => {
     const sucia = { ...completa, nombre: "  Ana   Lopez ", correo: " ANA@Mail.com ", folio: "0044" };
     expect(normalizeFields(sucia)).toMatchObject({ nombre: "Ana Lopez", correo: "ana@mail.com", folio: "44" });
-    expect(normalizeFields(completa, "Interesado")).toMatchObject({ metodoPago: completa.metodoPago, cantidad: completa.cantidad });
+    expect(normalizeFields(completa)).toMatchObject({ metodoPago: completa.metodoPago, cantidad: completa.cantidad });
   });
 
   it("normalizeFields descarta valores fuera de catálogo", () => {

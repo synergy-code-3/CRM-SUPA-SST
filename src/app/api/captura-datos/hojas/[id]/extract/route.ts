@@ -5,6 +5,7 @@ import { actualizarCamposHoja, devolverLecturaIa, finalizarLecturaIa, reclamarLe
 import { extractFromImage } from "@/lib/captura-datos/extract";
 import { adelantarLecturas, datosDeExtraccion, fotoBase64 } from "@/lib/captura-datos/lectura-ia";
 import { huellaImagen } from "@/lib/captura-datos/huella";
+import { bloqueadaPorOtra } from "@/lib/captura-datos/colaboracion";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
 
 export const maxDuration = 120;
@@ -19,8 +20,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const hoja = await requerirHoja(permiso.usuario, id);
-    const inverso = await registrarCapturista(hoja.eventoId, permiso.usuario.id);
+    const inverso = await registrarCapturista(hoja.eventoId, permiso.usuario.id, hoja.estatus);
 
+    if (bloqueadaPorOtra(hoja, permiso.usuario.id)) throw new ErrorHojaOcupada();
     if (hoja.origen.leidaIa) throw new ErrorPeticion(409, "Esta hoja ya se leyó con IA.");
     const { base64, mime } = await fotoBase64(hoja.origen);
     const huella = huellaImagen(base64);
@@ -42,11 +44,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { campos, voucherBox } = datosDeExtraccion(extraccion);
-    const actualizada = await actualizarCamposHoja(id, { campos, voucherBox }, undefined, permiso.usuario.id);
+    let actualizada;
+    try {
+      actualizada = await actualizarCamposHoja(id, { campos, voucherBox }, undefined, permiso.usuario.id);
+    } catch (err) {
+      // No se pudo guardar (otra persona tomó la hoja o cambió): la hoja no debe quedar marcada como ya leída sin datos.
+      await devolverLecturaIa(id, hoja.origen).catch((e) => console.error("extract: no se pudo devolver la lectura de la hoja", id, e));
+      throw err;
+    }
     // Ya se guardó: la lectura queda gastada (si esto falla, la marca de "en curso" vence sola, ver LEASE_LECTURA_IA_MS).
     await finalizarLecturaIa(id, hoja.origen).catch((e) => console.error("extract: no se pudo cerrar la lectura de la hoja", id, e));
     // Con la respuesta ya enviada, el servidor sigue leyendo las siguientes hojas libres para que lleguen listas.
-    after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_LEER, inverso));
+    after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_LEER, inverso, hoja.estatus));
     return NextResponse.json({ hoja: actualizada });
   } catch (err) {
     if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada || err instanceof ErrorEstadoHoja) return NextResponse.json({ error: err.message }, { status: 409 });

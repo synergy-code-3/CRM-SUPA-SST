@@ -291,3 +291,23 @@ export async function leerExcelEvento(eventoId: string): Promise<Buffer | null> 
   if (error) return null;
   return Buffer.from(await data.arrayBuffer());
 }
+
+// CSV del historial de Captura de Datos que se respalda antes de borrar lo de más de 6 meses.
+export const BUCKET_HISTORIAL_ARCHIVO = "cap-historial";
+
+export async function subirArchivoHistorial(nombre: string, csv: string): Promise<void> {
+  const { error } = await supabase.storage.from(BUCKET_HISTORIAL_ARCHIVO).upload(nombre, Buffer.from(csv, "utf8"), { contentType: "text/csv; charset=utf-8", upsert: true });
+  if (error) throw error;
+}
+
+export async function listarArchivosHistorial(): Promise<{ nombre: string; creado: string | null }[]> {
+  const { data, error } = await supabase.storage.from(BUCKET_HISTORIAL_ARCHIVO).list("", { limit: 200, sortBy: { column: "name", order: "desc" } });
+  if (error) throw error;
+  return (data ?? []).filter((f) => f.name.endsWith(".csv")).map((f) => ({ nombre: f.name, creado: f.created_at ?? null }));
+}
+
+export async function urlFirmadaArchivoHistorial(nombre: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(BUCKET_HISTORIAL_ARCHIVO).createSignedUrl(nombre, 300, { download: nombre });
+  if (error) throw error;
+  return data.signedUrl;
+}

@@ -1,16 +1,10 @@
-// Comunicación con Google Drive/Sheets a través del Web App de Apps Script
-// (ya publicado, APPS_SCRIPT_URL/APPS_SCRIPT_SECRET). Portado casi sin
-// cambios del proyecto original — es un wrapper puro de la API de Google,
-// no dependía del almacenamiento local. Lo único que cambia es
-// `guardarEventoEnDrive`: en vez de mutar un único "Escaneo" en disco, lee/
-// actualiza las filas de cap_eventos/cap_hojas en Supabase.
+// Comunicación con Google Drive/Sheets a través del Web App de Apps Script (APPS_SCRIPT_URL/APPS_SCRIPT_SECRET).
 import { carpetaDeEstatus, conSeparadores, imageFileName, normalizeFields, sinNotaAMeses, toRecord, type Estatus, type SheetRecord } from "./fields";
 import { actualizarCarpetaFotosEvento, actualizarDriveEvento, actualizarOrigenHoja, confirmarEvento, listarHojasDeEvento, obtenerEvento } from "./db";
 import { leerFotoHoja } from "@/lib/storage";
-import type { HojaCaptura } from "./modelo";
 import { ErrorPeticion } from "./errores";
 
-export const DRIVE_READY = !!(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_SECRET);
+const DRIVE_READY = !!(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_SECRET);
 const FOTO_CONCURRENCY = 3;
 const REGISTRO_VACIO: SheetRecord = {
   nombre: "", correo: "", lada: "", telefono: "", linkWa: "", tarjeta: "", metodoPago: "", cantidad: "", folio: "", membresia: "", notas: "", estatus: "",
@@ -37,7 +31,7 @@ async function fetchConReintento(url: string, init?: RequestInit, intentos = 3):
 const ACCIONES_DE_LECTURA = new Set(["infoCarpeta", "listarArchivos", "descargar", "leerHoja"]);
 const INTENTOS_LECTURA = 3;
 
-export async function call<T>(payload: Record<string, unknown>): Promise<T> {
+async function call<T>(payload: Record<string, unknown>): Promise<T> {
   const intentos = ACCIONES_DE_LECTURA.has(String(payload.action)) ? INTENTOS_LECTURA : 1;
   for (let i = 1; ; i++) {
     const data = await llamarUnaVez<T>(payload);
@@ -157,25 +151,6 @@ export async function renombrarFotosDeEvento(eventoId: string): Promise<number> 
   return renombradas;
 }
 
-export const leerHoja = (hojaId: string) =>
-  call<{ id: string; nombre: string; url: string; gid?: number; filas: Record<string, string>[]; meta: string }>({ action: "leerHoja", hojaId });
-
-/** Error de Google que indica que la Hoja ya no está: en la papelera o borrada (no un fallo de conexión). */
-export const esHojaAusente = (msg: string) => /papelera|no se encontr|could be found|not found|does not exist|no existe/i.test(msg);
-
-/**
- * Si la Hoja sigue en Drive (fuera de la papelera). Si no se puede consultar (sin conexión, Drive sin configurar),
- * se da por activa: es preferible avisar de un folio repetido de más que dejar pasar uno.
- */
-export async function hojaEnDrive(hojaId: string): Promise<boolean> {
-  try {
-    await leerHoja(hojaId);
-    return true;
-  } catch (err) {
-    return !esHojaAusente((err as Error).message);
-  }
-}
-
 // Guardado en curso por evento: un reintento espera a que termine el anterior (p. ej. tras cancelar).
 const enCurso = new Map<string, Promise<unknown>>();
 
@@ -278,7 +253,7 @@ async function guardar(
   // Secciones separadas (Completos, Apartados, Interesados) con renglones en blanco entre ellas.
   const registros = conSeparadores(hojas).map((h) => {
     if (!h) return REGISTRO_VACIO;
-    const r = toRecord(normalizeFields(h.campos!, h.estatus), h.estatus);
+    const r = toRecord(normalizeFields(h.campos!), h.estatus);
     // "Pago a meses" vive solo en las notas editables de la hoja, no en Drive.
     return { ...r, notas: neutralizarFormula(sinNotaAMeses(r.notas)) };
   });
@@ -303,5 +278,4 @@ async function guardar(
   return { ok: true, hojaUrl: hoja.url, filas: registros.length, fotosSubidas: subidas, fotosFaltantes: faltantes };
 }
 
-// Tipo auxiliar solo para que el archivo compile en editores que no infieren bien `HojaCaptura["campos"]!`.
-export type { HojaCaptura };
+

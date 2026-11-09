@@ -1,6 +1,5 @@
 // Enlaces a los recursos que la app menciona (carpetas, archivos y Hojas de Drive, copia del Excel).
 
-export const URL_PAPELERA_DRIVE = "https://drive.google.com/drive/trash";
 export const urlCarpeta = (id: string) => `https://drive.google.com/drive/folders/${id}`;
 export const urlArchivo = (id: string) => `https://drive.google.com/file/d/${id}/view`;
 export const urlHoja = (id: string) => `https://docs.google.com/spreadsheets/d/${id}/edit`;

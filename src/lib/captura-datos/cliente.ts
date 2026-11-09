@@ -21,7 +21,7 @@ export async function api<T>(url: string, init?: RequestInit & { json?: unknown 
 const LADO_MAX = 2000;
 
 /** Reduce una imagen a JPEG (lado mayor 2000 px) para subirla ligera y legible. */
-export async function imagenAJpeg(archivo: File): Promise<Blob> {
+async function imagenAJpeg(archivo: File): Promise<Blob> {
   const bmp = await createImageBitmap(archivo);
   const escala = Math.min(1, LADO_MAX / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
@@ -40,7 +40,7 @@ export function formatearFecha(fecha: string): string {
   return `${d}/${m}/${a}`;
 }
 
-export const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
+const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 
 /** Sube archivos de la computadora a un evento en tandas (imágenes reducidas a JPEG, PDF tal cual). `alSubirTanda` avisa qué archivos ya quedaron. */
 export async function subirHojas(eventoId: string, archivos: File[], estatus: string, alSubirTanda?: (tanda: File[]) => void): Promise<void> {
