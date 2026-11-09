@@ -4,6 +4,7 @@ dev.log
 *.tsbuildinfo
 .env*.local
 .claude
+.playwright-mcp
 
 # Datos reales de clientes (PII) — nunca al repo, el repo es público.
 data/db.json

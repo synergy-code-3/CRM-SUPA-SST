@@ -11,7 +11,7 @@ import { PwaRegister } from "@/components/PwaRegister";
 const SCRIPT_TEMA_INICIAL = `
 try {
   var t = localStorage.getItem("crm-tema");
-  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  if (t === "light" || t === "dark" || t === "aura") document.documentElement.setAttribute("data-theme", t);
 } catch (e) {}
 `;
 
@@ -50,7 +50,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_INICIAL }} />
       </head>

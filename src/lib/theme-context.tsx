@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-export type Tema = "light" | "dark" | "system";
+export type Tema = "light" | "dark" | "aura" | "system";
 
 const CLAVE_STORAGE = "crm-tema";
 
@@ -28,7 +28,7 @@ export function TemaProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const guardado = localStorage.getItem(CLAVE_STORAGE) as Tema | null;
-    if (guardado === "light" || guardado === "dark" || guardado === "system") setTemaState(guardado);
+    if (guardado === "light" || guardado === "dark" || guardado === "aura" || guardado === "system") setTemaState(guardado);
   }, []);
 
   const setTema = useCallback((t: Tema) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Users,
@@ -144,7 +144,7 @@ export default function DashboardPage() {
           {resumen ? (
             <LineChart
               datos={resumen.inscripcionesPorMes.map((d) => ({ mes: d.mes, cantidad: d.acumulado }))}
-              color="#10b981"
+              color="var(--success)"
             />
           ) : (
             <Cargando />
@@ -253,7 +253,7 @@ function BuscadorClientesDashboard() {
 // tamaño final de la tarjeta.
 function LineChart({
   datos,
-  color = "#0a5cff",
+  color = "var(--primary)",
 }: {
   datos: { mes: string; cantidad: number }[];
   color?: string;
@@ -303,7 +303,7 @@ function LineChart({
   }
 
   const activo = hover !== null ? puntos[hover] : null;
-  const gradId = `areaFill-${color.replace("#", "")}`;
+  const gradId = `areaFill-${useId().replace(/:/g, "")}`;
 
   return (
     <div ref={contRef} className="relative h-full w-full">
@@ -330,8 +330,8 @@ function LineChart({
           })}
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
-              <stop offset="100%" stopColor={color} stopOpacity={0} />
+              <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.25 }} />
+              <stop offset="100%" style={{ stopColor: color, stopOpacity: 0 }} />
             </linearGradient>
           </defs>
           <path d={area} fill={`url(#${gradId})`} />

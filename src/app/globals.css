@@ -89,6 +89,51 @@ label:has(input[type="checkbox"], input[type="radio"]) {
   --core-highlight: rgba(255, 255, 255, 0.03);
 }
 
+/* Tema "Aura": negro con tinte violeta, tarjetas de vidrio oscuro con filo
+   de luz arriba y acento lavanda. Va después del bloque @media de arriba a
+   propósito: con el sistema en modo oscuro, :root:not([data-theme="light"])
+   también coincide con data-theme="aura" (misma especificidad), y gana el
+   que se declara al final. */
+:root[data-theme="aura"] {
+  color-scheme: dark;
+
+  --background: #0a0911;
+  --surface: #14121d;
+  --surface-2: #1c1a28;
+  --foreground: #f2effa;
+  --muted: #918ca8;
+
+  --primary: #a48bff;
+  --primary-dim: #231d3d;
+  --primary-deep: #d2c6ff;
+  --primary-glow: #b9a6ff;
+
+  --silver: #26233a;
+  --silver-deep: #37334d;
+
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #fb7185;
+
+  --shell-bg: rgba(255, 255, 255, 0.015);
+  --shell-border: rgba(255, 255, 255, 0.045);
+  --core-highlight: rgba(255, 255, 255, 0.07);
+
+  /* Tonos de Tailwind fijos en insignias (text-amber-700, text-violet-700,
+     etc.) pensados para fondo claro: sobre fondo casi negro no se leen.
+     Solo aparecen como texto sobre fondos translúcidos, así que aquí se
+     aclaran sin afectar a los otros temas. */
+  --color-amber-600: #fcd34d;
+  --color-amber-700: #fcd34d;
+  --color-yellow-800: #fde68a;
+  --color-orange-700: #fdba74;
+  --color-teal-600: #5eead4;
+  --color-teal-700: #5eead4;
+  --color-sky-700: #7dd3fc;
+  --color-violet-600: #c4b5fd;
+  --color-violet-700: #c4b5fd;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -362,5 +407,64 @@ body {
      dorado profundo con brillo central. */
   .vip-plate {
     background: linear-gradient(160deg, #2a2005 0%, #8a6a0c 45%, #e0b020 75%, #a17d10 100%);
+  }
+}
+
+/* Tema "Aura" — lo que no se resuelve solo con los tokens de arriba: el
+   brillo violeta del fondo, el filo de luz y el borde fino de las
+   tarjetas, sombras profundas (las de .diffused están pensadas para fondo
+   claro) y las superficies del navegador (selección, cursor, scrollbars). */
+@layer utilities {
+  :root[data-theme="aura"] .bg-mesh {
+    background-image:
+      radial-gradient(55rem 38rem at 100% -8%, rgba(124, 92, 255, 0.2), transparent 60%),
+      radial-gradient(40rem 32rem at -6% 105%, rgba(164, 139, 255, 0.12), transparent 60%),
+      radial-gradient(30rem 22rem at 45% 40%, rgba(90, 60, 200, 0.05), transparent 70%);
+  }
+
+  :root[data-theme="aura"] .core {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 38%),
+      var(--surface);
+    box-shadow:
+      inset 0 1px 0 var(--core-highlight),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  :root[data-theme="aura"] .diffused {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 22px 44px -18px rgba(0, 0, 0, 0.7);
+  }
+
+  :root[data-theme="aura"] .diffused-lg {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 32px 70px -22px rgba(124, 92, 255, 0.32);
+  }
+
+  /* Velo de los modales: en los temas claros es un gris (foreground al
+     30%), pero con foreground casi blanco se vuelve una capa lechosa. */
+  :root[data-theme="aura"] .bg-foreground\/30 {
+    background-color: rgba(6, 4, 14, 0.62);
+  }
+
+  :root[data-theme="aura"] .brand-plate {
+    background: linear-gradient(135deg, #4b2fc4 0%, #a48bff 100%);
+  }
+
+  /* Botón principal lavanda con texto oscuro, como la referencia: blanco
+     sobre lavanda claro no llega a 3:1 de contraste. */
+  :root[data-theme="aura"] .bg-primary.text-white {
+    color: #140f2b;
+  }
+
+  :root[data-theme="aura"] ::selection {
+    background: rgba(164, 139, 255, 0.38);
+    color: #ffffff;
+  }
+
+  :root[data-theme="aura"] body {
+    caret-color: var(--primary);
   }
 }

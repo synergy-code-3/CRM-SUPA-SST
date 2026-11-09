@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, MonitorSmartphone, Expand, Bot } from "lucide-react";
+import { X, LogOut, Camera, UserRound, Plus, Sun, Moon, Sparkles, MonitorSmartphone, Expand, Bot } from "lucide-react";
 import { useSesion } from "@/lib/session-context";
 import { useTema, type Tema } from "@/lib/theme-context";
 import type { Rol } from "@/lib/permisos";
@@ -11,6 +11,7 @@ import { FotoAmpliada } from "./FotoAmpliada";
 const OPCIONES_TEMA: { valor: Tema; label: string; icon: typeof Sun }[] = [
   { valor: "light", label: "Claro", icon: Sun },
   { valor: "dark", label: "Oscuro", icon: Moon },
+  { valor: "aura", label: "Aura", icon: Sparkles },
   { valor: "system", label: "Automático", icon: MonitorSmartphone },
 ];
 
