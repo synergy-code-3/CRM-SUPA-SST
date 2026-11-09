@@ -31,6 +31,9 @@ label:has(input[type="checkbox"], input[type="radio"]) {
   --black-access: #171717;
   --black-access-glow: #7c3aed;
 
+  /* Opacidad del relleno bajo la línea en las gráficas (Aura la sube). */
+  --chart-relleno-arriba: 0.25;
+
   --shell-bg: rgba(196, 204, 217, 0.35);
   --shell-border: rgba(11, 18, 32, 0.06);
   --core-highlight: rgba(255, 255, 255, 0.6);
@@ -118,6 +121,8 @@ label:has(input[type="checkbox"], input[type="radio"]) {
   --shell-bg: rgba(255, 255, 255, 0.015);
   --shell-border: rgba(255, 255, 255, 0.045);
   --core-highlight: rgba(255, 255, 255, 0.07);
+
+  --chart-relleno-arriba: 0.42;
 
   /* Tonos de Tailwind fijos en insignias (text-amber-700, text-violet-700,
      etc.) pensados para fondo claro: sobre fondo casi negro no se leen.
@@ -457,6 +462,76 @@ body {
      sobre lavanda claro no llega a 3:1 de contraste. */
   :root[data-theme="aura"] .bg-primary.text-white {
     color: #140f2b;
+  }
+
+  /* Reflejo de luz diagonal, como el de la referencia: un velo fijo muy
+     tenue por encima del contenido (z-40, por debajo de modales y menús),
+     que se desvanece hacia abajo para no tocar tablas ni gráficas de la
+     parte baja. pointer-events:none para no bloquear clics, y "screen"
+     solo aclara un poco el fondo — el texto blanco no pierde contraste. */
+  :root[data-theme="aura"] body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    background:
+      linear-gradient(
+        112deg,
+        transparent 16%,
+        rgba(255, 255, 255, 0.04) 29%,
+        rgba(214, 202, 255, 0.115) 40%,
+        rgba(255, 255, 255, 0.055) 46%,
+        transparent 58%
+      ),
+      linear-gradient(
+        112deg,
+        transparent 56%,
+        rgba(200, 185, 255, 0.055) 61.5%,
+        transparent 67%
+      );
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 30%, transparent 70%);
+    mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 30%, transparent 70%);
+  }
+
+  /* Gráficas de línea: el brillo de las mini-gráficas de la referencia —
+     línea con resplandor del mismo color y el último dato con un halo. */
+  .chart-halo {
+    opacity: 0;
+  }
+
+  :root[data-theme="aura"] .chart-linea {
+    filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 60%, transparent));
+  }
+
+  :root[data-theme="aura"] .chart-halo {
+    opacity: 0.22;
+    filter: blur(3px);
+  }
+
+  /* Tarjeta de perfil al pie de la barra lateral: misma tarjeta "Ask" de
+     la referencia, con un resplandor violeta que sube desde abajo. */
+  :root[data-theme="aura"] .cuenta-footer {
+    background:
+      radial-gradient(90% 80% at 50% 135%, rgba(168, 140, 255, 0.75), rgba(124, 92, 255, 0.28) 45%, transparent 75%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
+      var(--surface-2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 0 1px rgba(164, 139, 255, 0.2),
+      0 16px 36px -14px rgba(124, 92, 255, 0.55);
+  }
+
+  :root[data-theme="aura"] .cuenta-footer:hover {
+    background:
+      radial-gradient(90% 80% at 50% 135%, rgba(184, 160, 255, 0.9), rgba(124, 92, 255, 0.36) 45%, transparent 75%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
+      var(--surface-2);
+  }
+
+  :root[data-theme="aura"] .cuenta-footer .text-muted {
+    color: #c3bddb;
   }
 
   :root[data-theme="aura"] ::selection {

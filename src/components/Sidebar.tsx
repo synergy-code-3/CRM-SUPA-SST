@@ -319,7 +319,7 @@ function CuentaFooter({ onAbrirPerfil }: { onAbrirPerfil: () => void }) {
   return (
     <button
       onClick={onAbrirPerfil}
-      className="ease-spring mt-auto flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-3 text-left transition hover:bg-silver/60"
+      className="cuenta-footer ease-spring mt-auto flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-3 text-left transition hover:bg-silver/60"
     >
       <span className="relative h-10 w-10 flex-none overflow-hidden rounded-full border border-silver bg-surface">
         {usuario.fotoUrl ? (

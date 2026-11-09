@@ -251,6 +251,45 @@ function BuscadorClientesDashboard() {
 // ResizeObserver) en vez de forzar un viewBox fijo a estirarse — así 1
 // unidad del viewBox siempre es 1px real y nada se deforma, sea cual sea el
 // tamaño final de la tarjeta.
+// Curva suave que pasa exacto por cada punto (Fritsch–Carlson): a diferencia
+// de un spline normal, nunca se pasa de un valor real ni baja de cero entre
+// dos meses, así que no inventa picos que la información no tiene.
+function curvaMonotona(p: { x: number; y: number }[]): string {
+  const n = p.length;
+  if (n === 0) return "";
+  if (n < 3) return p.map((q, i) => `${i === 0 ? "M" : "L"}${q.x},${q.y}`).join(" ");
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = p[i + 1].x - p[i].x;
+    m[i] = (p[i + 1].y - p[i].y) / dx[i];
+  }
+  const t: number[] = [m[0]];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  t[n - 1] = m[n - 2];
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      t[i] = 0;
+      t[i + 1] = 0;
+      continue;
+    }
+    const a = t[i] / m[i];
+    const b = t[i + 1] / m[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const k = 3 / Math.sqrt(s);
+      t[i] = k * a * m[i];
+      t[i + 1] = k * b * m[i];
+    }
+  }
+  let d = `M${p[0].x},${p[0].y}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += ` C${p[i].x + h},${p[i].y + t[i] * h} ${p[i + 1].x - h},${p[i + 1].y - t[i + 1] * h} ${p[i + 1].x},${p[i + 1].y}`;
+  }
+  return d;
+}
+
 function LineChart({
   datos,
   color = "var(--primary)",
@@ -275,7 +314,7 @@ function LineChart({
     return { x, y, ...d };
   });
 
-  const linea = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  const linea = curvaMonotona(puntos);
   const area = `${linea} L${puntos[puntos.length - 1]?.x ?? PAD_L},${H - PAD_B} L${PAD_L},${H - PAD_B} Z`;
   const gridY = [0, 0.25, 0.5, 0.75, 1];
 
@@ -303,6 +342,7 @@ function LineChart({
   }
 
   const activo = hover !== null ? puntos[hover] : null;
+  const ultimo = puntos[puntos.length - 1];
   const gradId = `areaFill-${useId().replace(/:/g, "")}`;
 
   return (
@@ -330,22 +370,32 @@ function LineChart({
           })}
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.25 }} />
+              <stop offset="0%" style={{ stopColor: color, stopOpacity: "var(--chart-relleno-arriba)" }} />
               <stop offset="100%" style={{ stopColor: color, stopOpacity: 0 }} />
             </linearGradient>
           </defs>
           <path d={area} fill={`url(#${gradId})`} />
-          <path d={linea} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path
+            d={linea}
+            fill="none"
+            stroke={color}
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            className="chart-linea"
+            style={{ color }}
+          />
           {activo && (
             <line x1={activo.x} y1={PAD_T} x2={activo.x} y2={H - PAD_B} stroke="var(--silver)" strokeWidth={1} strokeDasharray="3,3" />
           )}
+          {ultimo && <circle cx={ultimo.x} cy={ultimo.y} r={11} fill={color} className="chart-halo" />}
           {puntos.map((p, i) => (
             <circle
               key={i}
               cx={p.x}
               cy={p.y}
-              r={hover === i ? 5 : 3}
-              fill={hover === i ? color : "var(--surface)"}
+              r={hover === i ? 5 : i === puntos.length - 1 ? 4 : 3}
+              fill={hover === i || i === puntos.length - 1 ? color : "var(--surface)"}
               stroke={color}
               strokeWidth={2}
             />
