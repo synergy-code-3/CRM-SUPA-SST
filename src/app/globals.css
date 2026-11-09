@@ -164,6 +164,17 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Cambio de tema (setTema en theme-context.tsx): se quita el fundido que
+   el navegador trae por defecto para que solo se vea el círculo que crece
+   desde el botón. Con "reducir movimiento" se deja ese fundido corto. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+}
+
 /* En el layout de la app el scroll es el de <main>; el hueco reservado del html lo dejaba despegado del borde. */
 html:has([data-scroll-en-main]) {
   scrollbar-gutter: auto;

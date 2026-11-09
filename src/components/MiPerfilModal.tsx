@@ -281,7 +281,10 @@ export function MiPerfilModal({ onClose, bloqueante = false }: { onClose: () => 
                   <button
                     key={valor}
                     type="button"
-                    onClick={() => setTema(valor)}
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setTema(valor, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+                    }}
                     className={`ease-spring flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition ${
                       tema === valor ? "bg-surface text-primary-deep shadow-sm" : "text-muted hover:text-foreground"
                     }`}
