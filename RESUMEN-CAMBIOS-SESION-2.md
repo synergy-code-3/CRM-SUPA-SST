@@ -422,3 +422,6 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 
 - PDF: ahora se usa la build "legacy" de pdfjs-dist (librería y worker); la normal exige APIs muy nuevas del navegador (`Map.getOrInsertComputed`) y fallaba al leer PDFs. El postinstall copia el worker legacy a `public/pdf.worker.min.mjs`.
 - Nuevo evento: la lectura de las carpetas de Drive se hace antes de crear el evento; si falla, no se crea nada (SQL pendiente: ninguno).
+- Nuevo evento: ya no se crea y luego se borra. Primero se convierten los archivos y se suben a Drive (nueva ruta `/api/captura-datos/drive/subir`, sin evento) o se lista Drive; al final un solo POST a `/api/captura-datos/eventos` crea el evento con todas sus hojas. Si falla cualquier paso previo, no se crea nada.
+- Subida de PDFs/fotos: las tandas se parten a ≤3.5 MB (Vercel rechaza peticiones de más de 4.5 MB, lo que tumbaba los PDFs de varias páginas). Los errores sin mensaje del servidor ahora muestran el código (p. ej. 413).
+- Lógica de validar/subir tandas extraída a `src/lib/captura-datos/subida-drive.ts`. SQL pendiente: ninguno.

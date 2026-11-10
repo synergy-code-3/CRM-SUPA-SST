@@ -5,7 +5,7 @@ import { Folder, Loader2, Upload } from "lucide-react";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { Modal } from "./Modal";
 import { ZonaArchivos } from "./ZonaArchivos";
-import { api, prepararHojas, subirHojas, type HojaPreparada } from "@/lib/captura-datos/cliente";
+import { api, prepararHojas, subirADrive, type FotoSubida } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
@@ -52,20 +52,23 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     if (!info) return;
     setCargando(true);
     setError(null);
-    let evento: EventoCaptura | null = null;
     try {
-      const preparadas: Partial<Record<Estatus, HojaPreparada[]>> = {};
-      if (origenEfectivo === "local") for (const e of ESTATUS) if (archivos[e.value].length) preparadas[e.value] = await prepararHojas(archivos[e.value]);
-      const deDrive = origenEfectivo === "drive" ? await listarDeDrive(info, enlaceBuscado) : [];
-      evento = (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
-        json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre } },
-      })).evento;
-      if (origenEfectivo === "drive") for (const g of deDrive) await api(`/api/captura-datos/eventos/${evento.id}/hojas`, { json: g });
-      else for (const e of ESTATUS) if (preparadas[e.value]?.length) await subirHojas(evento.id, preparadas[e.value]!, e.value);
+      // Todo se lee y se sube antes; el evento se crea al final junto con sus hojas, así que si algo falla no se crea nada.
+      const hojas: { estatus: Estatus; origen: FotoSubida }[] = [];
+      if (origenEfectivo === "drive") {
+        for (const g of await listarDeDrive(info, enlaceBuscado)) hojas.push(...g.archivos.map((origen) => ({ estatus: g.estatus, origen })));
+      } else {
+        for (const e of ESTATUS) {
+          if (!archivos[e.value].length) continue;
+          const fotos = await subirADrive(info.id, await prepararHojas(archivos[e.value]), e.value);
+          hojas.push(...fotos.map((origen) => ({ estatus: e.value, origen })));
+        }
+      }
+      const { evento } = await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
+        json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre }, hojas },
+      });
       onCreado(evento);
     } catch (err) {
-      // Si algo falla, el evento no se queda creado a medias.
-      if (evento) await api(`/api/captura-datos/eventos/${evento.id}`, { method: "DELETE", json: { motivo: "No se pudo crear el evento (falló la carga de hojas)" } }).catch(() => {});
       setError(mensajeError(err, "No se pudo crear el evento."));
       setCargando(false);
     }

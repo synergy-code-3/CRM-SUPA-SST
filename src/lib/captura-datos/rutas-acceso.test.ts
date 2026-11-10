@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const RAIZ = join(process.cwd(), "src/app/api/captura-datos");
 // Rutas que no son de un evento/hoja concreto o cuyo control de acceso es otro (rol admin).
-const EXENTAS = new Set(["eventos/route.ts", "axis/route.ts", "drive/carpeta/route.ts", "historial/route.ts", "historial/reporte/route.ts", "historial/opciones/route.ts", "historial/archivos/route.ts"]);
+const EXENTAS = new Set(["eventos/route.ts", "axis/route.ts", "drive/carpeta/route.ts", "drive/subir/route.ts", "historial/route.ts", "historial/reporte/route.ts", "historial/opciones/route.ts", "historial/archivos/route.ts"]);
 
 function rutas(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {

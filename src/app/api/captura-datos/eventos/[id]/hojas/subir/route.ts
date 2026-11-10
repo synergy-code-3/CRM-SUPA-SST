@@ -4,26 +4,11 @@ import { requerirPermiso } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
 import { crearHojas, obtenerEvento } from "@/lib/captura-datos/db";
 import { respuestaError, ErrorPeticion } from "@/lib/captura-datos/api";
-import { carpetaDeFotos, subirArchivoADrive } from "@/lib/captura-datos/google";
-import { z } from "zod";
-import { ESTATUS, type Estatus } from "@/lib/captura-datos/fields";
+import { leerTanda, subirTanda } from "@/lib/captura-datos/subida-drive";
 
 export const maxDuration = 300;
 
-const CONCURRENCIA_DRIVE = 3;
-/** Nombre del archivo en Drive: el original, con la extensión que corresponde al contenido ya validado. */
-const nombreEnDrive = (original: string, tipo: "jpeg" | "pdf") => `${original.replace(/\.\w+$/, "")}.${tipo === "pdf" ? "pdf" : "jpg"}`;
-
-const MAX_BYTES = 15 * 1024 * 1024; // mismo tope que Storage
-const MAX_TANDA_BYTES = 100 * 1024 * 1024;
-const metasEsquema = z.array(z.object({ nombreOriginal: z.string().max(500), pagina: z.number().int().min(1).optional(), paginas: z.number().int().min(1).optional() })).max(30);
-const esJpeg = (b: Buffer) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
-const esPdf = (b: Buffer) => b.subarray(0, 5).toString("latin1") === "%PDF-";
-
-// Fotos/páginas de PDF subidas desde la computadora (en vez de ya estar en
-// Drive) — cada archivo ya llega convertido a JPEG desde el navegador (el
-// recorte/paginado de PDF se hace ahí con pdfjs-dist, igual que el proyecto
-// original). FormData porque son archivos binarios, no JSON.
+// Fotos/páginas de PDF subidas desde la computadora a un evento ya creado; cada archivo llega como JPEG desde el navegador.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permiso = await requerirPermiso("verCapturaDatos");
   if (!permiso.ok) return permiso.respuesta;
@@ -36,53 +21,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!evento) throw new ErrorPeticion(404, "Evento no encontrado");
     if (evento.estado !== "abierto") throw new ErrorPeticion(409, "El evento ya está confirmado.");
 
-    // Se rechaza por Content-Length antes de cargar nada en memoria: 30 archivos de 15 MB serían 450 MB.
-    if (Number(req.headers.get("content-length") ?? 0) > MAX_TANDA_BYTES) throw new ErrorPeticion(413, "La tanda pesa más de 100 MB: sube menos archivos a la vez.");
-    const form = await req.formData();
-    const estatus = String(form.get("estatus") ?? "");
-    if (!ESTATUS.some((e) => e.value === estatus)) throw new ErrorPeticion(400, "Estatus inválido");
-
-    const archivos = form.getAll("archivos").filter((a): a is File => a instanceof File);
-    if (archivos.length === 0) throw new ErrorPeticion(400, "No se recibió ninguna foto");
-    if (archivos.length > 30) throw new ErrorPeticion(400, "Máximo 30 fotos por tanda");
-
-    let metasCrudas: unknown;
-    try {
-      metasCrudas = JSON.parse(String(form.get("metas") ?? "[]"));
-    } catch {
-      throw new ErrorPeticion(400, "Metadatos inválidos");
-    }
-    const metas = metasEsquema.safeParse(metasCrudas);
-    if (!metas.success || metas.data.length !== archivos.length) throw new ErrorPeticion(400, "Faltan metadatos de alguna foto");
-
-    // Se valida todo antes de crear filas, para no dejar hojas huérfanas si algo no es una imagen válida.
-    const buffers: { buffer: Buffer; tipo: "jpeg" | "pdf" }[] = [];
-    for (const a of archivos) {
-      if (a.size > MAX_BYTES) throw new ErrorPeticion(413, `"${a.name}" pesa más de 15 MB.`);
-      const buffer = Buffer.from(await a.arrayBuffer());
-      if (esJpeg(buffer)) buffers.push({ buffer, tipo: "jpeg" });
-      else if (esPdf(buffer)) buffers.push({ buffer, tipo: "pdf" });
-      else throw new ErrorPeticion(400, `"${a.name}" no es una imagen JPEG ni un PDF válido.`);
-    }
-
-    // Las fotos van directo a Drive (subcarpeta del estatus): en la BD solo queda el driveId.
-    const carpetaId = await carpetaDeFotos(evento.destino.id, estatus as Estatus);
-    const driveIds: string[] = new Array(buffers.length);
-    const nombres = metas.data.map((m, i) => nombreEnDrive(m.nombreOriginal, buffers[i].tipo));
-    let siguiente = 0;
-    const trabajador = async () => {
-      while (siguiente < buffers.length) {
-        const i = siguiente++;
-        driveIds[i] = await subirArchivoADrive(carpetaId, nombres[i], buffers[i].buffer, buffers[i].tipo);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_DRIVE, buffers.length) }, trabajador));
-
-    const hojas = await crearHojas(
-      id,
-      estatus as Estatus,
-      metas.data.map((m, i) => ({ origen: { nombreOriginal: m.nombreOriginal, pagina: m.pagina, paginas: m.paginas, driveId: driveIds[i], nombreDrive: nombres[i] } }))
-    );
+    const tanda = await leerTanda(req);
+    const fotos = await subirTanda(evento.destino.id, tanda);
+    const hojas = await crearHojas(id, tanda.estatus, fotos.map((origen) => ({ origen })));
 
     await registrarAuditoria({ usuario: permiso.usuario, accion: "hojas_agregadas", eventoId: id, eventoNombre: evento.nombre, detalle: { cantidad: hojas.length, origen: "local" } });
     return NextResponse.json({ hojas });

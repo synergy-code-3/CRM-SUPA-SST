@@ -14,7 +14,10 @@ export async function api<T>(url: string, init?: RequestInit & { json?: unknown 
     ...(json !== undefined ? { method: resto.method ?? "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) } : {}),
   });
   const datos = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!r.ok) throw new ErrorApi(typeof datos.error === "string" ? datos.error : "Algo salió mal. Intenta de nuevo.", r.status, datos);
+  if (!r.ok) {
+    const generico = r.status === 413 ? "Los archivos pesan demasiado para subirlos juntos. Intenta con menos a la vez." : `Algo salió mal (error ${r.status}). Intenta de nuevo.`;
+    throw new ErrorApi(typeof datos.error === "string" ? datos.error : generico, r.status, datos);
+  }
   return datos as T;
 }
 
@@ -96,14 +99,56 @@ export async function prepararHojas(archivos: File[]): Promise<HojaPreparada[]> 
   return listas.flat();
 }
 
-/** Sube hojas ya preparadas a un evento en tandas. */
-export async function subirHojas(eventoId: string, hojas: HojaPreparada[], estatus: string): Promise<void> {
-  for (let i = 0; i < hojas.length; i += FOTOS_POR_TANDA) {
-    const tanda = hojas.slice(i, i + FOTOS_POR_TANDA);
-    const form = new FormData();
-    form.set("estatus", estatus);
-    form.set("metas", JSON.stringify(tanda.map(({ nombreOriginal, pagina, paginas }) => ({ nombreOriginal, pagina, paginas }))));
-    for (const h of tanda) form.append("archivos", h.jpeg, h.nombreOriginal);
-    await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: form });
+/** Vercel rechaza peticiones de más de 4.5 MB: cada tanda se queda debajo de ese tope. */
+const MAX_BYTES_TANDA = 3.5 * 1024 * 1024;
+
+function enTandas(hojas: HojaPreparada[]): HojaPreparada[][] {
+  const tandas: HojaPreparada[][] = [];
+  let actual: HojaPreparada[] = [];
+  let bytes = 0;
+  for (const h of hojas) {
+    if (actual.length && (actual.length >= FOTOS_POR_TANDA || bytes + h.jpeg.size > MAX_BYTES_TANDA)) {
+      tandas.push(actual);
+      actual = [];
+      bytes = 0;
+    }
+    actual.push(h);
+    bytes += h.jpeg.size;
   }
+  if (actual.length) tandas.push(actual);
+  return tandas;
+}
+
+function formDeTanda(tanda: HojaPreparada[], estatus: string): FormData {
+  const form = new FormData();
+  form.set("estatus", estatus);
+  form.set("metas", JSON.stringify(tanda.map(({ nombreOriginal, pagina, paginas }) => ({ nombreOriginal, pagina, paginas }))));
+  for (const h of tanda) form.append("archivos", h.jpeg, h.nombreOriginal);
+  return form;
+}
+
+/** Sube hojas ya preparadas a un evento existente en tandas. */
+export async function subirHojas(eventoId: string, hojas: HojaPreparada[], estatus: string): Promise<void> {
+  for (const tanda of enTandas(hojas)) {
+    await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: formDeTanda(tanda, estatus) });
+  }
+}
+
+export interface FotoSubida {
+  nombreOriginal: string;
+  driveId: string;
+  nombreDrive?: string;
+  pagina?: number;
+  paginas?: number;
+}
+
+/** Sube hojas a la carpeta de Drive de un evento que aún no se crea; devuelve las referencias para crearlo con ellas. */
+export async function subirADrive(destinoId: string, hojas: HojaPreparada[], estatus: string): Promise<FotoSubida[]> {
+  const fotos: FotoSubida[] = [];
+  for (const tanda of enTandas(hojas)) {
+    const form = formDeTanda(tanda, estatus);
+    form.set("destinoId", destinoId);
+    fotos.push(...(await api<{ fotos: FotoSubida[] }>("/api/captura-datos/drive/subir", { method: "POST", body: form })).fotos);
+  }
+  return fotos;
 }
