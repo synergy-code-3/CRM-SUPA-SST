@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Folder, Loader2, Upload } from "lucide-react";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { Modal } from "./Modal";
 import { ZonaArchivos } from "./ZonaArchivos";
-import { api, subirHojas } from "@/lib/captura-datos/cliente";
+import { api, prepararHojas, subirHojas, type HojaPreparada } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
@@ -20,7 +20,6 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [origen, setOrigen] = useState<OrigenEvento>("local");
   const [estatus, setEstatus] = useState<Estatus>("Completo"); // categoría abierta en el menú de subida local
   const [archivos, setArchivos] = useState<Record<Estatus, File[]>>({ Completo: [], Apartado: [], Interesado: [] });
-  const subidos = useRef(new Set<File>()); // si falla a medias, el reintento no vuelve a subir lo que ya quedó
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
   const hoy = fechaDeHoy();
@@ -31,7 +30,6 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [confirmandoCierre, setConfirmandoCierre] = useState(false);
   const hayCarpetas = !!info?.subcarpetas.some((s) => estatusDeCarpeta(s.nombre));
   const totalArchivos = ESTATUS.reduce((n, e) => n + archivos[e.value].length, 0);
-  const [eventoCreado, setEventoCreado] = useState<EventoCaptura | null>(null); // si falla la importación, se reintenta sin duplicar el evento
 
   const origenEfectivo: OrigenEvento = origen === "drive" && !hayCarpetas ? "local" : origen;
 
@@ -54,20 +52,19 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     if (!info) return;
     setCargando(true);
     setError(null);
+    let evento: EventoCaptura | null = null;
     try {
-      const evento = eventoCreado ?? (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
+      const preparadas: Partial<Record<Estatus, HojaPreparada[]>> = {};
+      if (origenEfectivo === "local") for (const e of ESTATUS) if (archivos[e.value].length) preparadas[e.value] = await prepararHojas(archivos[e.value]);
+      evento = (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
         json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre } },
       })).evento;
-      setEventoCreado(evento);
       if (origenEfectivo === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
-      else {
-        for (const e of ESTATUS) {
-          const pendientes = archivos[e.value].filter((f) => !subidos.current.has(f));
-          if (pendientes.length) await subirHojas(evento.id, pendientes, e.value, (tanda) => tanda.forEach((f) => subidos.current.add(f)));
-        }
-      }
+      else for (const e of ESTATUS) if (preparadas[e.value]?.length) await subirHojas(evento.id, preparadas[e.value]!, e.value);
       onCreado(evento);
     } catch (err) {
+      // Si algo falla, el evento no se queda creado a medias.
+      if (evento) await api(`/api/captura-datos/eventos/${evento.id}`, { method: "DELETE", json: { motivo: "No se pudo crear el evento (falló la carga de hojas)" } }).catch(() => {});
       setError(mensajeError(err, "No se pudo crear el evento."));
       setCargando(false);
     }

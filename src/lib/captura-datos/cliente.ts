@@ -42,19 +42,66 @@ export function formatearFecha(fecha: string): string {
 
 const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 
-/** Sube archivos de la computadora a un evento en tandas (imágenes reducidas a JPEG, PDF tal cual). `alSubirTanda` avisa qué archivos ya quedaron. */
-export async function subirHojas(eventoId: string, archivos: File[], estatus: string, alSubirTanda?: (tanda: File[]) => void): Promise<void> {
-  const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
-  for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
-    const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
+/** Una foto lista para subir: imagen ya reducida a JPEG o una página de un PDF convertida a JPEG. */
+export interface HojaPreparada {
+  jpeg: Blob;
+  nombreOriginal: string;
+  pagina?: number;
+  paginas?: number;
+}
+
+function canvasAJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((ok, fallo) => canvas.toBlob((b) => (b ? ok(b) : fallo(new Error("No se pudo procesar la imagen."))), "image/jpeg", 0.85));
+}
+
+/** Cada página del PDF es una hoja de registro: se dibuja como JPEG (lado mayor 2000 px). */
+async function paginasDePdf(archivo: File): Promise<HojaPreparada[]> {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const carga = pdfjs.getDocument({ data: new Uint8Array(await archivo.arrayBuffer()) });
+  const pdf = await carga.promise;
+  const base = archivo.name.replace(/\.pdf$/i, "");
+  const hojas: HojaPreparada[] = [];
+  try {
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const pagina = await pdf.getPage(n);
+      const vista1 = pagina.getViewport({ scale: 1 });
+      const viewport = pagina.getViewport({ scale: LADO_MAX / Math.max(vista1.width, vista1.height) });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      await pagina.render({ canvas, viewport }).promise;
+      hojas.push({ jpeg: await canvasAJpeg(canvas), nombreOriginal: `${base}_p${n}.jpg`, pagina: n, paginas: pdf.numPages });
+      pagina.cleanup();
+    }
+  } finally {
+    await carga.destroy();
+  }
+  return hojas;
+}
+
+/** Convierte todo antes de subir nada: si un archivo no se puede leer, falla aquí y no se crea nada. */
+export async function prepararHojas(archivos: File[]): Promise<HojaPreparada[]> {
+  const listas: HojaPreparada[][] = [];
+  for (const a of archivos) {
+    try {
+      if (a.type === "application/pdf") listas.push(await paginasDePdf(a));
+      else if (a.type.startsWith("image/")) listas.push([{ jpeg: await imagenAJpeg(a), nombreOriginal: a.name.replace(/\.\w+$/, ".jpg") }]);
+    } catch {
+      throw new ErrorApi(`No se pudo leer "${a.name}". Revisa que no esté dañado o protegido con contraseña.`, 0, {});
+    }
+  }
+  return listas.flat();
+}
+
+/** Sube hojas ya preparadas a un evento en tandas. */
+export async function subirHojas(eventoId: string, hojas: HojaPreparada[], estatus: string): Promise<void> {
+  for (let i = 0; i < hojas.length; i += FOTOS_POR_TANDA) {
+    const tanda = hojas.slice(i, i + FOTOS_POR_TANDA);
     const form = new FormData();
     form.set("estatus", estatus);
-    form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
-    for (const a of tanda) {
-      if (a.type === "application/pdf") form.append("archivos", a, a.name);
-      else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
-    }
+    form.set("metas", JSON.stringify(tanda.map(({ nombreOriginal, pagina, paginas }) => ({ nombreOriginal, pagina, paginas }))));
+    for (const h of tanda) form.append("archivos", h.jpeg, h.nombreOriginal);
     await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: form });
-    alSubirTanda?.(tanda);
   }
 }

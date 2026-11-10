@@ -21,6 +21,7 @@ export interface FotoRef {
   nombreDrive?: string; // nombre actual del archivo en Drive, solo si lo subió la app (esos se renombran con folio y nombre)
   pagina?: number; // página del PDF (1-based)
   paginas?: number;
+  principalId?: string; // hoja repetida: solo se ve; la principal es la que se captura
   w?: number;
   h?: number;
   leidaIa?: boolean; // ya se usó "Leer con IA" en esta hoja: solo se permite una vez

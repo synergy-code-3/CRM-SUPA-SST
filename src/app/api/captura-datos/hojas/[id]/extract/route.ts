@@ -55,7 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     // Ya se guardó: la lectura queda gastada (si esto falla, la marca de "en curso" vence sola, ver LEASE_LECTURA_IA_MS).
     await finalizarLecturaIa(id, hoja.origen).catch((e) => console.error("extract: no se pudo cerrar la lectura de la hoja", id, e));
     // Con la respuesta ya enviada, el servidor sigue leyendo las siguientes hojas libres para que lleguen listas.
-    after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_LEER, inverso, hoja.estatus));
+    after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_LEER, inverso, hoja.estatus, actualizada.campos?.telefono));
     return NextResponse.json({ hoja: actualizada });
   } catch (err) {
     if (err instanceof ErrorVersion || err instanceof ErrorHojaOcupada || err instanceof ErrorEstadoHoja) return NextResponse.json({ error: err.message }, { status: 409 });
