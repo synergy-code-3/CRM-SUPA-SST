@@ -56,10 +56,11 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     try {
       const preparadas: Partial<Record<Estatus, HojaPreparada[]>> = {};
       if (origenEfectivo === "local") for (const e of ESTATUS) if (archivos[e.value].length) preparadas[e.value] = await prepararHojas(archivos[e.value]);
+      const deDrive = origenEfectivo === "drive" ? await listarDeDrive(info, enlaceBuscado) : [];
       evento = (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
         json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre } },
       })).evento;
-      if (origenEfectivo === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
+      if (origenEfectivo === "drive") for (const g of deDrive) await api(`/api/captura-datos/eventos/${evento.id}/hojas`, { json: g });
       else for (const e of ESTATUS) if (preparadas[e.value]?.length) await subirHojas(evento.id, preparadas[e.value]!, e.value);
       onCreado(evento);
     } catch (err) {
@@ -157,7 +158,9 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   );
 }
 
-async function importarDeDrive(eventoId: string, info: InfoCarpeta, enlace: string) {
+/** Lista los archivos de Drive antes de crear el evento: si la lectura falla, no se crea nada. */
+async function listarDeDrive(info: InfoCarpeta, enlace: string) {
+  const grupos: { estatus: Estatus; archivos: { driveId: string; nombreOriginal: string }[] }[] = [];
   for (const sub of info.subcarpetas) {
     const estatus = estatusDeCarpeta(sub.nombre);
     if (!estatus || sub.archivos === 0) continue;
@@ -167,6 +170,7 @@ async function importarDeDrive(eventoId: string, info: InfoCarpeta, enlace: stri
     const archivos = r.archivos
       .filter((a) => a.mime.startsWith("image/") || a.mime === "application/pdf")
       .map((a) => ({ driveId: a.id, nombreOriginal: a.nombre }));
-    if (archivos.length) await api(`/api/captura-datos/eventos/${eventoId}/hojas`, { json: { estatus, archivos } });
+    if (archivos.length) grupos.push({ estatus, archivos });
   }
+  return grupos;
 }

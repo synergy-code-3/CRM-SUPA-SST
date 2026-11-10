@@ -56,7 +56,7 @@ function canvasAJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
 
 /** Cada página del PDF es una hoja de registro: se dibuja como JPEG (lado mayor 2000 px). */
 async function paginasDePdf(archivo: File): Promise<HojaPreparada[]> {
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   const carga = pdfjs.getDocument({ data: new Uint8Array(await archivo.arrayBuffer()) });
   const pdf = await carga.promise;

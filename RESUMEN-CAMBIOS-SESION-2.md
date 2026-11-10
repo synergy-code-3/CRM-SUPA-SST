@@ -419,3 +419,6 @@ Todo el SQL de Captura de Datos vive ahora en `supabase/schema.sql` (idempotente
 - Hojas repetidas (mismo teléfono, mismo estado): `duplicadas.ts`. Al llegar a una, el editor avisa con "Borrar repetidas" o "Verlas". En la tira, ícono ámbar (repetida) o azul (vinculada); abre `DuplicadasModal` para elegir la principal y vincular, ver, borrar o desvincular. Solo se vinculan hojas repetidas (lo valida el servidor). La secundaria queda `no_valida` con `origen.principalId`: solo se ve, no se captura, no va a la Hoja de cálculo; su foto sí está en Drive. Ruta nueva `POST /api/captura-datos/hojas/[id]/duplicadas` (`vincular`/`desvincular`/`borrar`; borrar una confirmada solo admin).
 - Lectura IA adelantada: si la última hoja leída repite el teléfono de la anterior, sigue leyendo hasta una distinta (máx. 20 extra) y se detiene.
 - Verificado: `tsc`, `eslint`, `vitest` 250/250 (5 nuevas), `next build`. No probado en navegador ni contra la base real.
+
+- PDF: ahora se usa la build "legacy" de pdfjs-dist (librería y worker); la normal exige APIs muy nuevas del navegador (`Map.getOrInsertComputed`) y fallaba al leer PDFs. El postinstall copia el worker legacy a `public/pdf.worker.min.mjs`.
+- Nuevo evento: la lectura de las carpetas de Drive se hace antes de crear el evento; si falla, no se crea nada (SQL pendiente: ninguno).
