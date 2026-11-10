@@ -87,8 +87,10 @@ export async function prepararHojas(archivos: File[]): Promise<HojaPreparada[]> 
     try {
       if (a.type === "application/pdf") listas.push(await paginasDePdf(a));
       else if (a.type.startsWith("image/")) listas.push([{ jpeg: await imagenAJpeg(a), nombreOriginal: a.name.replace(/\.\w+$/, ".jpg") }]);
-    } catch {
-      throw new ErrorApi(`No se pudo leer "${a.name}". Revisa que no esté dañado o protegido con contraseña.`, 0, {});
+    } catch (err) {
+      console.error("Error al leer archivo", a.name, err);
+      const motivo = err instanceof Error ? err.message : String(err);
+      throw new ErrorApi(`No se pudo leer "${a.name}" (${motivo}). Revisa que no esté dañado o protegido con contraseña.`, 0, {});
     }
   }
   return listas.flat();
