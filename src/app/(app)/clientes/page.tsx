@@ -24,7 +24,7 @@ import { VencenHoyModal } from "@/components/VencenHoyModal";
 import { useSesion } from "@/lib/session-context";
 import { tienePermiso } from "@/lib/permisos";
 import { descargarCsv } from "@/lib/csv";
-import { estadoApartado50, estadoMembresia, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
+import { estadoApartado50, estadoMembresia, finAccesoConEtiqueta, formatearFechaSkool, type NivelMembresia } from "@/lib/fechas";
 import { useFiltrosMovil } from "@/lib/filtros-movil-context";
 import { crearCacheDeVista } from "@/lib/cache-vista";
 
@@ -251,6 +251,16 @@ function ClientesPageInner() {
     // se encarga de que no se alcance a mostrar un dato viejo.
   }, [claveVista, recargaKey]);
 
+  // AAAA-MM-DD en hora de CDMX (UTC-6 todo el año): es lo que otra
+  // plataforma importa sin confundir día/mes, y las fechas guardadas a
+  // medianoche de CDMX no se recorren un día al pasarlas a UTC.
+  function fechaCsv(iso: string | null): string {
+    if (!iso) return "";
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return "";
+    return new Date(t - 6 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
   async function descargarClientes(conFiltros: boolean) {
     setDescargando(true);
     try {
@@ -261,17 +271,43 @@ function ClientesPageInner() {
         alert(data.error ?? "No se pudo exportar la lista de clientes");
         return;
       }
-      const encabezados = ["Nombre", "Correo", "Teléfono", "País", "Evento", "Acceso", "Membresía", "Vence Skool"];
-      const filas = (data.clientes as Cliente[]).map((c) => [
-        c.nombre,
-        c.email,
-        c.telefono ?? "",
-        c.pais ?? "",
-        c.evento ?? "",
-        c.accesoPlataforma ?? "",
-        c.tipoMembresia ?? "",
-        c.vencimientoSkool ?? "",
-      ]);
+      const encabezados = [
+        "Nombre",
+        "Correo",
+        "Teléfono",
+        "País",
+        "Evento",
+        "Membresía",
+        "Etiqueta",
+        "Etiquetas extra",
+        "Tags",
+        "Acceso",
+        "Fecha de inscripción",
+        "Fecha de renovación",
+        "Fin de acceso",
+        "Vence Skool",
+        "Pausado desde",
+      ];
+      const filas = (data.clientes as Cliente[]).map((c) => {
+        const fin = finAccesoConEtiqueta(c.fechaInscripcion, c.fechaRenovacion, c.etiqueta, c.etiquetaAsignadaEn, c.etiquetasExtra);
+        return [
+          c.nombre,
+          c.email,
+          c.telefono ?? "",
+          c.pais ?? "",
+          c.evento ?? "",
+          c.tipoMembresia ?? "",
+          c.etiqueta ?? "",
+          c.etiquetasExtra.join(" | "),
+          c.tags.join(" | "),
+          c.accesoPlataforma ?? "",
+          fechaCsv(c.fechaInscripcion),
+          fechaCsv(c.fechaRenovacion),
+          fin.vitalicio ? "Vitalicio" : fechaCsv(fin.fecha?.toISOString() ?? null),
+          c.vencimientoSkool ?? "",
+          fechaCsv(c.pausadoEn),
+        ];
+      });
       descargarCsv(conFiltros ? "clientes-filtrados.csv" : "clientes.csv", encabezados, filas);
     } finally {
       setDescargando(false);
