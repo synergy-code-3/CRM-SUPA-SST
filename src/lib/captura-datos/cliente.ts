@@ -14,7 +14,10 @@ export async function api<T>(url: string, init?: RequestInit & { json?: unknown 
     ...(json !== undefined ? { method: resto.method ?? "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) } : {}),
   });
   const datos = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!r.ok) throw new ErrorApi(typeof datos.error === "string" ? datos.error : "Algo salió mal. Intenta de nuevo.", r.status, datos);
+  if (!r.ok) {
+    const generico = r.status === 413 ? "Los archivos pesan demasiado para subirlos juntos. Intenta con menos a la vez." : `Algo salió mal (error ${r.status}). Intenta de nuevo.`;
+    throw new ErrorApi(typeof datos.error === "string" ? datos.error : generico, r.status, datos);
+  }
   return datos as T;
 }
 
@@ -42,19 +45,110 @@ export function formatearFecha(fecha: string): string {
 
 const FOTOS_POR_TANDA = 30; // límite de la ruta /hojas/subir
 
-/** Sube archivos de la computadora a un evento en tandas (imágenes reducidas a JPEG, PDF tal cual). `alSubirTanda` avisa qué archivos ya quedaron. */
-export async function subirHojas(eventoId: string, archivos: File[], estatus: string, alSubirTanda?: (tanda: File[]) => void): Promise<void> {
-  const lista = archivos.filter((a) => a.type.startsWith("image/") || a.type === "application/pdf");
-  for (let i = 0; i < lista.length; i += FOTOS_POR_TANDA) {
-    const tanda = lista.slice(i, i + FOTOS_POR_TANDA);
-    const form = new FormData();
-    form.set("estatus", estatus);
-    form.set("metas", JSON.stringify(tanda.map((a) => ({ nombreOriginal: a.name }))));
-    for (const a of tanda) {
-      if (a.type === "application/pdf") form.append("archivos", a, a.name);
-      else form.append("archivos", await imagenAJpeg(a), a.name.replace(/\.\w+$/, ".jpg"));
+/** Una foto lista para subir: imagen ya reducida a JPEG o una página de un PDF convertida a JPEG. */
+export interface HojaPreparada {
+  jpeg: Blob;
+  nombreOriginal: string;
+  pagina?: number;
+  paginas?: number;
+}
+
+function canvasAJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((ok, fallo) => canvas.toBlob((b) => (b ? ok(b) : fallo(new Error("No se pudo procesar la imagen."))), "image/jpeg", 0.85));
+}
+
+/** Cada página del PDF es una hoja de registro: se dibuja como JPEG (lado mayor 2000 px). */
+async function paginasDePdf(archivo: File): Promise<HojaPreparada[]> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const carga = pdfjs.getDocument({ data: new Uint8Array(await archivo.arrayBuffer()) });
+  const pdf = await carga.promise;
+  const base = archivo.name.replace(/\.pdf$/i, "");
+  const hojas: HojaPreparada[] = [];
+  try {
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const pagina = await pdf.getPage(n);
+      const vista1 = pagina.getViewport({ scale: 1 });
+      const viewport = pagina.getViewport({ scale: LADO_MAX / Math.max(vista1.width, vista1.height) });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      await pagina.render({ canvas, viewport }).promise;
+      hojas.push({ jpeg: await canvasAJpeg(canvas), nombreOriginal: `${base}_p${n}.jpg`, pagina: n, paginas: pdf.numPages });
+      pagina.cleanup();
     }
-    await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: form });
-    alSubirTanda?.(tanda);
+  } finally {
+    await carga.destroy();
   }
+  return hojas;
+}
+
+/** Convierte todo antes de subir nada: si un archivo no se puede leer, falla aquí y no se crea nada. */
+export async function prepararHojas(archivos: File[]): Promise<HojaPreparada[]> {
+  const listas: HojaPreparada[][] = [];
+  for (const a of archivos) {
+    try {
+      if (a.type === "application/pdf") listas.push(await paginasDePdf(a));
+      else if (a.type.startsWith("image/")) listas.push([{ jpeg: await imagenAJpeg(a), nombreOriginal: a.name.replace(/\.\w+$/, ".jpg") }]);
+    } catch (err) {
+      console.error("Error al leer archivo", a.name, err);
+      const motivo = err instanceof Error ? err.message : String(err);
+      throw new ErrorApi(`No se pudo leer "${a.name}" (${motivo}). Revisa que no esté dañado o protegido con contraseña.`, 0, {});
+    }
+  }
+  return listas.flat();
+}
+
+/** Vercel rechaza peticiones de más de 4.5 MB: cada tanda se queda debajo de ese tope. */
+const MAX_BYTES_TANDA = 3.5 * 1024 * 1024;
+
+function enTandas(hojas: HojaPreparada[]): HojaPreparada[][] {
+  const tandas: HojaPreparada[][] = [];
+  let actual: HojaPreparada[] = [];
+  let bytes = 0;
+  for (const h of hojas) {
+    if (actual.length && (actual.length >= FOTOS_POR_TANDA || bytes + h.jpeg.size > MAX_BYTES_TANDA)) {
+      tandas.push(actual);
+      actual = [];
+      bytes = 0;
+    }
+    actual.push(h);
+    bytes += h.jpeg.size;
+  }
+  if (actual.length) tandas.push(actual);
+  return tandas;
+}
+
+function formDeTanda(tanda: HojaPreparada[], estatus: string): FormData {
+  const form = new FormData();
+  form.set("estatus", estatus);
+  form.set("metas", JSON.stringify(tanda.map(({ nombreOriginal, pagina, paginas }) => ({ nombreOriginal, pagina, paginas }))));
+  for (const h of tanda) form.append("archivos", h.jpeg, h.nombreOriginal);
+  return form;
+}
+
+/** Sube hojas ya preparadas a un evento existente en tandas. */
+export async function subirHojas(eventoId: string, hojas: HojaPreparada[], estatus: string): Promise<void> {
+  for (const tanda of enTandas(hojas)) {
+    await api(`/api/captura-datos/eventos/${eventoId}/hojas/subir`, { method: "POST", body: formDeTanda(tanda, estatus) });
+  }
+}
+
+export interface FotoSubida {
+  nombreOriginal: string;
+  driveId: string;
+  nombreDrive?: string;
+  pagina?: number;
+  paginas?: number;
+}
+
+/** Sube hojas a la carpeta de Drive de un evento que aún no se crea; devuelve las referencias para crearlo con ellas. */
+export async function subirADrive(destinoId: string, hojas: HojaPreparada[], estatus: string): Promise<FotoSubida[]> {
+  const fotos: FotoSubida[] = [];
+  for (const tanda of enTandas(hojas)) {
+    const form = formDeTanda(tanda, estatus);
+    form.set("destinoId", destinoId);
+    fotos.push(...(await api<{ fotos: FotoSubida[] }>("/api/captura-datos/drive/subir", { method: "POST", body: form })).fotos);
+  }
+  return fotos;
 }

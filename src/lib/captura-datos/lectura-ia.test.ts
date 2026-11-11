@@ -50,7 +50,7 @@ describe("adelantarLecturas", () => {
       hoja("c", { estado: "leida" }),
     ]);
     await adelantarLecturas("e1", 3, false, "Completo");
-    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 3, false, "Completo");
+    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 23, false, "Completo");
     expect(extract.extractFromImage).toHaveBeenCalledTimes(1);
     expect(db.guardarLecturaAdelantada).toHaveBeenCalledWith("a", expect.any(Object), null, expect.any(Object));
   });
@@ -58,7 +58,7 @@ describe("adelantarLecturas", () => {
   it("quien captura desde el final adelanta en ese mismo orden", async () => {
     db.siguientesHojasLibres.mockResolvedValue([]);
     await adelantarLecturas("e1", 2, true, "Completo");
-    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 2, true, "Completo");
+    expect(db.siguientesHojasLibres).toHaveBeenCalledWith("e1", 22, true, "Completo");
   });
 
   it("completa la membresía por el monto cuando la IA no la marcó", async () => {
@@ -106,6 +106,20 @@ describe("adelantarLecturas", () => {
     db.guardarLecturaAdelantada.mockResolvedValue(false);
     await adelantarLecturas("e1", 1, false, "Completo");
     expect(db.devolverLecturaIa).toHaveBeenCalledWith("a", expect.any(Object));
+  });
+
+  it("con hojas repetidas seguidas sigue leyendo hasta llegar a una distinta", async () => {
+    db.siguientesHojasLibres.mockResolvedValue(["a", "b", "c", "d", "e"].map((id) => hoja(id)));
+    for (const telefono of ["3311111111", "3311111111", "3311111111", "3322222222", "3333333333"]) extract.extractFromImage.mockResolvedValueOnce({ ...LEIDA, telefono });
+    await adelantarLecturas("e1", 2, false, "Completo");
+    expect(extract.extractFromImage).toHaveBeenCalledTimes(4);
+  });
+
+  it("sin repetidas se queda en el límite", async () => {
+    db.siguientesHojasLibres.mockResolvedValue(["a", "b", "c"].map((id) => hoja(id)));
+    for (const telefono of ["3311111111", "3322222222", "3333333333"]) extract.extractFromImage.mockResolvedValueOnce({ ...LEIDA, telefono });
+    await adelantarLecturas("e1", 2, false, "Completo");
+    expect(extract.extractFromImage).toHaveBeenCalledTimes(2);
   });
 
   it("no lanza aunque falle la consulta de hojas", async () => {

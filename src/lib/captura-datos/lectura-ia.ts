@@ -7,6 +7,7 @@ import { extractFromImage } from "./extract";
 import { EMPTY_FIELDS, membresiaPorCantidad, type Box, type Estatus, type Extraction, type SheetFields } from "./fields";
 import { descargarArchivo } from "./google";
 import { huellaImagen } from "./huella";
+import { telefonoClave } from "./duplicadas";
 import type { FotoRef, HojaCaptura } from "./modelo";
 import { leerFotoHoja } from "@/lib/storage";
 
@@ -34,15 +35,15 @@ export function datosDeExtraccion(extraccion: Extraction): { campos: SheetFields
   return { campos, voucherBox };
 }
 
-/** Lee con IA una hoja libre que nadie ha tocado y guarda el resultado sin bloquearla. */
-async function leerHojaAdelantada(hoja: HojaCaptura): Promise<void> {
+/** Lee con IA una hoja libre que nadie ha tocado y guarda el resultado sin bloquearla. Devuelve el teléfono leído. */
+async function leerHojaAdelantada(hoja: HojaCaptura): Promise<string | null> {
   const { base64, mime } = await fotoBase64(hoja.origen);
   const huella = huellaImagen(base64);
   if (await esNoValida(huella)) {
     await marcarHojaNoValida(hoja.id, huella);
-    return;
+    return null;
   }
-  if (!(await reclamarLecturaIa(hoja.id, hoja.origen))) return; // otra lectura ya la reclamó
+  if (!(await reclamarLecturaIa(hoja.id, hoja.origen))) return null; // otra lectura ya la reclamó
   let extraccion: Extraction;
   try {
     extraccion = await extractFromImage(base64, mime);
@@ -52,7 +53,7 @@ async function leerHojaAdelantada(hoja: HojaCaptura): Promise<void> {
   }
   if (!extraccion.esHojaDeRegistro) {
     await marcarHojaNoValida(hoja.id, huella);
-    return;
+    return null;
   }
   const { campos, voucherBox } = datosDeExtraccion(extraccion);
   const leidos: SheetFields = { ...EMPTY_FIELDS, ...campos };
@@ -61,19 +62,29 @@ async function leerHojaAdelantada(hoja: HojaCaptura): Promise<void> {
   if (!(await guardarLecturaAdelantada(hoja.id, leidos, voucherBox, hoja.origen))) {
     await devolverLecturaIa(hoja.id, hoja.origen).catch((e) => console.error("lectura-ia: no se pudo devolver la lectura de la hoja", hoja.id, e));
   }
+  return leidos.telefono;
 }
+
+/** Hojas repetidas seguidas (mismo teléfono) no cuentan como "otra" hoja: se siguen leyendo hasta llegar a una distinta. */
+const MAX_REPETIDAS_EXTRA = 20;
 
 /**
  * Se asegura de que las próximas `cuantas` hojas libres del evento (en el orden en que se entregan) ya estén leídas con IA.
- * Solo toca hojas pendientes y sin datos; si la IA falla se detiene (no insiste con las demás). Nunca lanza.
+ * Si la última leída repite el teléfono de la anterior, sigue hasta leer una distinta. Solo toca hojas pendientes y sin
+ * datos; si la IA falla se detiene (no insiste con las demás). Nunca lanza.
  */
-export async function adelantarLecturas(eventoId: string, cuantas: number, inverso: boolean, estatus: Estatus): Promise<void> {
+export async function adelantarLecturas(eventoId: string, cuantas: number, inverso: boolean, estatus: Estatus, telefonoActual?: string | null): Promise<void> {
   const inicio = Date.now();
   try {
-    for (const hoja of await siguientesHojasLibres(eventoId, cuantas, inverso, estatus)) {
-      if (hoja.estado !== "pendiente" || hoja.origen.leidaIa) continue;
+    let anterior = telefonoClave(telefonoActual);
+    let vistas = 0;
+    for (const hoja of await siguientesHojasLibres(eventoId, cuantas + MAX_REPETIDAS_EXTRA, inverso, estatus)) {
       if (Date.now() - inicio > PRESUPUESTO_ADELANTO_MS) return;
-      await leerHojaAdelantada(hoja);
+      const yaLeida = hoja.estado !== "pendiente" || hoja.origen.leidaIa;
+      const telefono = telefonoClave(yaLeida ? hoja.campos?.telefono : await leerHojaAdelantada(hoja));
+      vistas++;
+      if (vistas >= cuantas && (!telefono || telefono !== anterior)) return;
+      anterior = telefono;
     }
   } catch (err) {
     console.error("captura-datos: lectura adelantada interrumpida", eventoId, err);

@@ -60,6 +60,21 @@ export const crearEvento = z.object({
   origen,
   carpetaOrigenId: idDrive.optional(),
   usuariosAsignados: z.array(idUuid).max(50).default([]),
+  hojas: z
+    .array(
+      z.object({
+        estatus: z.enum(ESTATUS.map((e) => e.value) as [string, ...string[]]),
+        origen: z.object({
+          nombreOriginal: texto(500),
+          driveId: idDrive,
+          nombreDrive: texto(500).optional(),
+          pagina: z.number().int().min(1).optional(),
+          paginas: z.number().int().min(1).optional(),
+        }),
+      })
+    )
+    .max(2000)
+    .default([]),
 });
 
 // PATCH /api/captura-datos/hojas/[id] — autoguardado (sin `confirmar`) o
@@ -84,3 +99,5 @@ export const patchEvento = z.object({
 export const borradoEvento = z.object({ motivo: texto(500) }); // se exige no vacío en borrarEventoDirecto
 
 export const tomarHojaBody = z.object({ estatus: z.enum(["Completo", "Apartado", "Interesado"]) });
+
+export const duplicadasBody = z.object({ accion: z.enum(["vincular", "desvincular", "borrar"]), ids: z.array(idUuid).max(50).default([]) });

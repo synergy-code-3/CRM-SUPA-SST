@@ -7,6 +7,8 @@ import { Modal } from "./Modal";
 import { mensajeLimite, useAvisoLimite } from "./useAvisoLimite";
 import { InsigniaEstatus } from "./InsigniaEstatus";
 import { TiraHojas } from "./TiraHojas";
+import { DuplicadasModal } from "./DuplicadasModal";
+import { VerHojaModal } from "./VerHojaModal";
 import { VisorHoja } from "./VisorHoja";
 import { api, ErrorApi } from "@/lib/captura-datos/cliente";
 import { telefonoConsultable, conciliar, valorDeAxis, type CampoComparable, type EstadoCampo, type ResultadoAxis } from "@/lib/captura-datos/conciliacion";
@@ -17,6 +19,7 @@ import {
   requiereTarjeta, sanitizeInput, sinNotaAMeses, validateFields,
   type Box, type FieldKey, type SheetFields,
 } from "@/lib/captura-datos/fields";
+import { grupoDuplicadas, sinVincular, telefonoClave } from "@/lib/captura-datos/duplicadas";
 import type { HojaCaptura } from "@/lib/captura-datos/modelo";
 import type { NombresUsuarios } from "@/lib/captura-datos/colaboracion";
 
@@ -41,9 +44,10 @@ interface EditorHojaProps {
   onTerminar: () => void;
   onSiguiente: () => void | Promise<void>;
   onIr: (id: string) => void | Promise<void>;
+  onRecargar: () => Promise<unknown>;
 }
 
-export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTerminar, onSiguiente, onIr }: EditorHojaProps) {
+export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTerminar, onSiguiente, onIr, onRecargar }: EditorHojaProps) {
   const [campos, setCampos] = useState<SheetFields>({ ...EMPTY_FIELDS, ...(inicial.campos ?? {}) });
   const [guardado, setGuardado] = useState<Guardado>("guardado");
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +62,10 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
   const [lockPorVencer, setLockPorVencer] = useState(false);
   const [bloqueada, setBloqueada] = useState(false); // 409: la hoja cambió o la tomó otra persona
   const [voucherBox, setVoucherBox] = useState<Box | null>(inicial.voucherBox ?? null);
+  const [grupoDe, setGrupoDe] = useState<string | null>(null); // hoja cuyo grupo de repetidas está abierto
+  const [viendo, setViendo] = useState<HojaCaptura | null>(null);
+  const [avisosDescartados, setAvisosDescartados] = useState<string[]>([]);
+  const [borrandoRepetidas, setBorrandoRepetidas] = useState(false);
   const cola = useRef<Promise<boolean>>(Promise.resolve(true)); // un guardado a la vez, en orden
   const bloqueadaRef = useRef(false);
   const versionRef = useRef(inicial.version);
@@ -282,6 +290,36 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
     setCambiando(false);
   }
 
+  const actualConCampos = { ...inicial, campos };
+  const lista = hojas.map((h) => (h.id === inicial.id ? actualConCampos : h));
+  const repetidas = grupoDuplicadas(lista, actualConCampos);
+  const claveTelefono = telefonoClave(campos.telefono);
+  const avisoRepetidas = !reedicion && sinVincular(repetidas) && !!claveTelefono && !avisosDescartados.includes(claveTelefono);
+  const ancla = lista.find((h) => h.id === grupoDe);
+  const grupoModal = ancla ? grupoDuplicadas(lista, ancla) : [];
+  const descartarAviso = () => claveTelefono && setAvisosDescartados((previos) => [...previos, claveTelefono]);
+
+  async function alVincular(principalId?: string) {
+    const actualEnGrupo = grupoModal.some((h) => h.id === inicial.id);
+    setGrupoDe(null);
+    if (principalId && principalId !== inicial.id && actualEnGrupo) await onIr(principalId);
+    else await onRecargar();
+  }
+
+  async function borrarRepetidas() {
+    setBorrandoRepetidas(true);
+    try {
+      if (!(await guardar())) return;
+      await api(`/api/captura-datos/hojas/${inicial.id}/duplicadas`, { json: { accion: "borrar", ids: repetidas.filter((h) => h.id !== inicial.id).map((h) => h.id) } });
+      descartarAviso();
+      await onRecargar();
+    } catch (err) {
+      setError(mensajeError(err, "No se pudieron borrar las hojas repetidas."));
+    } finally {
+      setBorrandoRepetidas(false);
+    }
+  }
+
   const obligatorio = llevaPago(inicial.estatus);
   const campo = (k: FieldKey) => (intentoConfirmar ? errores[k] : undefined);
   const enlaceDuplicado = duplicado?.datos ? urlDuplicado(duplicado.datos) : null;
@@ -306,7 +344,7 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
         <div className="min-h-0 flex-1">
           <VisorHoja url={urlFoto} esPdf={esPdf} voucherBox={voucherBox} onVoucherBox={cambiarVoucherBox} />
         </div>
-        <TiraHojas hojas={hojas} actualId={inicial.id} usuarioId={usuarioId} nombres={nombres} onElegir={irA} />
+        <TiraHojas hojas={lista} actualId={inicial.id} usuarioId={usuarioId} nombres={nombres} onElegir={irA} onVer={setViendo} onDuplicadas={(h) => setGrupoDe(h.id)} />
       </div>
 
       <div className="space-y-2.5">
@@ -404,6 +442,27 @@ export function EditorHoja({ hoja: inicial, hojas, usuarioId, nombres, onTermina
           )}
           <Campo etiqueta="Notas" error={campo("notas")} aviso={avisos.notas}><textarea value={campos.notas} onChange={(e) => escribir("notas", e.target.value, NOTAS_MAX, "Caracteres no permitidos")} rows={3} className={`${CLASE_INPUT} resize-y`} /></Campo>
         </fieldset>
+
+        {avisoRepetidas && !grupoDe && (
+          <Modal titulo="Hoja repetida" onCerrar={descartarAviso} bloqueado={borrandoRepetidas}>
+            <div className="space-y-4">
+              <p className="text-sm text-foreground">
+                Hay {repetidas.length - 1} hoja(s) más con el teléfono {campos.telefono}. Puedes borrar las repetidas o verlas para elegir cuál es la principal.
+              </p>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button onClick={borrarRepetidas} disabled={borrandoRepetidas} className="inline-flex items-center justify-center gap-2 rounded-lg border border-danger px-4 py-2 text-sm text-danger disabled:opacity-50">
+                  {borrandoRepetidas && <Loader2 className="h-4 w-4 animate-spin" />} Borrar repetidas
+                </button>
+                <button onClick={() => { descartarAviso(); setGrupoDe(inicial.id); }} disabled={borrandoRepetidas} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Verlas</button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {grupoModal.length > 0 && (
+          <DuplicadasModal grupo={grupoModal} actualId={inicial.id} onCerrar={() => setGrupoDe(null)} onVer={setViendo} preparar={guardar} onHecho={alVincular} />
+        )}
+        {viendo && <VerHojaModal hoja={viendo} onCerrar={() => setViendo(null)} />}
 
         {duplicado && (
           <Modal titulo="Este folio ya existe" onCerrar={() => setDuplicado(null)} bloqueado={confirmando}>

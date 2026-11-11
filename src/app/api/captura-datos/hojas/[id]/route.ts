@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await registrarConfirmacionDeHoja({ usuario: permiso.usuario, previa, hoja, duplicadoForzado: forzar });
         const eventoCerrado = await cerrarEventoSiCompleto(hoja.eventoId, permiso.usuario);
         // Solo si se está trabajando con IA (la hoja se leyó con IA): se mantiene el adelanto sin gastar lecturas a quien no la usa.
-        if (!eventoCerrado && hoja.origen.leidaIa) after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_CONFIRMAR, inverso, hoja.estatus));
+        if (!eventoCerrado && hoja.origen.leidaIa) after(() => adelantarLecturas(hoja.eventoId, HOJAS_POR_ADELANTADO_AL_CONFIRMAR, inverso, hoja.estatus, hoja.campos?.telefono));
         return NextResponse.json({ hoja, eventoCerrado });
       } catch (err) {
         if (err instanceof ErrorFolioDuplicado) {

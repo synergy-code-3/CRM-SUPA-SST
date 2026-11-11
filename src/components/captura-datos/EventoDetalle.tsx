@@ -15,7 +15,7 @@ import { BorrarEventoModal } from "./BorrarEventoModal";
 import { SubirFotosModal } from "./SubirFotosModal";
 import { VerHojaModal } from "./VerHojaModal";
 import { MenuHoja } from "./MenuHoja";
-import { api, ErrorApi, formatearFecha, subirHojas } from "@/lib/captura-datos/cliente";
+import { api, ErrorApi, formatearFecha, prepararHojas, subirHojas } from "@/lib/captura-datos/cliente";
 import { guardarCache, leerCache, olvidarCache } from "@/lib/captura-datos/cache";
 import { usePolling } from "@/lib/captura-datos/usePolling";
 import { urlExcelEvento } from "@/lib/captura-datos/enlaces";
@@ -144,7 +144,7 @@ export function EventoDetalle({ id }: { id: string }) {
   async function subirFotos(archivos: File[], estatus: Estatus) {
     setMensaje(null);
     try {
-      await subirHojas(id, archivos, estatus);
+      await subirHojas(id, await prepararHojas(archivos), estatus);
       await cargar();
     } catch (err) {
       setMensaje(mensajeError(err, "No se pudieron subir las fotos."));
@@ -223,7 +223,7 @@ export function EventoDetalle({ id }: { id: string }) {
   if (actual) {
     return (
       <div className="space-y-4">
-        <EditorHoja key={actual.id} hoja={actual} hojas={hojas.filter((h) => h.estatus === actual.estatus)} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} />
+        <EditorHoja key={actual.id} hoja={actual} hojas={hojas.filter((h) => h.estatus === actual.estatus)} usuarioId={usuario?.id} nombres={nombres} onTerminar={() => { setActual(null); cargar(); }} onSiguiente={() => siguiente(actual)} onIr={(hojaId) => { void cargar(); return abrirHoja(hojaId, false); }} onRecargar={cargar} />
       </div>
     );
   }
@@ -361,7 +361,7 @@ export function EventoDetalle({ id }: { id: string }) {
                     <span className="min-w-0 flex-1 basis-40 space-y-1">
                       <span className="block truncate text-sm font-medium text-foreground">{h.folio ? `Folio ${h.folio}${h.campos?.nombre ? ` · ${h.campos.nombre}` : ""}` : h.origen.nombreOriginal}</span>
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.estado.replace("_", " ")}</span>
+                        <span className={`rounded-full px-2 py-0.5 font-medium capitalize ${INSIGNIA_ESTADO[h.estado]}`}>{h.origen.principalId ? "repetida" : h.estado.replace("_", " ")}</span>
                         {bloqueoVigente(h) && <span className="text-muted">{quienEdita(h)} · en edición</span>}
                       </span>
                     </span>

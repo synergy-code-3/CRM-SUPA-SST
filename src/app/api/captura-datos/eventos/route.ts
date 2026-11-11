@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requerirPermiso } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/captura-datos/auditoria";
-import { crearEvento, listarEventos } from "@/lib/captura-datos/db";
+import { crearEvento, crearHojas, eliminarEvento, listarEventos } from "@/lib/captura-datos/db";
 import { leerJson, respuestaError } from "@/lib/captura-datos/api";
 import { crearEvento as esquemaCrearEvento } from "@/lib/captura-datos/validacion";
 import { carpetaDeEstatus, type Estatus } from "@/lib/captura-datos/fields";
@@ -33,12 +33,21 @@ export async function POST(req: NextRequest) {
       creadoPorId: permiso.usuario.id,
       usuariosAsignados: b.usuariosAsignados,
     });
+    // El evento solo queda creado si todas sus hojas se guardan.
+    try {
+      for (const e of new Set(b.hojas.map((h) => h.estatus))) {
+        await crearHojas(evento.id, e as Estatus, b.hojas.filter((h) => h.estatus === e).map((h) => ({ origen: h.origen })));
+      }
+    } catch (err) {
+      await eliminarEvento(evento.id).catch((e) => console.error("No se pudo deshacer el evento", evento.id, e));
+      throw err;
+    }
     await registrarAuditoria({
       usuario: permiso.usuario,
       accion: "evento_creado",
       eventoId: evento.id,
       eventoNombre: evento.nombre,
-      detalle: { fecha: evento.fecha, origen: evento.origen },
+      detalle: { fecha: evento.fecha, origen: evento.origen, hojas: b.hojas.length },
     });
     return NextResponse.json({ evento });
   } catch (err) {

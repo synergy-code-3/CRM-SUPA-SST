@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Folder, Loader2, Upload } from "lucide-react";
 import { ConfirmarModal } from "./ConfirmarModal";
 import { Modal } from "./Modal";
 import { ZonaArchivos } from "./ZonaArchivos";
-import { api, subirHojas } from "@/lib/captura-datos/cliente";
+import { api, prepararHojas, subirADrive, type FotoSubida } from "@/lib/captura-datos/cliente";
 import { ESTATUS, estatusDeCarpeta, type Estatus } from "@/lib/captura-datos/fields";
 import type { InfoCarpeta } from "@/lib/captura-datos/google";
 import { FECHA_MINIMA_EVENTO, fechaDeHoy, type EventoCaptura, type OrigenEvento } from "@/lib/captura-datos/modelo";
@@ -20,7 +20,6 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [origen, setOrigen] = useState<OrigenEvento>("local");
   const [estatus, setEstatus] = useState<Estatus>("Completo"); // categoría abierta en el menú de subida local
   const [archivos, setArchivos] = useState<Record<Estatus, File[]>>({ Completo: [], Apartado: [], Interesado: [] });
-  const subidos = useRef(new Set<File>()); // si falla a medias, el reintento no vuelve a subir lo que ya quedó
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
   const hoy = fechaDeHoy();
@@ -31,7 +30,6 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   const [confirmandoCierre, setConfirmandoCierre] = useState(false);
   const hayCarpetas = !!info?.subcarpetas.some((s) => estatusDeCarpeta(s.nombre));
   const totalArchivos = ESTATUS.reduce((n, e) => n + archivos[e.value].length, 0);
-  const [eventoCreado, setEventoCreado] = useState<EventoCaptura | null>(null); // si falla la importación, se reintenta sin duplicar el evento
 
   const origenEfectivo: OrigenEvento = origen === "drive" && !hayCarpetas ? "local" : origen;
 
@@ -55,17 +53,20 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
     setCargando(true);
     setError(null);
     try {
-      const evento = eventoCreado ?? (await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
-        json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre } },
-      })).evento;
-      setEventoCreado(evento);
-      if (origenEfectivo === "drive") await importarDeDrive(evento.id, info, enlaceBuscado);
-      else {
+      // Todo se lee y se sube antes; el evento se crea al final junto con sus hojas, así que si algo falla no se crea nada.
+      const hojas: { estatus: Estatus; origen: FotoSubida }[] = [];
+      if (origenEfectivo === "drive") {
+        for (const g of await listarDeDrive(info, enlaceBuscado)) hojas.push(...g.archivos.map((origen) => ({ estatus: g.estatus, origen })));
+      } else {
         for (const e of ESTATUS) {
-          const pendientes = archivos[e.value].filter((f) => !subidos.current.has(f));
-          if (pendientes.length) await subirHojas(evento.id, pendientes, e.value, (tanda) => tanda.forEach((f) => subidos.current.add(f)));
+          if (!archivos[e.value].length) continue;
+          const fotos = await subirADrive(info.id, await prepararHojas(archivos[e.value]), e.value);
+          hojas.push(...fotos.map((origen) => ({ estatus: e.value, origen })));
         }
       }
+      const { evento } = await api<{ evento: EventoCaptura }>("/api/captura-datos/eventos", {
+        json: { nombre, fecha, estatus: ESTATUS.find((e) => archivos[e.value].length)?.value ?? estatus, origen: origenEfectivo, destino: { id: info.id, url: info.url, nombre: info.nombre }, hojas },
+      });
       onCreado(evento);
     } catch (err) {
       setError(mensajeError(err, "No se pudo crear el evento."));
@@ -160,7 +161,9 @@ export function NuevoEventoModal({ onCerrar, onCreado }: { onCerrar: () => void;
   );
 }
 
-async function importarDeDrive(eventoId: string, info: InfoCarpeta, enlace: string) {
+/** Lista los archivos de Drive antes de crear el evento: si la lectura falla, no se crea nada. */
+async function listarDeDrive(info: InfoCarpeta, enlace: string) {
+  const grupos: { estatus: Estatus; archivos: { driveId: string; nombreOriginal: string }[] }[] = [];
   for (const sub of info.subcarpetas) {
     const estatus = estatusDeCarpeta(sub.nombre);
     if (!estatus || sub.archivos === 0) continue;
@@ -170,6 +173,7 @@ async function importarDeDrive(eventoId: string, info: InfoCarpeta, enlace: stri
     const archivos = r.archivos
       .filter((a) => a.mime.startsWith("image/") || a.mime === "application/pdf")
       .map((a) => ({ driveId: a.id, nombreOriginal: a.nombre }));
-    if (archivos.length) await api(`/api/captura-datos/eventos/${eventoId}/hojas`, { json: { estatus, archivos } });
+    if (archivos.length) grupos.push({ estatus, archivos });
   }
+  return grupos;
 }
